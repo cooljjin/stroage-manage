@@ -15,7 +15,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
   const [barcodeValue, setBarcodeValue] = useState(barcode);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [category, setCategory] = useState("기타");
-  const [minimumStock, setMinimumStock] = useState(0);
+  const [minimumStock, setMinimumStock] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -44,7 +44,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
         name: name.trim(),
         barcode: barcodeValue.trim() || null,
         category,
-        minimum_stock: Math.max(0, minimumStock)
+        minimum_stock: Math.max(0, Number(minimumStock || 0))
       })
       .select()
       .single();
@@ -89,7 +89,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-semibold">최소 재고</span>
-            <input className="field" type="number" min={0} value={minimumStock} onChange={(event) => setMinimumStock(Number(event.target.value))} />
+            <input className="field" type="number" min={0} value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} />
           </label>
         </div>
 
