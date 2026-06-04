@@ -19,6 +19,8 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
+  const [editingMinimumStock, setEditingMinimumStock] = useState(false);
+  const [minimumStockDraft, setMinimumStockDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -43,15 +45,16 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
         if (inventoryError) {
           setError(inventoryError.message);
         } else {
-          setItem(
-            normalizeInventoryItem({
-              ...nextItem,
-              inventory: inventoryData
-            })
-          );
+          const itemWithInventory = normalizeInventoryItem({
+            ...nextItem,
+            inventory: inventoryData
+          });
+          setItem(itemWithInventory);
+          setMinimumStockDraft(String(itemWithInventory.minimum_stock));
         }
       } else {
         setItem(nextItem);
+        setMinimumStockDraft(String(nextItem.minimum_stock));
       }
     }
     setLoading(false);
@@ -77,6 +80,23 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
 
   function addQuickAmount(amount: number) {
     setQuantity((value) => String(Number(value || 0) + amount));
+  }
+
+  async function saveMinimumStock() {
+    if (!item) return;
+
+    setError("");
+    setSuccess("");
+    const nextMinimumStock = Math.max(0, Number(minimumStockDraft || 0));
+    const { error: updateError } = await supabase.from("products").update({ minimum_stock: nextMinimumStock }).eq("id", item.id);
+
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setEditingMinimumStock(false);
+      setSuccess("최소재고를 수정했습니다.");
+      await loadProduct();
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -209,7 +229,47 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
             </div>
           </div>
           <div className="mt-3 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800">
-            총재고 <strong>{item.total_stock}</strong> · 최소재고 <strong>{item.minimum_stock}</strong>
+            <div className="flex flex-wrap items-center gap-2">
+              <span>
+                총재고 <strong>{item.total_stock}</strong> · 최소재고 <strong>{item.minimum_stock}</strong>
+              </span>
+              {editingMinimumStock ? (
+                <span className="inline-flex items-center gap-1">
+                  <input
+                    className="field min-h-0 w-20 px-2 py-1 text-sm"
+                    type="number"
+                    min={0}
+                    value={minimumStockDraft}
+                    onChange={(event) => setMinimumStockDraft(event.target.value)}
+                    aria-label="최소재고"
+                  />
+                  <button type="button" onClick={saveMinimumStock} className="rounded border border-brand-600 px-2 py-1 text-sm font-bold text-brand-700 dark:text-brand-100">
+                    저장
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingMinimumStock(false);
+                      setMinimumStockDraft(String(item.minimum_stock));
+                    }}
+                    className="rounded border border-slate-300 px-2 py-1 text-sm font-bold dark:border-slate-700"
+                  >
+                    취소
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMinimumStockDraft(String(item.minimum_stock));
+                    setEditingMinimumStock(true);
+                  }}
+                  className="rounded border border-slate-300 px-2 py-1 text-sm font-bold dark:border-slate-700"
+                >
+                  수정
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
