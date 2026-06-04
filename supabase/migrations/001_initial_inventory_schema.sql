@@ -17,8 +17,11 @@ create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   is_active boolean not null default true,
+  sort_order integer not null default 1000,
   created_at timestamptz not null default now()
 );
+
+alter table public.categories add column if not exists sort_order integer not null default 1000;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -49,6 +52,19 @@ insert into public.categories (name)
 values ('원두'), ('우유'), ('시럽'), ('베이커리'), ('아이스크림'), ('소모품'), ('음료'), ('기타')
 on conflict (name) do nothing;
 
+update public.categories
+set sort_order = case name
+  when '원두' then 1
+  when '우유' then 2
+  when '시럽' then 3
+  when '베이커리' then 4
+  when '아이스크림' then 5
+  when '소모품' then 6
+  when '음료' then 7
+  when '기타' then 8
+  else sort_order
+end;
+
 create table if not exists public.inventory (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null unique references public.products(id) on delete cascade,
@@ -75,6 +91,7 @@ create index if not exists products_name_idx on public.products using gin (to_ts
 create index if not exists products_barcode_idx on public.products (barcode);
 create index if not exists products_is_active_idx on public.products (is_active);
 create index if not exists categories_is_active_idx on public.categories (is_active);
+create index if not exists categories_sort_order_idx on public.categories (sort_order, name);
 create index if not exists inventory_product_id_idx on public.inventory (product_id);
 create index if not exists inventory_logs_created_at_idx on public.inventory_logs (created_at desc);
 create index if not exists inventory_logs_product_id_idx on public.inventory_logs (product_id);

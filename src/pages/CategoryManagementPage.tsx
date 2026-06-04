@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { loadCategories } from "../lib/categories";
@@ -35,7 +35,8 @@ export function CategoryManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: insertError } = await supabase.from("categories").insert({ name: trimmedName });
+    const nextSortOrder = categories.reduce((max, category) => Math.max(max, category.sort_order), 0) + 1;
+    const { error: insertError } = await supabase.from("categories").insert({ name: trimmedName, sort_order: nextSortOrder });
     if (insertError) {
       setError(insertError.message);
     } else {
@@ -54,6 +55,33 @@ export function CategoryManagementPage() {
     } else {
       setMessage(isActive ? "카테고리를 활성화했습니다." : "카테고리를 비활성화했습니다.");
       await refresh();
+    }
+  }
+
+  async function moveCategory(index: number, direction: "up" | "down") {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    const current = categories[index];
+    const target = categories[targetIndex];
+    if (!current || !target) return;
+
+    const nextCategories = [...categories];
+    nextCategories[index] = target;
+    nextCategories[targetIndex] = current;
+    setCategories(nextCategories);
+    setError("");
+    setMessage("");
+
+    const updates = nextCategories.map((category, nextIndex) =>
+      supabase.from("categories").update({ sort_order: nextIndex + 1 }).eq("id", category.id)
+    );
+    const results = await Promise.all(updates);
+    const updateError = results.find((result) => result.error)?.error;
+
+    if (updateError) {
+      setError(updateError.message);
+      await refresh();
+    } else {
+      setMessage("카테고리 순서를 저장했습니다.");
     }
   }
 
@@ -106,14 +134,39 @@ export function CategoryManagementPage() {
           <table className="w-full table-fixed text-left text-sm">
             <thead className="bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
               <tr>
+                <th className="w-24 px-3 py-3">순서</th>
                 <th className="px-3 py-3">카테고리</th>
                 <th className="w-20 px-3 py-3">상태</th>
                 <th className="w-36 px-3 py-3 text-right">작업</th>
               </tr>
             </thead>
             <tbody>
-              {categories.map((category) => (
+              {categories.map((category, index) => (
                 <tr key={category.id} className="border-t border-slate-100 dark:border-slate-900">
+                  <td className="px-3 py-3">
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => moveCategory(index, "up")}
+                        disabled={index === 0}
+                        className="touch-button inline-flex items-center justify-center rounded-md border border-slate-300 px-2 disabled:opacity-35 dark:border-slate-700"
+                        aria-label="위로 이동"
+                        title="위로"
+                      >
+                        <ArrowUp size={17} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveCategory(index, "down")}
+                        disabled={index === categories.length - 1}
+                        className="touch-button inline-flex items-center justify-center rounded-md border border-slate-300 px-2 disabled:opacity-35 dark:border-slate-700"
+                        aria-label="아래로 이동"
+                        title="아래로"
+                      >
+                        <ArrowDown size={17} />
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-3 py-3 font-semibold">{category.name}</td>
                   <td className="px-3 py-3">
                     <span className={`rounded px-2 py-1 text-xs font-bold ${category.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
