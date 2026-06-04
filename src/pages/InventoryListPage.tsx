@@ -92,7 +92,7 @@ export function InventoryListPage({ navigate }: Props) {
             key={name}
             type="button"
             onClick={() => setCategory(name)}
-            className={`touch-button whitespace-nowrap rounded-md px-3 text-sm font-bold ${category === name ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+            className={`touch-button shrink-0 whitespace-nowrap rounded-md px-4 text-sm font-bold ${category === name ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
           >
             {name}
           </button>
