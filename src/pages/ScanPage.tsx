@@ -1,0 +1,153 @@
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
+import { Search, ScanLine } from "lucide-react";
+import { PageTitle } from "../components/PageTitle";
+import { StatusMessage } from "../components/StatusMessage";
+import { supabase } from "../lib/supabase";
+import type { AppRoute, Product } from "../types/domain";
+
+type Props = {
+  navigate: (route: AppRoute) => void;
+};
+
+const SCANNER_ID = "barcode-scanner";
+
+export function ScanPage({ navigate }: Props) {
+  const [scannerActive, setScannerActive] = useState(false);
+  const [message, setMessage] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [results, setResults] = useState<Product[]>([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+
+  const canScan = useMemo(() => "mediaDevices" in navigator, []);
+
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().catch(() => undefined);
+      }
+    };
+  }, []);
+
+  async function handleBarcode(barcode: string) {
+    setMessage(`스캔됨: ${barcode}`);
+    if (scannerRef.current?.isScanning) {
+      await scannerRef.current.stop().catch(() => undefined);
+    }
+    setScannerActive(false);
+
+    const { data, error } = await supabase.from("products").select("*").eq("barcode", barcode).maybeSingle();
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    if (data) {
+      navigate({ name: "operation", productId: data.id });
+    } else {
+      navigate({ name: "register", barcode });
+    }
+  }
+
+  async function startScanner() {
+    setMessage("");
+    if (!canScan) {
+      setMessage("이 기기에서는 카메라를 사용할 수 없습니다.");
+      return;
+    }
+
+    const scanner = new Html5Qrcode(SCANNER_ID);
+    scannerRef.current = scanner;
+    setScannerActive(true);
+
+    try {
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 260, height: 160 } },
+        (decodedText) => void handleBarcode(decodedText),
+        () => undefined
+      );
+    } catch (error) {
+      setScannerActive(false);
+      setMessage(error instanceof Error ? error.message : "카메라 실행에 실패했습니다.");
+    }
+  }
+
+  async function stopScanner() {
+    if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+    setScannerActive(false);
+  }
+
+  async function handleSearch(event: FormEvent) {
+    event.preventDefault();
+    const keyword = searchTerm.trim();
+    if (!keyword) return;
+
+    setLoadingSearch(true);
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .or(`name.ilike.%${keyword}%,barcode.ilike.%${keyword}%`)
+      .order("name", { ascending: true })
+      .limit(20);
+
+    if (error) {
+      setMessage(error.message);
+      setResults([]);
+    } else {
+      setResults((data ?? []) as Product[]);
+    }
+    setLoadingSearch(false);
+  }
+
+  return (
+    <section>
+      <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
+
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="panel p-4">
+          <div id={SCANNER_ID} className="min-h-[220px] overflow-hidden rounded-md bg-slate-900" />
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button type="button" onClick={startScanner} disabled={scannerActive} className="primary-button inline-flex items-center justify-center gap-2">
+              <ScanLine size={20} />
+              바코드 스캔
+            </button>
+            <button type="button" onClick={stopScanner} disabled={!scannerActive} className="secondary-button">
+              중지
+            </button>
+          </div>
+          {message ? <div className="mt-3"><StatusMessage type={message.includes("실패") ? "error" : "info"}>{message}</StatusMessage></div> : null}
+        </div>
+
+        <div className="panel p-4">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input className="field" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="상품명 또는 바코드" />
+            <button type="submit" className="primary-button inline-flex min-w-[56px] items-center justify-center" aria-label="상품 검색">
+              <Search size={22} />
+            </button>
+          </form>
+
+          <div className="mt-4 space-y-2">
+            {loadingSearch ? <StatusMessage>검색 중...</StatusMessage> : null}
+            {!loadingSearch && results.length === 0 && searchTerm ? <StatusMessage>검색 결과가 없습니다.</StatusMessage> : null}
+            {results.map((product) => (
+              <button
+                key={product.id}
+                type="button"
+                onClick={() => navigate({ name: "operation", productId: product.id })}
+                className="w-full rounded-md border border-slate-200 bg-white p-3 text-left dark:border-slate-800 dark:bg-slate-900"
+              >
+                <span className="block font-semibold">{product.name}</span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
+              </button>
+            ))}
+            <button type="button" onClick={() => navigate({ name: "register", barcode: searchTerm.trim() })} className="secondary-button w-full">
+              새 상품 등록
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
