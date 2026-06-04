@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Search, ScanLine } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
@@ -11,6 +11,17 @@ type Props = {
 };
 
 const SCANNER_ID = "barcode-scanner";
+const PRODUCT_BARCODE_FORMATS = [
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.ITF,
+  Html5QrcodeSupportedFormats.CODABAR
+];
 
 export function ScanPage({ navigate }: Props) {
   const [scannerActive, setScannerActive] = useState(false);
@@ -19,6 +30,7 @@ export function ScanPage({ navigate }: Props) {
   const [results, setResults] = useState<Product[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const barcodeHandlingRef = useRef(false);
 
   const canScan = useMemo(() => "mediaDevices" in navigator, []);
 
@@ -31,6 +43,8 @@ export function ScanPage({ navigate }: Props) {
   }, []);
 
   async function handleBarcode(barcode: string) {
+    if (barcodeHandlingRef.current) return;
+    barcodeHandlingRef.current = true;
     setMessage(`스캔됨: ${barcode}`);
     if (scannerRef.current?.isScanning) {
       await scannerRef.current.stop().catch(() => undefined);
@@ -40,6 +54,7 @@ export function ScanPage({ navigate }: Props) {
     const { data, error } = await supabase.from("products").select("*").eq("barcode", barcode).maybeSingle();
     if (error) {
       setMessage(error.message);
+      barcodeHandlingRef.current = false;
       return;
     }
 
@@ -57,14 +72,29 @@ export function ScanPage({ navigate }: Props) {
       return;
     }
 
-    const scanner = new Html5Qrcode(SCANNER_ID);
+    const scanner = new Html5Qrcode(SCANNER_ID, {
+      formatsToSupport: PRODUCT_BARCODE_FORMATS,
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      },
+      verbose: false
+    });
     scannerRef.current = scanner;
+    barcodeHandlingRef.current = false;
     setScannerActive(true);
 
     try {
       await scanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 260, height: 160 } },
+        {
+          fps: 15,
+          disableFlip: true,
+          videoConstraints: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        },
         (decodedText) => void handleBarcode(decodedText),
         () => undefined
       );
@@ -76,6 +106,7 @@ export function ScanPage({ navigate }: Props) {
 
   async function stopScanner() {
     if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+    barcodeHandlingRef.current = false;
     setScannerActive(false);
   }
 
@@ -107,7 +138,7 @@ export function ScanPage({ navigate }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="panel p-4">
-          <div id={SCANNER_ID} className="min-h-[220px] overflow-hidden rounded-md bg-slate-900" />
+          <div id={SCANNER_ID} className="min-h-[320px] overflow-hidden rounded-md bg-slate-900" />
           <div className="mt-4 grid grid-cols-2 gap-3">
             <button type="button" onClick={startScanner} disabled={scannerActive} className="primary-button inline-flex items-center justify-center gap-2">
               <ScanLine size={20} />
