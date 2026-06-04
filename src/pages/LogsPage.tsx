@@ -4,10 +4,10 @@ import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { formatLogContent } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
-import type { InventoryLog } from "../types/domain";
+import type { InventoryLog, InventoryLogWithStaff, StaffProfile } from "../types/domain";
 
 export function LogsPage() {
-  const [logs, setLogs] = useState<InventoryLog[]>([]);
+  const [logs, setLogs] = useState<InventoryLogWithStaff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -26,7 +26,17 @@ export function LogsPage() {
     if (loadError) {
       setError(loadError.message);
     } else {
-      setLogs((data ?? []) as unknown as InventoryLog[]);
+      const nextLogs = (data ?? []) as unknown as InventoryLog[];
+      const userIds = Array.from(new Set(nextLogs.map((log) => log.user_id)));
+      const { data: profiles } = await supabase.from("profiles").select("*").in("id", userIds);
+      const profileMap = new Map((profiles ?? []).map((profile: StaffProfile) => [profile.id, profile.display_name]));
+
+      setLogs(
+        nextLogs.map((log) => ({
+          ...log,
+          staff_name: profileMap.get(log.user_id) ?? log.user_id.slice(0, 8)
+        }))
+      );
     }
     setLoading(false);
   }
@@ -54,7 +64,7 @@ export function LogsPage() {
               {logs.map((log) => (
                 <tr key={log.id} className="border-t border-slate-100 dark:border-slate-900">
                   <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(log.created_at)}</td>
-                  <td className="truncate px-3 py-3 text-xs">{log.user_id.slice(0, 8)}</td>
+                  <td className="truncate px-3 py-3 text-xs">{log.staff_name}</td>
                   <td className="px-3 py-3">
                     <span className="block truncate font-semibold">{log.products?.name ?? "삭제된 상품"}</span>
                     <span className="block truncate text-xs text-slate-500 dark:text-slate-400 sm:hidden">{formatLogContent(log)}</span>

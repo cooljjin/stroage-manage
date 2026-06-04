@@ -52,6 +52,31 @@ export type Database = {
         };
         Relationships: [];
       };
+      profiles: {
+        Row: {
+          id: string;
+          email: string | null;
+          display_name: string;
+          is_admin: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          email?: string | null;
+          display_name: string;
+          is_admin?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          email?: string | null;
+          display_name?: string;
+          is_admin?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       inventory: {
         Row: {
           id: string;
@@ -121,7 +146,14 @@ export type Database = {
         ];
       };
     };
-    Functions: Record<string, never>;
+    Functions: {
+      is_admin: {
+        Args: {
+          user_id: string;
+        };
+        Returns: boolean;
+      };
+    };
     Views: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

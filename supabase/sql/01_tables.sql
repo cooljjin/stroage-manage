@@ -20,6 +20,31 @@ create table if not exists public.categories (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  display_name text not null,
+  is_admin boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create or replace function public.is_admin(user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as 'select exists (select 1 from public.profiles where id = user_id and is_admin = true)';
+
+insert into public.profiles (id, email, display_name, is_admin)
+values ('dbe00a19-300b-4677-9339-225e52f2909b', 'jich980611@gmail.com', 'jinkim', true)
+on conflict (id) do update
+set email = excluded.email,
+    display_name = coalesce(nullif(public.profiles.display_name, ''''), excluded.display_name),
+    is_admin = true,
+    updated_at = now();
+
 insert into public.categories (name)
 values ('원두'), ('우유'), ('시럽'), ('베이커리'), ('아이스크림'), ('소모품'), ('음료'), ('기타')
 on conflict (name) do nothing;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Shield, Sun } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { TopMenu } from "./components/TopMenu";
@@ -13,15 +13,18 @@ import { LowStockPage } from "./pages/LowStockPage";
 import { LogsPage } from "./pages/LogsPage";
 import { ProductManagementPage } from "./pages/ProductManagementPage";
 import { CategoryManagementPage } from "./pages/CategoryManagementPage";
+import { AdminPage } from "./pages/AdminPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
+import { ensureCurrentProfile } from "./lib/profiles";
 import { supabase } from "./lib/supabase";
-import type { AppRoute, RouteName } from "./types/domain";
+import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 
 const NAV_ROUTES: RouteName[] = ["scan", "inventory", "low-stock", "logs"];
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [route, setRoute] = useState<AppRoute>({ name: "scan" });
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -39,6 +42,15 @@ export default function App() {
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session) {
+      setProfile(null);
+      return;
+    }
+
+    ensureCurrentProfile(session).then(setProfile);
+  }, [session]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -81,6 +93,16 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {profile?.is_admin ? (
+              <button
+                type="button"
+                onClick={() => navigate({ name: "admin" })}
+                className="touch-button inline-flex items-center gap-2 rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 dark:text-brand-100"
+              >
+                <Shield size={18} />
+                관리자 페이지
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setDarkMode((value) => !value)}
@@ -106,6 +128,7 @@ export default function App() {
         {route.name === "logs" && <LogsPage />}
         {route.name === "product-management" && <ProductManagementPage navigate={navigate} />}
         {route.name === "category-management" && <CategoryManagementPage />}
+        {route.name === "admin" && (profile?.is_admin ? <AdminPage /> : <div className="panel p-4 text-sm font-semibold">관리자 권한이 필요합니다.</div>)}
       </main>
 
       <BottomNav activeRoute={activeRoute} onNavigate={(name) => navigate({ name })} />
