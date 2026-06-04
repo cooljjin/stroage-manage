@@ -1,0 +1,58 @@
+alter table public.products enable row level security;
+alter table public.inventory enable row level security;
+alter table public.inventory_logs enable row level security;
+
+drop policy if exists "Authenticated users can read products" on public.products;
+create policy "Authenticated users can read products"
+on public.products for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert products" on public.products;
+create policy "Authenticated users can insert products"
+on public.products for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users can update products" on public.products;
+create policy "Authenticated users can update products"
+on public.products for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Authenticated users can read inventory" on public.inventory;
+create policy "Authenticated users can read inventory"
+on public.inventory for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert inventory" on public.inventory;
+create policy "Authenticated users can insert inventory"
+on public.inventory for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users can update inventory" on public.inventory;
+create policy "Authenticated users can update inventory"
+on public.inventory for update
+to authenticated
+using (true)
+with check (warehouse_qty >= 0 and store_qty >= 0);
+
+drop policy if exists "Authenticated users can read logs" on public.inventory_logs;
+create policy "Authenticated users can read logs"
+on public.inventory_logs for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert own logs" on public.inventory_logs;
+create policy "Authenticated users can insert own logs"
+on public.inventory_logs for insert
+to authenticated
+with check (user_id = auth.uid());
+
+grant usage on schema public to authenticated;
+grant select, insert, update on public.products to authenticated;
+grant select, insert, update on public.inventory to authenticated;
+grant select, insert on public.inventory_logs to authenticated;

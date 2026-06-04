@@ -63,22 +63,94 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     setError("");
     setSuccess("");
 
-    const source = action === "출고" ? location : action === "이동" ? (moveDirection === "warehouse-to-store" ? "창고" : "매장") : null;
-    const destination = action === "입고" ? location : action === "이동" ? (moveDirection === "warehouse-to-store" ? "매장" : "창고") : null;
-    const adjustLocation = action === "조정" ? location : null;
+    const currentInventory = item.inventory;
+    if (!currentInventory) {
+      setError("재고 행을 찾을 수 없습니다.");
+      setSaving(false);
+      return;
+    }
 
-    const { error: rpcError } = await supabase.rpc("apply_inventory_operation", {
-      p_product_id: item.id,
-      p_action: action,
-      p_quantity: quantity,
-      p_source_location: source,
-      p_destination_location: destination,
-      p_adjust_location: adjustLocation,
-      p_note: note.trim() || null
+    const source = action === "출고" ? location : action === "이동" ? (moveDirection === "warehouse-to-store" ? "창고" : "매장") : action === "조정" ? location : null;
+    const destination = action === "입고" ? location : action === "이동" ? (moveDirection === "warehouse-to-store" ? "매장" : "창고") : null;
+    let nextWarehouseQty = item.warehouse_qty;
+    let nextStoreQty = item.store_qty;
+    let previousQuantity = location === "창고" ? item.warehouse_qty : item.store_qty;
+    let newQuantity = previousQuantity;
+
+    if (action === "입고") {
+      if (location === "창고") {
+        previousQuantity = item.warehouse_qty;
+        nextWarehouseQty += quantity;
+        newQuantity = nextWarehouseQty;
+      } else {
+        previousQuantity = item.store_qty;
+        nextStoreQty += quantity;
+        newQuantity = nextStoreQty;
+      }
+    } else if (action === "출고") {
+      if (location === "창고") {
+        previousQuantity = item.warehouse_qty;
+        nextWarehouseQty -= quantity;
+        newQuantity = nextWarehouseQty;
+      } else {
+        previousQuantity = item.store_qty;
+        nextStoreQty -= quantity;
+        newQuantity = nextStoreQty;
+      }
+    } else if (action === "이동") {
+      if (moveDirection === "warehouse-to-store") {
+        previousQuantity = item.warehouse_qty;
+        nextWarehouseQty -= quantity;
+        nextStoreQty += quantity;
+        newQuantity = nextWarehouseQty;
+      } else {
+        previousQuantity = item.store_qty;
+        nextStoreQty -= quantity;
+        nextWarehouseQty += quantity;
+        newQuantity = nextStoreQty;
+      }
+    } else if (location === "창고") {
+      previousQuantity = item.warehouse_qty;
+      nextWarehouseQty = quantity;
+      newQuantity = nextWarehouseQty;
+    } else {
+      previousQuantity = item.store_qty;
+      nextStoreQty = quantity;
+      newQuantity = nextStoreQty;
+    }
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      setError(userError?.message ?? "로그인이 필요합니다.");
+      setSaving(false);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("inventory")
+      .update({ warehouse_qty: nextWarehouseQty, store_qty: nextStoreQty })
+      .eq("id", currentInventory.id);
+
+    if (updateError) {
+      setError(updateError.message);
+      setSaving(false);
+      return;
+    }
+
+    const { error: logError } = await supabase.from("inventory_logs").insert({
+      product_id: item.id,
+      user_id: userData.user.id,
+      action,
+      source_location: source,
+      destination_location: destination,
+      previous_quantity: previousQuantity,
+      new_quantity: newQuantity,
+      quantity,
+      note: note.trim() || null
     });
 
-    if (rpcError) {
-      setError(rpcError.message);
+    if (logError) {
+      setError(logError.message);
     } else {
       setSuccess("저장되었습니다.");
       setQuantity(0);

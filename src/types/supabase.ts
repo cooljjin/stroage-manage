@@ -74,7 +74,19 @@ export type Database = {
           note: string | null;
           created_at: string;
         };
-        Insert: never;
+        Insert: {
+          id?: string;
+          product_id: string;
+          user_id: string;
+          action: InventoryAction;
+          source_location?: Location | null;
+          destination_location?: Location | null;
+          previous_quantity?: number | null;
+          new_quantity?: number | null;
+          quantity?: number | null;
+          note?: string | null;
+          created_at?: string;
+        };
         Update: never;
         Relationships: [
           {
@@ -87,20 +99,7 @@ export type Database = {
         ];
       };
     };
-    Functions: {
-      apply_inventory_operation: {
-        Args: {
-          p_product_id: string;
-          p_action: InventoryAction;
-          p_quantity: number;
-          p_source_location?: Location | null;
-          p_destination_location?: Location | null;
-          p_adjust_location?: Location | null;
-          p_note?: string | null;
-        };
-        Returns: Database["public"]["Tables"]["inventory"]["Row"];
-      };
-    };
+    Functions: Record<string, never>;
     Views: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

@@ -36,7 +36,12 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
     if (insertError) {
       setError(insertError.message);
     } else {
-      navigate({ name: "operation", productId: data.id });
+      const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id });
+      if (inventoryError) {
+        setError(inventoryError.message);
+      } else {
+        navigate({ name: "operation", productId: data.id });
+      }
     }
 
     setSaving(false);
