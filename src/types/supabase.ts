@@ -12,6 +12,7 @@ export type Database = {
           name: string;
           category: Category;
           minimum_stock: number;
+          is_active: boolean;
           created_at: string;
         };
         Insert: {
@@ -20,6 +21,7 @@ export type Database = {
           name: string;
           category: Category;
           minimum_stock?: number;
+          is_active?: boolean;
           created_at?: string;
         };
         Update: {
@@ -27,6 +29,26 @@ export type Database = {
           name?: string;
           category?: Category;
           minimum_stock?: number;
+          is_active?: boolean;
+        };
+        Relationships: [];
+      };
+      categories: {
+        Row: {
+          id: string;
+          name: string;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+          is_active?: boolean;
         };
         Relationships: [];
       };

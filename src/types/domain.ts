@@ -1,12 +1,11 @@
-export const CATEGORIES = ["원두", "우유", "시럽", "베이커리", "아이스크림", "소모품", "음료", "기타"] as const;
-export const CATEGORY_FILTERS = ["전체", ...CATEGORIES] as const;
+export const DEFAULT_CATEGORIES = ["원두", "우유", "시럽", "베이커리", "아이스크림", "소모품", "음료", "기타"] as const;
 
-export type Category = (typeof CATEGORIES)[number];
-export type CategoryFilter = (typeof CATEGORY_FILTERS)[number];
+export type Category = string;
+export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
 export type InventoryAction = "입고" | "출고" | "이동" | "조정";
 export type ViewMode = "compact" | "full";
-export type RouteName = "scan" | "register" | "operation" | "inventory" | "low-stock" | "logs";
+export type RouteName = "scan" | "register" | "operation" | "inventory" | "low-stock" | "logs" | "product-management" | "category-management";
 
 export type Product = {
   id: string;
@@ -14,6 +13,14 @@ export type Product = {
   name: string;
   category: Category;
   minimum_stock: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ProductCategory = {
+  id: string;
+  name: string;
+  is_active: boolean;
   created_at: string;
 };
 

@@ -3,10 +3,10 @@ import { ChevronDown, ChevronUp, Search, TriangleAlert } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { VIEW_MODE_STORAGE_KEY } from "../lib/constants";
+import { fallbackCategories, loadCategories } from "../lib/categories";
 import { normalizeInventoryItem } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, CategoryFilter, InventoryItem, SortDirection, SortKey, ViewMode } from "../types/domain";
-import { CATEGORY_FILTERS } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -14,6 +14,7 @@ type Props = {
 
 export function InventoryListPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState<CategoryFilter>("전체");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem(VIEW_MODE_STORAGE_KEY) as ViewMode) || "compact");
@@ -32,7 +33,12 @@ export function InventoryListPage({ navigate }: Props) {
 
   async function loadItems() {
     setLoading(true);
-    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").order("name", { ascending: true });
+    const [categoryResult, productResult] = await Promise.all([
+      loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
+      supabase.from("products").select("*, inventory(*)").eq("is_active", true).order("name", { ascending: true })
+    ]);
+    const { data, error: loadError } = productResult;
+    setCategories(categoryResult.map((item) => item.name));
     if (loadError) {
       setError(loadError.message);
     } else {
@@ -81,7 +87,7 @@ export function InventoryListPage({ navigate }: Props) {
       <PageTitle title="재고 현황" description="카테고리와 검색으로 빠르게 확인합니다." />
 
       <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-        {CATEGORY_FILTERS.map((name) => (
+        {["전체", ...categories].map((name) => (
           <button
             key={name}
             type="button"

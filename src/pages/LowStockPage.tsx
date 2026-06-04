@@ -20,7 +20,7 @@ export function LowStockPage({ navigate }: Props) {
 
   async function loadItems() {
     setLoading(true);
-    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").order("name", { ascending: true });
+    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").eq("is_active", true).order("name", { ascending: true });
     if (loadError) {
       setError(loadError.message);
     } else {

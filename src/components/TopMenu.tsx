@@ -1,0 +1,50 @@
+import { Box, Menu, Tags, X } from "lucide-react";
+import type { RouteName } from "../types/domain";
+
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onNavigate: (route: RouteName) => void;
+};
+
+export function TopMenu({ open, onOpenChange, onNavigate }: Props) {
+  function go(route: RouteName) {
+    onNavigate(route);
+    onOpenChange(false);
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className="touch-button icon-button"
+        aria-label={open ? "메뉴 닫기" : "메뉴 열기"}
+        title="메뉴"
+      >
+        {open ? <X size={21} /> : <Menu size={21} />}
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 top-12 z-50 w-56 rounded-md border border-slate-200 bg-white p-2 shadow-soft dark:border-slate-800 dark:bg-slate-950">
+          <button
+            type="button"
+            onClick={() => go("product-management")}
+            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+          >
+            <Box size={19} />
+            상품 관리
+          </button>
+          <button
+            type="button"
+            onClick={() => go("category-management")}
+            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+          >
+            <Tags size={19} />
+            카테고리 관리
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}

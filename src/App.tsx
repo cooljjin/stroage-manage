@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import { Moon, Sun } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { TopMenu } from "./components/TopMenu";
 import { LoginPage } from "./pages/LoginPage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductRegisterPage } from "./pages/ProductRegisterPage";
@@ -10,6 +11,8 @@ import { InventoryOperationPage } from "./pages/InventoryOperationPage";
 import { InventoryListPage } from "./pages/InventoryListPage";
 import { LowStockPage } from "./pages/LowStockPage";
 import { LogsPage } from "./pages/LogsPage";
+import { ProductManagementPage } from "./pages/ProductManagementPage";
+import { CategoryManagementPage } from "./pages/CategoryManagementPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
 import { supabase } from "./lib/supabase";
 import type { AppRoute, RouteName } from "./types/domain";
@@ -21,6 +24,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [route, setRoute] = useState<AppRoute>({ name: "scan" });
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -46,6 +50,7 @@ export default function App() {
   }, [route.name]);
 
   function navigate(next: AppRoute) {
+    setMenuOpen(false);
     setRoute(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -68,9 +73,12 @@ export default function App() {
       <OfflineBanner />
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div>
-            <p className="text-xs font-semibold text-brand-700 dark:text-brand-100">매장 재고관리</p>
-            <p className="max-w-[220px] truncate text-sm text-slate-500 dark:text-slate-400">{session.user.email}</p>
+          <div className="flex min-w-0 items-center gap-3">
+            <TopMenu open={menuOpen} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name })} />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-brand-700 dark:text-brand-100">매장 재고관리</p>
+              <p className="max-w-[220px] truncate text-sm text-slate-500 dark:text-slate-400">{session.user.email}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -96,6 +104,8 @@ export default function App() {
         {route.name === "inventory" && <InventoryListPage navigate={navigate} />}
         {route.name === "low-stock" && <LowStockPage navigate={navigate} />}
         {route.name === "logs" && <LogsPage />}
+        {route.name === "product-management" && <ProductManagementPage navigate={navigate} />}
+        {route.name === "category-management" && <CategoryManagementPage />}
       </main>
 
       <BottomNav activeRoute={activeRoute} onNavigate={(name) => navigate({ name })} />

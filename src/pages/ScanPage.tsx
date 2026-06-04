@@ -52,7 +52,7 @@ export function ScanPage({ navigate }: Props) {
     }
     setScannerActive(false);
 
-    const { data, error } = await supabase.from("products").select("*").eq("barcode", barcode).maybeSingle();
+    const { data, error } = await supabase.from("products").select("*").eq("barcode", barcode).eq("is_active", true).maybeSingle();
     if (error) {
       setMessage(error.message);
       barcodeHandlingRef.current = false;
@@ -133,6 +133,7 @@ export function ScanPage({ navigate }: Props) {
       .from("products")
       .select("*")
       .or(`name.ilike.%${keyword}%,barcode.ilike.%${keyword}%`)
+      .eq("is_active", true)
       .order("name", { ascending: true })
       .limit(20);
 

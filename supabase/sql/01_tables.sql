@@ -4,12 +4,25 @@ create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   barcode text unique,
   name text not null,
-  category text not null check (
-    category in ('원두', '우유', '시럽', '베이커리', '아이스크림', '소모품', '음료', '기타')
-  ),
+  category text not null,
   minimum_stock integer not null default 0 check (minimum_stock >= 0),
+  is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.products drop constraint if exists products_category_check;
+alter table public.products add column if not exists is_active boolean not null default true;
+
+create table if not exists public.categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+insert into public.categories (name)
+values ('원두'), ('우유'), ('시럽'), ('베이커리'), ('아이스크림'), ('소모품'), ('음료'), ('기타')
+on conflict (name) do nothing;
 
 create table if not exists public.inventory (
   id uuid primary key default gen_random_uuid(),
@@ -35,6 +48,8 @@ create table if not exists public.inventory_logs (
 
 create index if not exists products_name_idx on public.products using gin (to_tsvector('simple', name));
 create index if not exists products_barcode_idx on public.products (barcode);
+create index if not exists products_is_active_idx on public.products (is_active);
+create index if not exists categories_is_active_idx on public.categories (is_active);
 create index if not exists inventory_product_id_idx on public.inventory (product_id);
 create index if not exists inventory_logs_created_at_idx on public.inventory_logs (created_at desc);
 create index if not exists inventory_logs_product_id_idx on public.inventory_logs (product_id);

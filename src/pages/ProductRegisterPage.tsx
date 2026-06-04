@@ -1,7 +1,8 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
-import { CATEGORIES, type AppRoute, type Category } from "../types/domain";
+import { fallbackCategories, loadCategories } from "../lib/categories";
+import type { AppRoute, ProductCategory } from "../types/domain";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -12,10 +13,25 @@ type Props = {
 export function ProductRegisterPage({ barcode, navigate }: Props) {
   const [name, setName] = useState("");
   const [barcodeValue, setBarcodeValue] = useState(barcode);
-  const [category, setCategory] = useState<Category>("기타");
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [category, setCategory] = useState("기타");
   const [minimumStock, setMinimumStock] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadCategories({ activeOnly: true })
+      .then((data) => {
+        const nextCategories = data.length > 0 ? data : fallbackCategories();
+        setCategories(nextCategories);
+        setCategory((current) => (nextCategories.some((item) => item.name === current) ? current : nextCategories[0]?.name ?? "기타"));
+      })
+      .catch(() => {
+        const nextCategories = fallbackCategories();
+        setCategories(nextCategories);
+        setCategory(nextCategories[0]?.name ?? "기타");
+      });
+  }, []);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -63,10 +79,10 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-semibold">카테고리</span>
-            <select className="field" value={category} onChange={(event) => setCategory(event.target.value as Category)}>
-              {CATEGORIES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
+            <select className="field" value={category} onChange={(event) => setCategory(event.target.value)}>
+              {categories.map((item) => (
+                <option key={item.id} value={item.name}>
+                  {item.name}
                 </option>
               ))}
             </select>

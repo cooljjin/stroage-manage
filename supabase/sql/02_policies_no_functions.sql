@@ -1,4 +1,5 @@
 alter table public.products enable row level security;
+alter table public.categories enable row level security;
 alter table public.inventory enable row level security;
 alter table public.inventory_logs enable row level security;
 
@@ -20,6 +21,37 @@ on public.products for update
 to authenticated
 using (true)
 with check (true);
+
+drop policy if exists "Authenticated users can delete inactive products" on public.products;
+create policy "Authenticated users can delete inactive products"
+on public.products for delete
+to authenticated
+using (is_active = false);
+
+drop policy if exists "Authenticated users can read categories" on public.categories;
+create policy "Authenticated users can read categories"
+on public.categories for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert categories" on public.categories;
+create policy "Authenticated users can insert categories"
+on public.categories for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users can update categories" on public.categories;
+create policy "Authenticated users can update categories"
+on public.categories for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Authenticated users can delete inactive categories" on public.categories;
+create policy "Authenticated users can delete inactive categories"
+on public.categories for delete
+to authenticated
+using (is_active = false);
 
 drop policy if exists "Authenticated users can read inventory" on public.inventory;
 create policy "Authenticated users can read inventory"
@@ -53,6 +85,7 @@ to authenticated
 with check (user_id = auth.uid());
 
 grant usage on schema public to authenticated;
-grant select, insert, update on public.products to authenticated;
+grant select, insert, update, delete on public.products to authenticated;
+grant select, insert, update, delete on public.categories to authenticated;
 grant select, insert, update on public.inventory to authenticated;
 grant select, insert on public.inventory_logs to authenticated;
