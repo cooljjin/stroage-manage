@@ -9,6 +9,10 @@ type Props = {
   navigate: (route: AppRoute) => void;
 };
 
+function isProductActive(product: Product): boolean {
+  return product.is_active !== false;
+}
+
 export function ProductManagementPage({ navigate }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
@@ -51,7 +55,7 @@ export function ProductManagementPage({ navigate }: Props) {
   }
 
   async function deleteProduct(product: Product) {
-    if (product.is_active) {
+    if (isProductActive(product)) {
       setError("활성 상품은 삭제할 수 없습니다. 먼저 비활성화하세요.");
       return;
     }
@@ -95,39 +99,42 @@ export function ProductManagementPage({ navigate }: Props) {
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.map((product) => (
-                <tr key={product.id} className="border-t border-slate-100 dark:border-slate-900">
-                  <td className="px-3 py-3">
-                    <button type="button" onClick={() => navigate({ name: "operation", productId: product.id })} className="block max-w-full text-left">
-                      <span className="block truncate font-semibold">{product.name}</span>
-                      <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
-                    </button>
-                  </td>
-                  <td className="hidden px-3 py-3 sm:table-cell">{product.category}</td>
-                  <td className="px-3 py-3">
-                    <span className={`rounded px-2 py-1 text-xs font-bold ${product.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
-                      {product.is_active ? "활성" : "비활성"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex justify-end gap-2">
-                      <button type="button" onClick={() => setProductActive(product, !product.is_active)} className="touch-button rounded-md border border-slate-300 px-2 text-xs font-bold dark:border-slate-700">
-                        {product.is_active ? "비활성화" : "활성화"}
+              {filteredProducts.map((product) => {
+                const active = isProductActive(product);
+                return (
+                  <tr key={product.id} className="border-t border-slate-100 dark:border-slate-900">
+                    <td className="px-3 py-3">
+                      <button type="button" onClick={() => navigate({ name: "operation", productId: product.id })} className="block max-w-full text-left">
+                        <span className="block truncate font-semibold">{product.name}</span>
+                        <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteProduct(product)}
-                        disabled={product.is_active}
-                        className="touch-button inline-flex items-center justify-center rounded-md border border-red-200 px-2 text-red-700 disabled:opacity-35 dark:border-red-900 dark:text-red-200"
-                        aria-label="상품 삭제"
-                        title="삭제"
-                      >
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="hidden px-3 py-3 sm:table-cell">{product.category}</td>
+                    <td className="px-3 py-3">
+                      <span className={`rounded px-2 py-1 text-xs font-bold ${active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
+                        {active ? "활성" : "비활성"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button type="button" onClick={() => setProductActive(product, !active)} className="touch-button rounded-md border border-slate-300 px-2 text-xs font-bold dark:border-slate-700">
+                          {active ? "비활성화" : "활성화"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteProduct(product)}
+                          disabled={active}
+                          className="touch-button inline-flex items-center justify-center rounded-md border border-red-200 px-2 text-red-700 disabled:opacity-35 dark:border-red-900 dark:text-red-200"
+                          aria-label="상품 삭제"
+                          title="삭제"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {filteredProducts.length === 0 ? <div className="p-4"><StatusMessage>표시할 상품이 없습니다.</StatusMessage></div> : null}
