@@ -39,6 +39,15 @@ create index if not exists inventory_product_id_idx on public.inventory (product
 create index if not exists inventory_logs_created_at_idx on public.inventory_logs (created_at desc);
 create index if not exists inventory_logs_product_id_idx on public.inventory_logs (product_id);
 
+insert into public.inventory (product_id)
+select products.id
+from public.products
+where not exists (
+  select 1
+  from public.inventory
+  where inventory.product_id = products.id
+);
+
 create or replace function public.touch_inventory_updated_at()
 returns trigger
 language plpgsql

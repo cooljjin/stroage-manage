@@ -26,11 +26,33 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
+    setError("");
     const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").eq("id", productId).single();
     if (loadError) {
       setError(loadError.message);
     } else {
-      setItem(normalizeInventoryItem(data as Parameters<typeof normalizeInventoryItem>[0]));
+      const nextItem = normalizeInventoryItem(data as Parameters<typeof normalizeInventoryItem>[0]);
+
+      if (!nextItem.inventory) {
+        const { data: inventoryData, error: inventoryError } = await supabase
+          .from("inventory")
+          .upsert({ product_id: productId }, { onConflict: "product_id" })
+          .select()
+          .single();
+
+        if (inventoryError) {
+          setError(inventoryError.message);
+        } else {
+          setItem(
+            normalizeInventoryItem({
+              ...nextItem,
+              inventory: inventoryData
+            })
+          );
+        }
+      } else {
+        setItem(nextItem);
+      }
     }
     setLoading(false);
   }, [productId]);
@@ -65,7 +87,8 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
 
     const currentInventory = item.inventory;
     if (!currentInventory) {
-      setError("재고 행을 찾을 수 없습니다.");
+      await loadProduct();
+      setError("재고 정보를 준비했습니다. 다시 저장해 주세요.");
       setSaving(false);
       return;
     }
