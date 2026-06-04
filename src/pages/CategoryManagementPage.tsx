@@ -71,10 +71,9 @@ export function CategoryManagementPage() {
     setError("");
     setMessage("");
 
-    const updates = nextCategories.map((category, nextIndex) =>
-      supabase.from("categories").update({ sort_order: nextIndex + 1 }).eq("id", category.id)
+    const results = await Promise.all(
+      nextCategories.map((category, nextIndex) => supabase.from("categories").update({ sort_order: nextIndex + 1 }).eq("id", category.id))
     );
-    const results = await Promise.all(updates);
     const updateError = results.find((result) => result.error)?.error;
 
     if (updateError) {
@@ -130,71 +129,66 @@ export function CategoryManagementPage() {
       {message ? <div className="mb-3"><StatusMessage type="success">{message}</StatusMessage></div> : null}
 
       {!loading ? (
-        <div className="panel overflow-hidden">
-          <table className="w-full table-fixed text-left text-sm">
-            <thead className="bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-              <tr>
-                <th className="w-24 px-3 py-3">순서</th>
-                <th className="px-3 py-3">카테고리</th>
-                <th className="w-20 px-3 py-3">상태</th>
-                <th className="w-36 px-3 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map((category, index) => (
-                <tr key={category.id} className="border-t border-slate-100 dark:border-slate-900">
-                  <td className="px-3 py-3">
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => moveCategory(index, "up")}
-                        disabled={index === 0}
-                        className="touch-button inline-flex items-center justify-center rounded-md border border-slate-300 px-2 disabled:opacity-35 dark:border-slate-700"
-                        aria-label="위로 이동"
-                        title="위로"
-                      >
-                        <ArrowUp size={17} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveCategory(index, "down")}
-                        disabled={index === categories.length - 1}
-                        className="touch-button inline-flex items-center justify-center rounded-md border border-slate-300 px-2 disabled:opacity-35 dark:border-slate-700"
-                        aria-label="아래로 이동"
-                        title="아래로"
-                      >
-                        <ArrowDown size={17} />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 font-semibold">{category.name}</td>
-                  <td className="px-3 py-3">
-                    <span className={`rounded px-2 py-1 text-xs font-bold ${category.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
+        <div className="space-y-2">
+          {categories.map((category, index) => (
+            <div key={category.id} className="panel p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="break-keep text-lg font-bold leading-tight">{category.name}</p>
+                    <span
+                      className={`rounded px-2 py-1 text-xs font-bold ${
+                        category.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      }`}
+                    >
                       {category.is_active ? "활성" : "비활성"}
                     </span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex justify-end gap-2">
-                      <button type="button" onClick={() => setCategoryActive(category, !category.is_active)} className="touch-button rounded-md border border-slate-300 px-2 text-xs font-bold dark:border-slate-700">
-                        {category.is_active ? "비활성화" : "활성화"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteCategory(category)}
-                        disabled={category.is_active}
-                        className="touch-button inline-flex items-center justify-center rounded-md border border-red-200 px-2 text-red-700 disabled:opacity-35 dark:border-red-900 dark:text-red-200"
-                        aria-label="카테고리 삭제"
-                        title="삭제"
-                      >
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {categories.length === 0 ? <div className="p-4"><StatusMessage>카테고리가 없습니다.</StatusMessage></div> : null}
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">순서 {index + 1}</p>
+                </div>
+
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveCategory(index, "up")}
+                    disabled={index === 0}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 disabled:opacity-35 dark:border-slate-700"
+                    aria-label="위로 이동"
+                    title="위로"
+                  >
+                    <ArrowUp size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveCategory(index, "down")}
+                    disabled={index === categories.length - 1}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 disabled:opacity-35 dark:border-slate-700"
+                    aria-label="아래로 이동"
+                    title="아래로"
+                  >
+                    <ArrowDown size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" onClick={() => setCategoryActive(category, !category.is_active)} className="touch-button rounded-md border border-slate-300 px-3 text-sm font-bold dark:border-slate-700">
+                  {category.is_active ? "비활성화" : "활성화"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteCategory(category)}
+                  disabled={category.is_active}
+                  className="touch-button inline-flex items-center justify-center rounded-md border border-red-200 px-3 text-red-700 disabled:opacity-35 dark:border-red-900 dark:text-red-200"
+                  aria-label="카테고리 삭제"
+                  title="삭제"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {categories.length === 0 ? <StatusMessage>카테고리가 없습니다.</StatusMessage> : null}
         </div>
       ) : null}
     </section>
