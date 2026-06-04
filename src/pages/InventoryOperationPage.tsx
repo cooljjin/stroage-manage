@@ -17,7 +17,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const [action, setAction] = useState<InventoryAction>("입고");
   const [location, setLocation] = useState<Location>("창고");
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
-  const [quantity, setQuantity] = useState(0);
+  const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,20 +61,22 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     void loadProduct();
   }, [loadProduct]);
 
+  const quantityValue = Number(quantity || 0);
+
   const negativeError = useMemo(() => {
     if (!item) return "";
     if (action === "입고" || action === "조정") return "";
     if (action === "출고") {
       const current = location === "창고" ? item.warehouse_qty : item.store_qty;
-      return current - quantity < 0 ? `${location} 재고는 음수가 될 수 없습니다.` : "";
+      return current - quantityValue < 0 ? `${location} 재고는 음수가 될 수 없습니다.` : "";
     }
     const sourceQty = moveDirection === "warehouse-to-store" ? item.warehouse_qty : item.store_qty;
     const sourceLabel = moveDirection === "warehouse-to-store" ? "창고" : "매장";
-    return sourceQty - quantity < 0 ? `${sourceLabel} 재고는 음수가 될 수 없습니다.` : "";
-  }, [action, item, location, moveDirection, quantity]);
+    return sourceQty - quantityValue < 0 ? `${sourceLabel} 재고는 음수가 될 수 없습니다.` : "";
+  }, [action, item, location, moveDirection, quantityValue]);
 
   function addQuickAmount(amount: number) {
-    setQuantity((value) => value + amount);
+    setQuantity((value) => String(Number(value || 0) + amount));
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -103,42 +105,42 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     if (action === "입고") {
       if (location === "창고") {
         previousQuantity = item.warehouse_qty;
-        nextWarehouseQty += quantity;
+        nextWarehouseQty += quantityValue;
         newQuantity = nextWarehouseQty;
       } else {
         previousQuantity = item.store_qty;
-        nextStoreQty += quantity;
+        nextStoreQty += quantityValue;
         newQuantity = nextStoreQty;
       }
     } else if (action === "출고") {
       if (location === "창고") {
         previousQuantity = item.warehouse_qty;
-        nextWarehouseQty -= quantity;
+        nextWarehouseQty -= quantityValue;
         newQuantity = nextWarehouseQty;
       } else {
         previousQuantity = item.store_qty;
-        nextStoreQty -= quantity;
+        nextStoreQty -= quantityValue;
         newQuantity = nextStoreQty;
       }
     } else if (action === "이동") {
       if (moveDirection === "warehouse-to-store") {
         previousQuantity = item.warehouse_qty;
-        nextWarehouseQty -= quantity;
-        nextStoreQty += quantity;
+        nextWarehouseQty -= quantityValue;
+        nextStoreQty += quantityValue;
         newQuantity = nextWarehouseQty;
       } else {
         previousQuantity = item.store_qty;
-        nextStoreQty -= quantity;
-        nextWarehouseQty += quantity;
+        nextStoreQty -= quantityValue;
+        nextWarehouseQty += quantityValue;
         newQuantity = nextStoreQty;
       }
     } else if (location === "창고") {
       previousQuantity = item.warehouse_qty;
-      nextWarehouseQty = quantity;
+      nextWarehouseQty = quantityValue;
       newQuantity = nextWarehouseQty;
     } else {
       previousQuantity = item.store_qty;
-      nextStoreQty = quantity;
+      nextStoreQty = quantityValue;
       newQuantity = nextStoreQty;
     }
 
@@ -168,7 +170,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
       destination_location: destination,
       previous_quantity: previousQuantity,
       new_quantity: newQuantity,
-      quantity,
+      quantity: quantityValue,
       note: note.trim() || null
     });
 
@@ -176,7 +178,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
       setError(logError.message);
     } else {
       setSuccess("저장되었습니다.");
-      setQuantity(0);
+      setQuantity("");
       setNote("");
       await loadProduct();
     }
@@ -243,10 +245,10 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
           <label className="mt-4 block">
             <span className="mb-1 block text-sm font-semibold">{action === "조정" ? "실제 재고 수량" : "수량"}</span>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setQuantity(Math.max(0, quantity - 1))} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 감소">
+              <button type="button" onClick={() => setQuantity((value) => String(Math.max(0, Number(value || 0) - 1)))} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 감소">
                 <Minus size={20} />
               </button>
-              <input className="field text-center text-2xl font-bold" type="number" min={0} value={quantity} onChange={(event) => setQuantity(Math.max(0, Number(event.target.value)))} />
+              <input className="field text-center text-2xl font-bold" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
               <button type="button" onClick={() => addQuickAmount(1)} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 증가">
                 <Plus size={20} />
               </button>
@@ -279,7 +281,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
           {error ? <div className="mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
           {success ? <div className="mt-4"><StatusMessage type="success">{success}</StatusMessage></div> : null}
 
-          <button className="primary-button mt-5 w-full" type="submit" disabled={saving || quantity < 0 || Boolean(negativeError)}>
+          <button className="primary-button mt-5 w-full" type="submit" disabled={saving || quantityValue < 0 || Boolean(negativeError)}>
             {saving ? "저장 중..." : "저장"}
           </button>
         </form>
