@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Search, ScanLine } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
@@ -31,6 +31,7 @@ export function ScanPage({ navigate }: Props) {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const barcodeHandlingRef = useRef(false);
+  const autoStartAttemptedRef = useRef(false);
 
   const canScan = useMemo(() => "mediaDevices" in navigator, []);
 
@@ -42,7 +43,7 @@ export function ScanPage({ navigate }: Props) {
     };
   }, []);
 
-  async function handleBarcode(barcode: string) {
+  const handleBarcode = useCallback(async (barcode: string) => {
     if (barcodeHandlingRef.current) return;
     barcodeHandlingRef.current = true;
     setMessage(`스캔됨: ${barcode}`);
@@ -63,14 +64,16 @@ export function ScanPage({ navigate }: Props) {
     } else {
       navigate({ name: "register", barcode });
     }
-  }
+  }, [navigate]);
 
-  async function startScanner() {
+  const startScanner = useCallback(async () => {
     setMessage("");
     if (!canScan) {
       setMessage("이 기기에서는 카메라를 사용할 수 없습니다.");
       return;
     }
+
+    if (scannerRef.current?.isScanning) return;
 
     const scanner = new Html5Qrcode(SCANNER_ID, {
       formatsToSupport: PRODUCT_BARCODE_FORMATS,
@@ -102,7 +105,17 @@ export function ScanPage({ navigate }: Props) {
       setScannerActive(false);
       setMessage(error instanceof Error ? error.message : "카메라 실행에 실패했습니다.");
     }
-  }
+  }, [canScan, handleBarcode]);
+
+  useEffect(() => {
+    if (autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    const timer = window.setTimeout(() => {
+      void startScanner();
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [startScanner]);
 
   async function stopScanner() {
     if (scannerRef.current?.isScanning) await scannerRef.current.stop();
