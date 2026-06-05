@@ -18,6 +18,8 @@ export function ProductManagementPage({ navigate }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -43,6 +45,7 @@ export function ProductManagementPage({ navigate }: Props) {
       setProducts(nextProducts);
       setCategories(categoryResult);
       setCategoryDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.category])));
+      setNameDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.name])));
     }
     setLoading(false);
   }
@@ -76,6 +79,29 @@ export function ProductManagementPage({ navigate }: Props) {
       setError(updateError.message);
     } else {
       setMessage("상품 카테고리를 수정했습니다.");
+      await loadProducts();
+    }
+  }
+
+  async function saveName(product: Product) {
+    const nextName = nameDrafts[product.id]?.trim();
+    if (!nextName) {
+      setError("상품 이름은 비워둘 수 없습니다.");
+      return;
+    }
+    if (nextName === product.name) {
+      setEditingNameId(null);
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    const { error: updateError } = await supabase.from("products").update({ name: nextName }).eq("id", product.id);
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setEditingNameId(null);
+      setMessage("상품 이름을 수정했습니다.");
       await loadProducts();
     }
   }
@@ -119,14 +145,57 @@ export function ProductManagementPage({ navigate }: Props) {
             const active = isProductActive(product);
             const draftCategory = categoryDrafts[product.id] ?? product.category;
             const categoryChanged = draftCategory !== product.category;
+            const editingName = editingNameId === product.id;
 
             return (
               <div key={product.id} className="panel p-3">
                 <div className="flex items-start justify-between gap-3">
-                  <button type="button" onClick={() => navigate({ name: "operation", productId: product.id })} className="min-w-0 text-left">
-                    <span className="block truncate text-base font-bold">{product.name}</span>
-                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
-                  </button>
+                  <div className="min-w-0 flex-1">
+                    {editingName ? (
+                      <div className="space-y-2">
+                        <input
+                          className="field min-h-11 py-2 text-base font-bold"
+                          value={nameDrafts[product.id] ?? ""}
+                          onChange={(event) => setNameDrafts((value) => ({ ...value, [product.id]: event.target.value }))}
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => saveName(product)} className="rounded border border-brand-600 px-3 py-1 text-base font-bold text-brand-700 dark:text-brand-100">
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNameDrafts((value) => ({ ...value, [product.id]: product.name }));
+                              setEditingNameId(null);
+                            }}
+                            className="rounded border border-slate-300 px-3 py-1 text-base font-bold dark:border-slate-700"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <button type="button" onClick={() => navigate({ name: "operation", productId: product.id })} className="min-w-0 text-left">
+                            <span className="block truncate text-base font-bold">{product.name}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNameDrafts((value) => ({ ...value, [product.id]: product.name }));
+                              setEditingNameId(product.id);
+                            }}
+                            className="shrink-0 rounded border border-slate-300 px-2 py-1 text-base font-bold dark:border-slate-700"
+                          >
+                            수정
+                          </button>
+                        </div>
+                        <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
+                      </>
+                    )}
+                  </div>
                   <span className={`shrink-0 rounded px-2 py-1 text-xs font-bold ${active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
                     {active ? "활성" : "비활성"}
                   </span>
