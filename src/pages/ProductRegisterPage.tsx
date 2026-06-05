@@ -102,7 +102,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
           <div className="sm:col-span-2">
             <span className="mb-2 block text-sm font-semibold">보관 구분</span>
             <div className="grid grid-cols-2 gap-2">
-              {(["냉장", "냉동"] as StorageType[]).map((type) => (
+              {(["냉장", "냉동", "상온"] as StorageType[]).map((type) => (
                 <button
                   key={type}
                   type="button"
