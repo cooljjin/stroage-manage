@@ -25,7 +25,7 @@ function ProductLinkButton({ url }: { url: string | null }) {
             window.open(url, "_blank", "noopener,noreferrer");
           }
         }}
-        className="min-h-10 rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
+        className="min-h-10 min-w-[54px] whitespace-nowrap rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
       >
         [링크]
       </button>
@@ -144,10 +144,10 @@ export function InventoryListPage({ navigate }: Props) {
             <thead className="bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
               {viewMode === "compact" ? (
                 <tr>
-                  <th className="w-[43%] px-3 py-3">상품명</th>
+                  <th className="w-[40%] px-3 py-3">상품명</th>
                   <th className="w-[20%] px-3 py-3 text-right">창고</th>
                   <th className="w-[20%] px-3 py-3 text-right">매장</th>
-                  <th className="w-[17%] px-2 py-3 text-center">링크</th>
+                  <th className="w-[20%] px-2 py-3 text-center">링크</th>
                 </tr>
               ) : (
                 <tr>
@@ -157,7 +157,7 @@ export function InventoryListPage({ navigate }: Props) {
                   <th className="hidden px-3 py-3 text-right sm:table-cell"><SortButton label="총재고" value="total_stock" /></th>
                   <th className="hidden px-3 py-3 text-right md:table-cell">최소</th>
                   <th className="hidden px-3 py-3 md:table-cell">상태</th>
-                  <th className="w-16 px-2 py-3 text-center">링크</th>
+                  <th className="w-[72px] px-2 py-3 text-center">링크</th>
                 </tr>
               )}
             </thead>

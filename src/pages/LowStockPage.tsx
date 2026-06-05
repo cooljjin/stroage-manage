@@ -22,7 +22,7 @@ function ProductLinkButton({ url }: { url: string | null }) {
             window.open(url, "_blank", "noopener,noreferrer");
           }
         }}
-        className="min-h-10 rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
+        className="min-h-10 min-w-[54px] whitespace-nowrap rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
       >
         [링크]
       </button>
@@ -71,7 +71,7 @@ export function LowStockPage({ navigate }: Props) {
                 <th className="px-3 py-3">상품명</th>
                 <th className="w-20 px-3 py-3 text-right">총재고</th>
                 <th className="w-20 px-3 py-3 text-right">최소</th>
-                <th className="w-16 px-2 py-3 text-center">링크</th>
+                <th className="w-[72px] px-2 py-3 text-center">링크</th>
               </tr>
             </thead>
             <tbody>
