@@ -102,7 +102,7 @@ export function LowStockPage({ navigate }: Props) {
                     <p className="tabular-nums">{item.minimum_stock}</p>
                   </div>
                   <label className="flex min-w-[54px] flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300" onClick={(event) => event.stopPropagation()}>
-                    발주
+                  발주 완료
                     <input
                       type="checkbox"
                       checked={item.order_completed}
