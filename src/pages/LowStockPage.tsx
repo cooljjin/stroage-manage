@@ -83,9 +83,9 @@ export function LowStockPage({ navigate }: Props) {
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
 
       {!loading && !error ? (
-        <div className="panel overflow-hidden">
+        <div className="panel overflow-visible">
           <table className="w-full table-fixed text-left text-sm">
-            <thead className="bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+            <thead className="sticky top-[73px] z-20 bg-slate-100 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
               <tr>
                 <th className="px-3 py-3">상품명</th>
                 <th className="w-16 px-2 py-3 text-right">총재고</th>
