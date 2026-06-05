@@ -9,6 +9,27 @@ type Props = {
   navigate: (route: AppRoute) => void;
 };
 
+function ProductLinkButton({ url }: { url: string | null }) {
+  const hasUrl = Boolean(url);
+
+  return (
+    <span className="inline-flex justify-center" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        disabled={!hasUrl}
+        onClick={() => {
+          if (url) {
+            window.open(url, "_blank", "noopener,noreferrer");
+          }
+        }}
+        className="min-h-10 rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
+      >
+        [링크]
+      </button>
+    </span>
+  );
+}
+
 export function LowStockPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +69,9 @@ export function LowStockPage({ navigate }: Props) {
             <thead className="bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
               <tr>
                 <th className="px-3 py-3">상품명</th>
-                <th className="w-24 px-3 py-3 text-right">총재고</th>
-                <th className="w-24 px-3 py-3 text-right">최소재고</th>
+                <th className="w-20 px-3 py-3 text-right">총재고</th>
+                <th className="w-20 px-3 py-3 text-right">최소</th>
+                <th className="w-16 px-2 py-3 text-center">링크</th>
               </tr>
             </thead>
             <tbody>
@@ -58,6 +80,9 @@ export function LowStockPage({ navigate }: Props) {
                   <td className="truncate px-3 py-3 font-semibold">{item.name}</td>
                   <td className="px-3 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{item.minimum_stock}</td>
+                  <td className="px-2 py-2 text-center">
+                    <ProductLinkButton url={item.product_url} />
+                  </td>
                 </tr>
               ))}
             </tbody>
