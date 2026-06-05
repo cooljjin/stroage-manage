@@ -19,6 +19,7 @@ export function ProductManagementPage({ navigate }: Props) {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [linkDrafts, setLinkDrafts] = useState<Record<string, string>>({});
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,7 @@ export function ProductManagementPage({ navigate }: Props) {
       setCategories(categoryResult);
       setCategoryDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.category])));
       setNameDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.name])));
+      setLinkDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.product_url ?? ""])));
     }
     setLoading(false);
   }
@@ -106,6 +108,21 @@ export function ProductManagementPage({ navigate }: Props) {
     }
   }
 
+  async function saveLink(product: Product) {
+    const nextLink = linkDrafts[product.id]?.trim() || null;
+    if (nextLink === product.product_url) return;
+
+    setError("");
+    setMessage("");
+    const { error: updateError } = await supabase.from("products").update({ product_url: nextLink }).eq("id", product.id);
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setMessage("상품 링크를 수정했습니다.");
+      await loadProducts();
+    }
+  }
+
   async function deleteProduct(product: Product) {
     if (isProductActive(product)) {
       setError("활성 상품은 삭제할 수 없습니다. 먼저 비활성화하세요.");
@@ -145,6 +162,8 @@ export function ProductManagementPage({ navigate }: Props) {
             const active = isProductActive(product);
             const draftCategory = categoryDrafts[product.id] ?? product.category;
             const categoryChanged = draftCategory !== product.category;
+            const draftLink = linkDrafts[product.id] ?? "";
+            const linkChanged = draftLink.trim() !== (product.product_url ?? "");
             const editingName = editingNameId === product.id;
 
             return (
@@ -221,6 +240,28 @@ export function ProductManagementPage({ navigate }: Props) {
                     type="button"
                     onClick={() => saveCategory(product)}
                     disabled={!categoryChanged}
+                    className="touch-button inline-flex items-center justify-center gap-2 rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 disabled:opacity-35 dark:text-brand-100"
+                  >
+                    <Save size={17} />
+                    저장
+                  </button>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">링크</span>
+                    <input
+                      className="field min-h-11 py-2"
+                      type="url"
+                      value={draftLink}
+                      onChange={(event) => setLinkDrafts((value) => ({ ...value, [product.id]: event.target.value }))}
+                      placeholder="https://..."
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => saveLink(product)}
+                    disabled={!linkChanged}
                     className="touch-button inline-flex items-center justify-center gap-2 rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 disabled:opacity-35 dark:text-brand-100"
                   >
                     <Save size={17} />

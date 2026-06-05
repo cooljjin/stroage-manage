@@ -15,6 +15,7 @@ export type Product = {
   category: Category;
   supplier_name: string | null;
   storage_type: StorageType | null;
+  product_url: string | null;
   minimum_stock: number;
   is_active: boolean;
   created_at: string;

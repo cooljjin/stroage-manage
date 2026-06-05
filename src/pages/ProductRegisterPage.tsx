@@ -20,6 +20,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
   const [supplierName, setSupplierName] = useState("");
   const [storageType, setStorageType] = useState<StorageType | "">("");
   const [minimumStock, setMinimumStock] = useState("");
+  const [productUrl, setProductUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -56,6 +57,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
         category,
         supplier_name: supplierName || null,
         storage_type: storageType || null,
+        product_url: productUrl.trim() || null,
         minimum_stock: Math.max(0, Number(minimumStock || 0))
       })
       .select()
@@ -132,6 +134,10 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
           <label className="block">
             <span className="mb-1 block text-sm font-semibold">최소 재고</span>
             <input className="field" type="number" min={0} value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-sm font-semibold">링크</span>
+            <input className="field" type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder="https://..." />
           </label>
         </div>
 
