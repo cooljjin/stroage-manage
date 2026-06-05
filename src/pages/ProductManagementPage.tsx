@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { Save, Search, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
+import { fallbackCategories, loadCategories } from "../lib/categories";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, Product } from "../types/domain";
+import type { AppRoute, Product, ProductCategory } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -15,6 +16,8 @@ function isProductActive(product: Product): boolean {
 
 export function ProductManagementPage({ navigate }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -27,11 +30,19 @@ export function ProductManagementPage({ navigate }: Props) {
   async function loadProducts() {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await supabase.from("products").select("*").order("name", { ascending: true });
+    const [categoryResult, productResult] = await Promise.all([
+      loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
+      supabase.from("products").select("*").order("name", { ascending: true })
+    ]);
+
+    const { data, error: loadError } = productResult;
     if (loadError) {
       setError(loadError.message);
     } else {
-      setProducts((data ?? []) as Product[]);
+      const nextProducts = (data ?? []) as Product[];
+      setProducts(nextProducts);
+      setCategories(categoryResult);
+      setCategoryDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.category])));
     }
     setLoading(false);
   }
@@ -50,6 +61,21 @@ export function ProductManagementPage({ navigate }: Props) {
       setError(updateError.message);
     } else {
       setMessage(isActive ? "상품을 활성화했습니다." : "상품을 비활성화했습니다.");
+      await loadProducts();
+    }
+  }
+
+  async function saveCategory(product: Product) {
+    const nextCategory = categoryDrafts[product.id];
+    if (!nextCategory || nextCategory === product.category) return;
+
+    setError("");
+    setMessage("");
+    const { error: updateError } = await supabase.from("products").update({ category: nextCategory }).eq("id", product.id);
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setMessage("상품 카테고리를 수정했습니다.");
       await loadProducts();
     }
   }
@@ -76,7 +102,7 @@ export function ProductManagementPage({ navigate }: Props) {
 
   return (
     <section>
-      <PageTitle title="상품 관리" description="상품은 비활성화한 뒤 삭제할 수 있습니다." />
+      <PageTitle title="상품 관리" description="상품 정보와 카테고리를 관리합니다." />
 
       <label className="relative mb-4 block">
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -88,56 +114,70 @@ export function ProductManagementPage({ navigate }: Props) {
       {message ? <div className="mb-3"><StatusMessage type="success">{message}</StatusMessage></div> : null}
 
       {!loading ? (
-        <div className="panel overflow-hidden">
-          <table className="w-full table-fixed text-left text-sm">
-            <thead className="bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-              <tr>
-                <th className="px-3 py-3">상품</th>
-                <th className="hidden w-28 px-3 py-3 sm:table-cell">카테고리</th>
-                <th className="w-20 px-3 py-3">상태</th>
-                <th className="w-36 px-3 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map((product) => {
-                const active = isProductActive(product);
-                return (
-                  <tr key={product.id} className="border-t border-slate-100 dark:border-slate-900">
-                    <td className="px-3 py-3">
-                      <button type="button" onClick={() => navigate({ name: "operation", productId: product.id })} className="block max-w-full text-left">
-                        <span className="block truncate font-semibold">{product.name}</span>
-                        <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
-                      </button>
-                    </td>
-                    <td className="hidden px-3 py-3 sm:table-cell">{product.category}</td>
-                    <td className="px-3 py-3">
-                      <span className={`rounded px-2 py-1 text-xs font-bold ${active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
-                        {active ? "활성" : "비활성"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button type="button" onClick={() => setProductActive(product, !active)} className="touch-button rounded-md border border-slate-300 px-2 text-xs font-bold dark:border-slate-700">
-                          {active ? "비활성화" : "활성화"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteProduct(product)}
-                          disabled={active}
-                          className="touch-button inline-flex items-center justify-center rounded-md border border-red-200 px-2 text-red-700 disabled:opacity-35 dark:border-red-900 dark:text-red-200"
-                          aria-label="상품 삭제"
-                          title="삭제"
-                        >
-                          <Trash2 size={17} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {filteredProducts.length === 0 ? <div className="p-4"><StatusMessage>표시할 상품이 없습니다.</StatusMessage></div> : null}
+        <div className="space-y-2">
+          {filteredProducts.map((product) => {
+            const active = isProductActive(product);
+            const draftCategory = categoryDrafts[product.id] ?? product.category;
+            const categoryChanged = draftCategory !== product.category;
+
+            return (
+              <div key={product.id} className="panel p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <button type="button" onClick={() => navigate({ name: "operation", productId: product.id })} className="min-w-0 text-left">
+                    <span className="block truncate text-base font-bold">{product.name}</span>
+                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
+                  </button>
+                  <span className={`shrink-0 rounded px-2 py-1 text-xs font-bold ${active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
+                    {active ? "활성" : "비활성"}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">카테고리</span>
+                    <select
+                      className="field min-h-11 py-2"
+                      value={draftCategory}
+                      onChange={(event) => setCategoryDrafts((value) => ({ ...value, [product.id]: event.target.value }))}
+                    >
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.name}>
+                          {category.name}
+                        </option>
+                      ))}
+                      {!categories.some((category) => category.name === product.category) ? <option value={product.category}>{product.category}</option> : null}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => saveCategory(product)}
+                    disabled={!categoryChanged}
+                    className="touch-button inline-flex items-center justify-center gap-2 rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 disabled:opacity-35 dark:text-brand-100"
+                  >
+                    <Save size={17} />
+                    저장
+                  </button>
+                </div>
+
+                <div className="mt-3 flex justify-end gap-2">
+                  <button type="button" onClick={() => setProductActive(product, !active)} className="touch-button rounded-md border border-slate-300 px-3 text-sm font-bold dark:border-slate-700">
+                    {active ? "비활성화" : "활성화"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteProduct(product)}
+                    disabled={active}
+                    className="touch-button inline-flex items-center justify-center rounded-md border border-red-200 px-3 text-red-700 disabled:opacity-35 dark:border-red-900 dark:text-red-200"
+                    aria-label="상품 삭제"
+                    title="삭제"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {filteredProducts.length === 0 ? <StatusMessage>표시할 상품이 없습니다.</StatusMessage> : null}
         </div>
       ) : null}
     </section>
