@@ -83,24 +83,26 @@ export function LowStockPage({ navigate }: Props) {
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
 
       {!loading && !error ? (
-        <div className="panel overflow-visible">
-          <table className="w-full table-fixed text-left text-sm">
-            <thead className="sticky top-[73px] z-20 bg-slate-100 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
-              <tr>
-                <th className="px-3 py-3">상품명</th>
-                <th className="w-16 px-2 py-3 text-right">총재고</th>
-                <th className="w-16 px-2 py-3 text-right">최소</th>
-                <th className="w-[76px] px-2 py-3 text-center">발주완료</th>
-                <th className="w-[72px] px-2 py-3 text-center">링크</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lowStockItems.map((item) => (
-                <tr key={item.id} onClick={() => navigate({ name: "operation", productId: item.id })} className="cursor-pointer border-t border-slate-100 dark:border-slate-900">
-                  <td className="truncate px-3 py-3 font-semibold">{item.name}</td>
-                  <td className="px-2 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</td>
-                  <td className="px-2 py-3 text-right tabular-nums">{item.minimum_stock}</td>
-                  <td className="px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
+        <>
+          <div className="space-y-2 sm:hidden">
+            {lowStockItems.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => navigate({ name: "operation", productId: item.id })}
+                className="cursor-pointer rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <div className="mb-3 break-words text-base font-bold leading-snug">{item.name}</div>
+                <div className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2 text-sm">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">총재고</p>
+                    <p className="font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">최소</p>
+                    <p className="tabular-nums">{item.minimum_stock}</p>
+                  </div>
+                  <label className="flex min-w-[54px] flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300" onClick={(event) => event.stopPropagation()}>
+                    발주
                     <input
                       type="checkbox"
                       checked={item.order_completed}
@@ -109,16 +111,51 @@ export function LowStockPage({ navigate }: Props) {
                       aria-label={`${item.name} 발주 완료`}
                       className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
                     />
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <ProductLinkButton url={item.product_url} />
-                  </td>
+                  </label>
+                  <ProductLinkButton url={item.product_url} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="panel hidden overflow-visible sm:block">
+            <table className="w-full table-fixed text-left text-sm">
+              <thead className="sticky top-[73px] z-20 bg-slate-100 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+                <tr>
+                  <th className="px-3 py-3">상품명</th>
+                  <th className="w-16 px-2 py-3 text-right">총재고</th>
+                  <th className="w-16 px-2 py-3 text-right">최소</th>
+                  <th className="w-[76px] px-2 py-3 text-center">발주완료</th>
+                  <th className="w-[72px] px-2 py-3 text-center">링크</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {lowStockItems.length === 0 ? <div className="p-4"><StatusMessage type="success">부족 재고가 없습니다.</StatusMessage></div> : null}
-        </div>
+              </thead>
+              <tbody>
+                {lowStockItems.map((item) => (
+                  <tr key={item.id} onClick={() => navigate({ name: "operation", productId: item.id })} className="cursor-pointer border-t border-slate-100 dark:border-slate-900">
+                    <td className="truncate px-3 py-3 font-semibold">{item.name}</td>
+                    <td className="px-2 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</td>
+                    <td className="px-2 py-3 text-right tabular-nums">{item.minimum_stock}</td>
+                    <td className="px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={item.order_completed}
+                        disabled={updatingOrderIds.has(item.id)}
+                        onChange={(event) => void toggleOrderCompleted(item, event.target.checked)}
+                        aria-label={`${item.name} 발주 완료`}
+                        className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
+                      />
+                    </td>
+                    <td className="px-2 py-2 text-center">
+                      <ProductLinkButton url={item.product_url} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {lowStockItems.length === 0 ? <StatusMessage type="success">부족 재고가 없습니다.</StatusMessage> : null}
+        </>
       ) : null}
     </section>
   );
