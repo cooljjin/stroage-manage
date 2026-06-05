@@ -32,6 +32,7 @@ function ProductLinkButton({ url }: { url: string | null }) {
 
 export function LowStockPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -52,6 +53,24 @@ export function LowStockPage({ navigate }: Props) {
 
   const lowStockItems = useMemo(() => items.filter((item) => item.is_low_stock), [items]);
 
+  async function toggleOrderCompleted(item: InventoryItem, checked: boolean) {
+    setError("");
+    setUpdatingOrderIds((current) => new Set(current).add(item.id));
+    setItems((current) => current.map((product) => (product.id === item.id ? { ...product, order_completed: checked } : product)));
+
+    const { error: updateError } = await supabase.from("products").update({ order_completed: checked }).eq("id", item.id);
+    if (updateError) {
+      setItems((current) => current.map((product) => (product.id === item.id ? { ...product, order_completed: item.order_completed } : product)));
+      setError(updateError.message);
+    }
+
+    setUpdatingOrderIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+  }
+
   return (
     <section>
       <PageTitle
@@ -69,8 +88,9 @@ export function LowStockPage({ navigate }: Props) {
             <thead className="bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
               <tr>
                 <th className="px-3 py-3">상품명</th>
-                <th className="w-20 px-3 py-3 text-right">총재고</th>
-                <th className="w-20 px-3 py-3 text-right">최소</th>
+                <th className="w-16 px-2 py-3 text-right">총재고</th>
+                <th className="w-16 px-2 py-3 text-right">최소</th>
+                <th className="w-[76px] px-2 py-3 text-center">발주완료</th>
                 <th className="w-[72px] px-2 py-3 text-center">링크</th>
               </tr>
             </thead>
@@ -78,8 +98,18 @@ export function LowStockPage({ navigate }: Props) {
               {lowStockItems.map((item) => (
                 <tr key={item.id} onClick={() => navigate({ name: "operation", productId: item.id })} className="cursor-pointer border-t border-slate-100 dark:border-slate-900">
                   <td className="truncate px-3 py-3 font-semibold">{item.name}</td>
-                  <td className="px-3 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{item.minimum_stock}</td>
+                  <td className="px-2 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</td>
+                  <td className="px-2 py-3 text-right tabular-nums">{item.minimum_stock}</td>
+                  <td className="px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={item.order_completed}
+                      disabled={updatingOrderIds.has(item.id)}
+                      onChange={(event) => void toggleOrderCompleted(item, event.target.checked)}
+                      aria-label={`${item.name} 발주 완료`}
+                      className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
+                    />
+                  </td>
                   <td className="px-2 py-2 text-center">
                     <ProductLinkButton url={item.product_url} />
                   </td>

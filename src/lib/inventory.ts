@@ -12,6 +12,7 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
 
   return {
     ...row,
+    order_completed: row.order_completed ?? false,
     inventory,
     warehouse_qty,
     store_qty,

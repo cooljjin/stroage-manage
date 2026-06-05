@@ -14,6 +14,7 @@ export type Database = {
           supplier_name: string | null;
           storage_type: StorageType | null;
           product_url: string | null;
+          order_completed: boolean;
           minimum_stock: number;
           is_active: boolean;
           created_at: string;
@@ -26,6 +27,7 @@ export type Database = {
           supplier_name?: string | null;
           storage_type?: StorageType | null;
           product_url?: string | null;
+          order_completed?: boolean;
           minimum_stock?: number;
           is_active?: boolean;
           created_at?: string;
@@ -37,6 +39,7 @@ export type Database = {
           supplier_name?: string | null;
           storage_type?: StorageType | null;
           product_url?: string | null;
+          order_completed?: boolean;
           minimum_stock?: number;
           is_active?: boolean;
         };
