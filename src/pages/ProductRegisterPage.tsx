@@ -3,7 +3,7 @@ import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
-import type { AppRoute, ProductCategory, ProductSupplier } from "../types/domain";
+import type { AppRoute, ProductCategory, ProductSupplier, StorageType } from "../types/domain";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -18,6 +18,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
   const [category, setCategory] = useState("기타");
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [supplierName, setSupplierName] = useState("");
+  const [storageType, setStorageType] = useState<StorageType | "">("");
   const [minimumStock, setMinimumStock] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -54,6 +55,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
         barcode: barcodeValue.trim() || null,
         category,
         supplier_name: supplierName || null,
+        storage_type: storageType || null,
         minimum_stock: Math.max(0, Number(minimumStock || 0))
       })
       .select()
@@ -97,6 +99,21 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
               ))}
             </select>
           </label>
+          <div className="sm:col-span-2">
+            <span className="mb-2 block text-sm font-semibold">보관 구분</span>
+            <div className="grid grid-cols-2 gap-2">
+              {(["냉장", "냉동"] as StorageType[]).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setStorageType(type)}
+                  className={`touch-button rounded-md px-4 text-sm font-bold ${storageType === type ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="sm:col-span-2">
             <span className="mb-2 block text-sm font-semibold">발주처</span>
             <div className="flex gap-2 overflow-x-auto pb-1">

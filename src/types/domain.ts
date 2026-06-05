@@ -5,6 +5,7 @@ export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
 export type InventoryAction = "입고" | "출고" | "이동" | "조정";
 export type ViewMode = "compact" | "full";
+export type StorageType = "냉장" | "냉동";
 export type RouteName = "scan" | "register" | "operation" | "inventory" | "low-stock" | "logs" | "product-management" | "category-management" | "supplier-management" | "admin";
 
 export type Product = {
@@ -13,6 +14,7 @@ export type Product = {
   name: string;
   category: Category;
   supplier_name: string | null;
+  storage_type: StorageType | null;
   minimum_stock: number;
   is_active: boolean;
   created_at: string;
