@@ -8,6 +8,8 @@ import type { ProductCategory } from "../types/domain";
 
 export function CategoryManagementPage() {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -21,7 +23,9 @@ export function CategoryManagementPage() {
     setLoading(true);
     setError("");
     try {
-      setCategories(await loadCategories());
+      const nextCategories = await loadCategories();
+      setCategories(nextCategories);
+      setNameDrafts(Object.fromEntries(nextCategories.map((category) => [category.id, category.name])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "카테고리를 불러오지 못했습니다.");
     }
@@ -54,6 +58,35 @@ export function CategoryManagementPage() {
       setError(updateError.message);
     } else {
       setMessage(isActive ? "카테고리를 활성화했습니다." : "카테고리를 비활성화했습니다.");
+      await refresh();
+    }
+  }
+
+  async function saveCategoryName(category: ProductCategory) {
+    const nextName = nameDrafts[category.id]?.trim();
+    if (!nextName) {
+      setError("카테고리 이름은 비워둘 수 없습니다.");
+      return;
+    }
+    if (nextName === category.name) {
+      setEditingCategoryId(null);
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    const { error: categoryError } = await supabase.from("categories").update({ name: nextName }).eq("id", category.id);
+    if (categoryError) {
+      setError(categoryError.message);
+      return;
+    }
+
+    const { error: productError } = await supabase.from("products").update({ category: nextName }).eq("category", category.name);
+    if (productError) {
+      setError(productError.message);
+    } else {
+      setEditingCategoryId(null);
+      setMessage("카테고리 이름을 수정했습니다.");
       await refresh();
     }
   }
@@ -130,24 +163,65 @@ export function CategoryManagementPage() {
 
       {!loading ? (
         <div className="space-y-2">
-          {categories.map((category, index) => (
-            <div key={category.id} className="panel p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="break-keep text-lg font-bold leading-tight">{category.name}</p>
-                    <span
-                      className={`rounded px-2 py-1 text-xs font-bold ${
-                        category.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                      }`}
-                    >
-                      {category.is_active ? "활성" : "비활성"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">순서 {index + 1}</p>
-                </div>
+          {categories.map((category, index) => {
+            const editingName = editingCategoryId === category.id;
 
-                <div className="flex shrink-0 gap-1">
+            return (
+              <div key={category.id} className="panel p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    {editingName ? (
+                      <div className="space-y-2">
+                        <input
+                          className="field min-h-11 py-2 text-lg font-bold"
+                          value={nameDrafts[category.id] ?? ""}
+                          onChange={(event) => setNameDrafts((value) => ({ ...value, [category.id]: event.target.value }))}
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => saveCategoryName(category)} className="rounded border border-brand-600 px-3 py-1 text-lg font-bold text-brand-700 dark:text-brand-100">
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNameDrafts((value) => ({ ...value, [category.id]: category.name }));
+                              setEditingCategoryId(null);
+                            }}
+                            className="rounded border border-slate-300 px-3 py-1 text-lg font-bold dark:border-slate-700"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <p className="break-keep text-lg font-bold leading-tight">{category.name}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNameDrafts((value) => ({ ...value, [category.id]: category.name }));
+                              setEditingCategoryId(category.id);
+                            }}
+                            className="rounded border border-slate-300 px-2 py-1 text-lg font-bold dark:border-slate-700"
+                          >
+                            수정
+                          </button>
+                          <span
+                            className={`rounded px-2 py-1 text-xs font-bold ${
+                              category.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                            }`}
+                          >
+                            {category.is_active ? "활성" : "비활성"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">순서 {index + 1}</p>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 gap-1">
                   <button
                     type="button"
                     onClick={() => moveCategory(index, "up")}
@@ -168,10 +242,10 @@ export function CategoryManagementPage() {
                   >
                     <ArrowDown size={16} />
                   </button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-3 flex justify-end gap-2">
+                <div className="mt-3 flex justify-end gap-2">
                 <button type="button" onClick={() => setCategoryActive(category, !category.is_active)} className="touch-button rounded-md border border-slate-300 px-3 text-sm font-bold dark:border-slate-700">
                   {category.is_active ? "비활성화" : "활성화"}
                 </button>
@@ -185,9 +259,10 @@ export function CategoryManagementPage() {
                 >
                   <Trash2 size={18} />
                 </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {categories.length === 0 ? <StatusMessage>카테고리가 없습니다.</StatusMessage> : null}
         </div>
       ) : null}
