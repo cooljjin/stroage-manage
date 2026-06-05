@@ -144,9 +144,9 @@ export function InventoryListPage({ navigate }: Props) {
             <thead className="sticky top-[73px] z-20 bg-slate-100 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
               {viewMode === "compact" ? (
                 <tr>
-                  <th className="w-[40%] px-3 py-3">상품명</th>
-                  <th className="w-[20%] px-3 py-3 text-right">창고</th>
-                  <th className="w-[20%] px-3 py-3 text-right">매장</th>
+                  <th className="w-[48%] px-3 py-3">상품명</th>
+                  <th className="w-[16%] px-2 py-3 text-right">창고</th>
+                  <th className="w-[16%] px-2 py-3 text-right">매장</th>
                   <th className="w-[20%] px-2 py-3 text-center">링크</th>
                 </tr>
               ) : (
@@ -171,11 +171,11 @@ export function InventoryListPage({ navigate }: Props) {
                   <td className="px-3 py-3 font-semibold">
                     <span className="flex min-w-0 items-center gap-1">
                       {item.is_low_stock ? <TriangleAlert className="shrink-0 text-amber-500" size={17} /> : null}
-                      <span className="truncate">{item.name}</span>
+                      <span className="min-w-0 whitespace-normal break-words leading-snug">{item.name}</span>
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums">{item.warehouse_qty}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{item.store_qty}</td>
+                  <td className="px-2 py-3 text-right tabular-nums">{item.warehouse_qty}</td>
+                  <td className="px-2 py-3 text-right tabular-nums">{item.store_qty}</td>
                   {viewMode === "full" ? (
                     <>
                       <td className="hidden px-3 py-3 text-right tabular-nums sm:table-cell">{item.total_stock}</td>
