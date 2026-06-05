@@ -5,13 +5,14 @@ export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
 export type InventoryAction = "입고" | "출고" | "이동" | "조정";
 export type ViewMode = "compact" | "full";
-export type RouteName = "scan" | "register" | "operation" | "inventory" | "low-stock" | "logs" | "product-management" | "category-management" | "admin";
+export type RouteName = "scan" | "register" | "operation" | "inventory" | "low-stock" | "logs" | "product-management" | "category-management" | "supplier-management" | "admin";
 
 export type Product = {
   id: string;
   barcode: string | null;
   name: string;
   category: Category;
+  supplier_name: string | null;
   minimum_stock: number;
   is_active: boolean;
   created_at: string;
@@ -22,6 +23,13 @@ export type ProductCategory = {
   name: string;
   is_active: boolean;
   sort_order: number;
+  created_at: string;
+};
+
+export type ProductSupplier = {
+  id: string;
+  name: string;
+  is_active: boolean;
   created_at: string;
 };
 

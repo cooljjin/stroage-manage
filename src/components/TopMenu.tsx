@@ -1,4 +1,4 @@
-import { Box, Menu, Tags, X } from "lucide-react";
+import { Box, Menu, Tags, Truck, X } from "lucide-react";
 import type { RouteName } from "../types/domain";
 
 type Props = {
@@ -42,6 +42,14 @@ export function TopMenu({ open, onOpenChange, onNavigate }: Props) {
           >
             <Tags size={19} />
             카테고리 관리
+          </button>
+          <button
+            type="button"
+            onClick={() => go("supplier-management")}
+            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+          >
+            <Truck size={19} />
+            발주처 관리
           </button>
         </div>
       ) : null}

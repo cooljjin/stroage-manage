@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
-import type { AppRoute, ProductCategory } from "../types/domain";
+import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
+import type { AppRoute, ProductCategory, ProductSupplier } from "../types/domain";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -15,21 +16,29 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
   const [barcodeValue, setBarcodeValue] = useState(barcode);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [category, setCategory] = useState("기타");
+  const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
+  const [supplierName, setSupplierName] = useState("");
   const [minimumStock, setMinimumStock] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadCategories({ activeOnly: true })
-      .then((data) => {
-        const nextCategories = data.length > 0 ? data : fallbackCategories();
+    Promise.all([loadCategories({ activeOnly: true }), loadSuppliers({ activeOnly: true })])
+      .then(([categoryData, supplierData]) => {
+        const nextCategories = categoryData.length > 0 ? categoryData : fallbackCategories();
+        const nextSuppliers = supplierData.length > 0 ? supplierData : fallbackSuppliers();
         setCategories(nextCategories);
+        setSuppliers(nextSuppliers);
         setCategory((current) => (nextCategories.some((item) => item.name === current) ? current : nextCategories[0]?.name ?? "기타"));
+        setSupplierName((current) => (nextSuppliers.some((item) => item.name === current) ? current : nextSuppliers[0]?.name ?? ""));
       })
       .catch(() => {
         const nextCategories = fallbackCategories();
+        const nextSuppliers = fallbackSuppliers();
         setCategories(nextCategories);
+        setSuppliers(nextSuppliers);
         setCategory(nextCategories[0]?.name ?? "기타");
+        setSupplierName(nextSuppliers[0]?.name ?? "");
       });
   }, []);
 
@@ -44,6 +53,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
         name: name.trim(),
         barcode: barcodeValue.trim() || null,
         category,
+        supplier_name: supplierName || null,
         minimum_stock: Math.max(0, Number(minimumStock || 0))
       })
       .select()
@@ -87,6 +97,21 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
               ))}
             </select>
           </label>
+          <div className="sm:col-span-2">
+            <span className="mb-2 block text-sm font-semibold">발주처</span>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {suppliers.map((supplier) => (
+                <button
+                  key={supplier.id}
+                  type="button"
+                  onClick={() => setSupplierName(supplier.name)}
+                  className={`touch-button shrink-0 whitespace-nowrap rounded-md px-4 text-sm font-bold ${supplierName === supplier.name ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                >
+                  {supplier.name}
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="block">
             <span className="mb-1 block text-sm font-semibold">최소 재고</span>
             <input className="field" type="number" min={0} value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} />

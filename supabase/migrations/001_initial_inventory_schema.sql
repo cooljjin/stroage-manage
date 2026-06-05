@@ -5,6 +5,7 @@ create table if not exists public.products (
   barcode text unique,
   name text not null,
   category text not null,
+  supplier_name text,
   minimum_stock integer not null default 0 check (minimum_stock >= 0),
   is_active boolean not null default true,
   created_at timestamptz not null default now()
@@ -12,6 +13,7 @@ create table if not exists public.products (
 
 alter table public.products drop constraint if exists products_category_check;
 alter table public.products add column if not exists is_active boolean not null default true;
+alter table public.products add column if not exists supplier_name text;
 
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
@@ -31,6 +33,17 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.suppliers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+insert into public.suppliers (name)
+values ('쿠팡'), ('쿠팡 프레시')
+on conflict (name) do nothing;
 
 create or replace function public.is_admin(user_id uuid)
 returns boolean
@@ -89,9 +102,11 @@ create table if not exists public.inventory_logs (
 
 create index if not exists products_name_idx on public.products using gin (to_tsvector('simple', name));
 create index if not exists products_barcode_idx on public.products (barcode);
+create index if not exists products_supplier_name_idx on public.products (supplier_name);
 create index if not exists products_is_active_idx on public.products (is_active);
 create index if not exists categories_is_active_idx on public.categories (is_active);
 create index if not exists categories_sort_order_idx on public.categories (sort_order, name);
+create index if not exists suppliers_is_active_idx on public.suppliers (is_active);
 create index if not exists inventory_product_id_idx on public.inventory (product_id);
 create index if not exists inventory_logs_created_at_idx on public.inventory_logs (created_at desc);
 create index if not exists inventory_logs_product_id_idx on public.inventory_logs (product_id);
@@ -124,6 +139,7 @@ execute function public.touch_inventory_updated_at();
 alter table public.products enable row level security;
 alter table public.categories enable row level security;
 alter table public.profiles enable row level security;
+alter table public.suppliers enable row level security;
 alter table public.inventory enable row level security;
 alter table public.inventory_logs enable row level security;
 
@@ -174,6 +190,31 @@ with check (true);
 drop policy if exists "Authenticated users can delete inactive categories" on public.categories;
 create policy "Authenticated users can delete inactive categories"
 on public.categories for delete
+to authenticated
+using (is_active = false);
+
+drop policy if exists "Authenticated users can read suppliers" on public.suppliers;
+create policy "Authenticated users can read suppliers"
+on public.suppliers for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert suppliers" on public.suppliers;
+create policy "Authenticated users can insert suppliers"
+on public.suppliers for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users can update suppliers" on public.suppliers;
+create policy "Authenticated users can update suppliers"
+on public.suppliers for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Authenticated users can delete inactive suppliers" on public.suppliers;
+create policy "Authenticated users can delete inactive suppliers"
+on public.suppliers for delete
 to authenticated
 using (is_active = false);
 
@@ -230,6 +271,7 @@ with check (user_id = auth.uid());
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.products to authenticated;
 grant select, insert, update, delete on public.categories to authenticated;
+grant select, insert, update, delete on public.suppliers to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update on public.inventory to authenticated;
 grant select, insert on public.inventory_logs to authenticated;

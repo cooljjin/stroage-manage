@@ -1,6 +1,7 @@
 alter table public.products enable row level security;
 alter table public.categories enable row level security;
 alter table public.profiles enable row level security;
+alter table public.suppliers enable row level security;
 alter table public.inventory enable row level security;
 alter table public.inventory_logs enable row level security;
 
@@ -51,6 +52,31 @@ with check (true);
 drop policy if exists "Authenticated users can delete inactive categories" on public.categories;
 create policy "Authenticated users can delete inactive categories"
 on public.categories for delete
+to authenticated
+using (is_active = false);
+
+drop policy if exists "Authenticated users can read suppliers" on public.suppliers;
+create policy "Authenticated users can read suppliers"
+on public.suppliers for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert suppliers" on public.suppliers;
+create policy "Authenticated users can insert suppliers"
+on public.suppliers for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users can update suppliers" on public.suppliers;
+create policy "Authenticated users can update suppliers"
+on public.suppliers for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Authenticated users can delete inactive suppliers" on public.suppliers;
+create policy "Authenticated users can delete inactive suppliers"
+on public.suppliers for delete
 to authenticated
 using (is_active = false);
 
@@ -107,6 +133,7 @@ with check (user_id = auth.uid());
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.products to authenticated;
 grant select, insert, update, delete on public.categories to authenticated;
+grant select, insert, update, delete on public.suppliers to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update on public.inventory to authenticated;
 grant select, insert on public.inventory_logs to authenticated;

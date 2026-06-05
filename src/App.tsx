@@ -13,6 +13,7 @@ import { LowStockPage } from "./pages/LowStockPage";
 import { LogsPage } from "./pages/LogsPage";
 import { ProductManagementPage } from "./pages/ProductManagementPage";
 import { CategoryManagementPage } from "./pages/CategoryManagementPage";
+import { SupplierManagementPage } from "./pages/SupplierManagementPage";
 import { AdminPage } from "./pages/AdminPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
 import { ensureCurrentProfile } from "./lib/profiles";
@@ -128,6 +129,7 @@ export default function App() {
         {route.name === "logs" && <LogsPage />}
         {route.name === "product-management" && <ProductManagementPage navigate={navigate} />}
         {route.name === "category-management" && <CategoryManagementPage />}
+        {route.name === "supplier-management" && <SupplierManagementPage />}
         {route.name === "admin" && (profile?.is_admin ? <AdminPage /> : <div className="panel p-4 text-sm font-semibold">관리자 권한이 필요합니다.</div>)}
       </main>
 

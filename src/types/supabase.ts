@@ -11,6 +11,7 @@ export type Database = {
           barcode: string | null;
           name: string;
           category: Category;
+          supplier_name: string | null;
           minimum_stock: number;
           is_active: boolean;
           created_at: string;
@@ -20,6 +21,7 @@ export type Database = {
           barcode?: string | null;
           name: string;
           category: Category;
+          supplier_name?: string | null;
           minimum_stock?: number;
           is_active?: boolean;
           created_at?: string;
@@ -28,6 +30,7 @@ export type Database = {
           barcode?: string | null;
           name?: string;
           category?: Category;
+          supplier_name?: string | null;
           minimum_stock?: number;
           is_active?: boolean;
         };
@@ -77,6 +80,25 @@ export type Database = {
           display_name?: string;
           is_admin?: boolean;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      suppliers: {
+        Row: {
+          id: string;
+          name: string;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+          is_active?: boolean;
         };
         Relationships: [];
       };

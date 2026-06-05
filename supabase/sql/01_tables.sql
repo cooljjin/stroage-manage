@@ -5,6 +5,7 @@ create table if not exists public.products (
   barcode text unique,
   name text not null,
   category text not null,
+  supplier_name text,
   minimum_stock integer not null default 0 check (minimum_stock >= 0),
   is_active boolean not null default true,
   created_at timestamptz not null default now()
@@ -12,6 +13,7 @@ create table if not exists public.products (
 
 alter table public.products drop constraint if exists products_category_check;
 alter table public.products add column if not exists is_active boolean not null default true;
+alter table public.products add column if not exists supplier_name text;
 
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
@@ -31,6 +33,17 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.suppliers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+insert into public.suppliers (name)
+values ('쿠팡'), ('쿠팡 프레시')
+on conflict (name) do nothing;
 
 create or replace function public.is_admin(user_id uuid)
 returns boolean
@@ -89,9 +102,11 @@ create table if not exists public.inventory_logs (
 
 create index if not exists products_name_idx on public.products using gin (to_tsvector('simple', name));
 create index if not exists products_barcode_idx on public.products (barcode);
+create index if not exists products_supplier_name_idx on public.products (supplier_name);
 create index if not exists products_is_active_idx on public.products (is_active);
 create index if not exists categories_is_active_idx on public.categories (is_active);
 create index if not exists categories_sort_order_idx on public.categories (sort_order, name);
+create index if not exists suppliers_is_active_idx on public.suppliers (is_active);
 create index if not exists inventory_product_id_idx on public.inventory (product_id);
 create index if not exists inventory_logs_created_at_idx on public.inventory_logs (created_at desc);
 create index if not exists inventory_logs_product_id_idx on public.inventory_logs (product_id);
