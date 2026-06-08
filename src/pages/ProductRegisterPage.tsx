@@ -78,20 +78,20 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
   }
 
   return (
-    <section>
+    <section className="min-w-0">
       <PageTitle title="상품 등록" description="미등록 상품을 등록한 뒤 바로 재고 작업으로 이동합니다." />
 
-      <form onSubmit={handleSubmit} className="panel max-w-2xl p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
+      <form onSubmit={handleSubmit} className="panel w-full max-w-2xl overflow-hidden p-4">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+          <label className="block min-w-0 sm:col-span-2">
             <span className="mb-1 block text-sm font-semibold">상품명</span>
             <input className="field" value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">바코드</span>
             <input className="field" value={barcodeValue} onChange={(event) => setBarcodeValue(event.target.value)} />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">카테고리</span>
             <select className="field" value={category} onChange={(event) => setCategory(event.target.value)}>
               {categories.map((item) => (
@@ -101,9 +101,9 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
               ))}
             </select>
           </label>
-          <div className="sm:col-span-2">
+          <div className="min-w-0 sm:col-span-2">
             <span className="mb-2 block text-sm font-semibold">보관 구분</span>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {(["냉장", "냉동", "상온"] as StorageType[]).map((type) => (
                 <button
                   key={type}
@@ -116,7 +116,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
               ))}
             </div>
           </div>
-          <div className="sm:col-span-2">
+          <div className="min-w-0 sm:col-span-2">
             <span className="mb-2 block text-sm font-semibold">발주처</span>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {suppliers.map((supplier) => (
@@ -131,11 +131,11 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
               ))}
             </div>
           </div>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">최소 재고</span>
             <input className="field" type="number" min={0} value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} />
           </label>
-          <label className="block sm:col-span-2">
+          <label className="block min-w-0 sm:col-span-2">
             <span className="mb-1 block text-sm font-semibold">링크</span>
             <input className="field" type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder="https://..." />
           </label>

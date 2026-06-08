@@ -82,26 +82,27 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-dvh bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-dvh overflow-x-hidden bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <OfflineBanner />
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <TopMenu open={menuOpen} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name })} />
             <div className="min-w-0">
               <p className="text-xs font-semibold text-brand-700 dark:text-brand-100">매장 재고관리</p>
               <p className="max-w-[220px] truncate text-sm text-slate-500 dark:text-slate-400">{session.user.email}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {profile?.is_admin ? (
               <button
                 type="button"
                 onClick={() => navigate({ name: "admin" })}
-                className="touch-button inline-flex items-center gap-2 rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 dark:text-brand-100"
+                className="touch-button inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-brand-600 px-2 text-sm font-bold text-brand-700 dark:text-brand-100 sm:px-3"
               >
                 <Shield size={18} />
-                관리자 페이지
+                <span className="hidden sm:inline">관리자 페이지</span>
+                <span className="sm:hidden">관리자</span>
               </button>
             ) : null}
             <button
@@ -113,14 +114,14 @@ export default function App() {
             >
               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <button type="button" onClick={handleLogout} className="touch-button rounded-md border border-slate-300 px-3 text-sm font-semibold dark:border-slate-700">
+            <button type="button" onClick={handleLogout} className="touch-button whitespace-nowrap rounded-md border border-slate-300 px-2 text-sm font-semibold dark:border-slate-700 sm:px-3">
               로그아웃
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-4">
+      <main className="mx-auto min-w-0 max-w-6xl px-4 py-4">
         {route.name === "scan" && <ScanPage navigate={navigate} />}
         {route.name === "register" && <ProductRegisterPage barcode={route.barcode ?? ""} navigate={navigate} />}
         {route.name === "operation" && <InventoryOperationPage productId={route.productId ?? ""} navigate={navigate} />}
