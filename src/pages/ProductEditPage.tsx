@@ -22,10 +22,6 @@ export function ProductEditPage({ productId, navigate }: Props) {
   const [storageType, setStorageType] = useState<StorageType | "">("");
   const [minimumStock, setMinimumStock] = useState("");
   const [productUrl, setProductUrl] = useState("");
-  const [isActive, setIsActive] = useState(true);
-  const [orderCompleted, setOrderCompleted] = useState(false);
-  const [urgentOrderRequested, setUrgentOrderRequested] = useState(false);
-  const [urgentOrderQuantity, setUrgentOrderQuantity] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -62,10 +58,6 @@ export function ProductEditPage({ productId, navigate }: Props) {
       setStorageType(nextProduct.storage_type ?? "");
       setMinimumStock(String(nextProduct.minimum_stock));
       setProductUrl(nextProduct.product_url ?? "");
-      setIsActive(nextProduct.is_active !== false);
-      setOrderCompleted(nextProduct.order_completed);
-      setUrgentOrderRequested(nextProduct.urgent_order_requested);
-      setUrgentOrderQuantity(nextProduct.urgent_order_quantity == null ? "" : String(nextProduct.urgent_order_quantity));
     }
 
     setLoading(false);
@@ -79,7 +71,6 @@ export function ProductEditPage({ productId, navigate }: Props) {
     event.preventDefault();
     const nextName = name.trim();
     const nextMinimumStock = Number(minimumStock || 0);
-    const nextUrgentQuantity = urgentOrderQuantity.trim() === "" ? null : Number(urgentOrderQuantity);
 
     if (!nextName) {
       setError("상품명은 비워둘 수 없습니다.");
@@ -87,14 +78,6 @@ export function ProductEditPage({ productId, navigate }: Props) {
     }
     if (!Number.isInteger(nextMinimumStock) || nextMinimumStock < 0) {
       setError("최소재고는 0 이상 정수로 입력해 주세요.");
-      return;
-    }
-    if (urgentOrderRequested && nextUrgentQuantity === null) {
-      setError("긴급발주 수량을 입력해 주세요.");
-      return;
-    }
-    if (nextUrgentQuantity !== null && (!Number.isInteger(nextUrgentQuantity) || nextUrgentQuantity <= 0)) {
-      setError("긴급발주 수량은 1개 이상 정수로 입력해 주세요.");
       return;
     }
 
@@ -109,11 +92,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
         supplier_name: supplierName || null,
         storage_type: storageType || null,
         minimum_stock: nextMinimumStock,
-        product_url: productUrl.trim() || null,
-        is_active: isActive,
-        order_completed: orderCompleted,
-        urgent_order_requested: urgentOrderRequested,
-        urgent_order_quantity: urgentOrderRequested ? nextUrgentQuantity : null
+        product_url: productUrl.trim() || null
       })
       .eq("id", productId);
 
@@ -196,28 +175,6 @@ export function ProductEditPage({ productId, navigate }: Props) {
             <span className="mb-1 block text-sm font-semibold">링크</span>
             <input className="field" type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder="https://..." />
           </label>
-
-          <div className="grid gap-3 sm:col-span-2">
-            <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-3 text-sm font-bold dark:border-slate-800 dark:bg-slate-900">
-              활성 상품
-              <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} className="h-6 w-6 accent-brand-600" />
-            </label>
-            <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-3 text-sm font-bold dark:border-slate-800 dark:bg-slate-900">
-              발주 완료
-              <input type="checkbox" checked={orderCompleted} onChange={(event) => setOrderCompleted(event.target.checked)} className="h-6 w-6 accent-brand-600" />
-            </label>
-            <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-3 text-sm font-bold dark:border-slate-800 dark:bg-slate-900">
-              긴급발주 요청
-              <input type="checkbox" checked={urgentOrderRequested} onChange={(event) => setUrgentOrderRequested(event.target.checked)} className="h-6 w-6 accent-brand-600" />
-            </label>
-          </div>
-
-          {urgentOrderRequested ? (
-            <label className="block min-w-0 sm:col-span-2">
-              <span className="mb-1 block text-sm font-semibold">긴급발주 수량</span>
-              <input className="field" type="number" inputMode="numeric" min={1} step={1} value={urgentOrderQuantity} onChange={(event) => setUrgentOrderQuantity(event.target.value)} />
-            </label>
-          ) : null}
         </div>
 
         {error ? <div className="mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
