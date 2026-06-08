@@ -14,6 +14,13 @@ type Props = {
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
 
+function formatStatusUpdateError(message: string) {
+  if (message.includes("status_enabled") || message.includes("stock_status") || message.includes("schema cache")) {
+    return "상태 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 products 상태 컬럼 추가를 요청해 주세요.";
+  }
+  return message;
+}
+
 export function InventoryOperationPage({ productId, navigate }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [action, setAction] = useState<InventoryAction>("입고");
@@ -119,7 +126,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
       .eq("id", item.id);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(formatStatusUpdateError(updateError.message));
     } else {
       setItem((current) =>
         current
