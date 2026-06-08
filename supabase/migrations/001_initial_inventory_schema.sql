@@ -11,6 +11,8 @@ create table if not exists public.products (
   order_completed boolean not null default false,
   urgent_order_requested boolean not null default false,
   urgent_order_quantity integer check (urgent_order_quantity is null or urgent_order_quantity > 0),
+  status_enabled boolean not null default false,
+  stock_status text check (stock_status in ('충분', '절반 이하', '발주 필요') or stock_status is null),
   minimum_stock integer not null default 0 check (minimum_stock >= 0),
   is_active boolean not null default true,
   created_at timestamptz not null default now()
@@ -24,9 +26,14 @@ alter table public.products add column if not exists product_url text;
 alter table public.products add column if not exists order_completed boolean not null default false;
 alter table public.products add column if not exists urgent_order_requested boolean not null default false;
 alter table public.products add column if not exists urgent_order_quantity integer;
+alter table public.products add column if not exists status_enabled boolean not null default false;
+alter table public.products add column if not exists stock_status text;
 alter table public.products drop constraint if exists products_urgent_order_quantity_check;
 alter table public.products add constraint products_urgent_order_quantity_check
 check (urgent_order_quantity is null or urgent_order_quantity > 0);
+alter table public.products drop constraint if exists products_stock_status_check;
+alter table public.products add constraint products_stock_status_check
+check (stock_status in ('충분', '절반 이하', '발주 필요') or stock_status is null);
 alter table public.products drop constraint if exists products_storage_type_check;
 
 create table if not exists public.categories (

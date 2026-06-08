@@ -15,11 +15,13 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
     order_completed: row.order_completed ?? false,
     urgent_order_requested: row.urgent_order_requested ?? false,
     urgent_order_quantity: row.urgent_order_quantity ?? null,
+    status_enabled: row.status_enabled ?? false,
+    stock_status: row.stock_status ?? null,
     inventory,
     warehouse_qty,
     store_qty,
     total_stock,
-    is_low_stock: total_stock <= row.minimum_stock
+    is_low_stock: row.status_enabled ? row.stock_status === "발주 필요" : total_stock <= row.minimum_stock
   };
 }
 

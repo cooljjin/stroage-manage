@@ -6,6 +6,7 @@ export type Location = "창고" | "매장";
 export type InventoryAction = "입고" | "출고" | "이동" | "조정";
 export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
+export type StockStatus = "충분" | "절반 이하" | "발주 필요";
 export type RouteName = "scan" | "register" | "product-edit" | "operation" | "inventory" | "low-stock" | "logs" | "product-management" | "category-management" | "supplier-management" | "admin";
 
 export type Product = {
@@ -19,6 +20,8 @@ export type Product = {
   order_completed: boolean;
   urgent_order_requested: boolean;
   urgent_order_quantity: number | null;
+  status_enabled: boolean;
+  stock_status: StockStatus | null;
   minimum_stock: number;
   is_active: boolean;
   created_at: string;

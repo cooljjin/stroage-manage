@@ -1,4 +1,4 @@
-import type { Category, InventoryAction, Location } from "./domain";
+import type { Category, InventoryAction, Location, StockStatus } from "./domain";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -17,6 +17,8 @@ export type Database = {
           order_completed: boolean;
           urgent_order_requested: boolean;
           urgent_order_quantity: number | null;
+          status_enabled: boolean;
+          stock_status: StockStatus | null;
           minimum_stock: number;
           is_active: boolean;
           created_at: string;
@@ -32,6 +34,8 @@ export type Database = {
           order_completed?: boolean;
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
+          status_enabled?: boolean;
+          stock_status?: StockStatus | null;
           minimum_stock?: number;
           is_active?: boolean;
           created_at?: string;
@@ -46,6 +50,8 @@ export type Database = {
           order_completed?: boolean;
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
+          status_enabled?: boolean;
+          stock_status?: StockStatus | null;
           minimum_stock?: number;
           is_active?: boolean;
         };

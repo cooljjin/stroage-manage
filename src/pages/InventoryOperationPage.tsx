@@ -5,12 +5,14 @@ import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
 import { normalizeInventoryItem } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, InventoryAction, InventoryItem, Location } from "../types/domain";
+import type { AppRoute, InventoryAction, InventoryItem, Location, StockStatus } from "../types/domain";
 
 type Props = {
   productId: string;
   navigate: (route: AppRoute) => void;
 };
+
+const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
 
 export function InventoryOperationPage({ productId, navigate }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
@@ -23,6 +25,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const [minimumStockDraft, setMinimumStockDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -101,6 +104,36 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     if (/^\d*\.?\d*$/.test(nextValue)) {
       setQuantity(nextValue);
     }
+  }
+
+  async function updateStockStatus(nextStatusEnabled: boolean, nextStockStatus: StockStatus | null = item?.stock_status ?? "충분") {
+    if (!item) return;
+
+    setStatusSaving(true);
+    setError("");
+    setSuccess("");
+    const stockStatus = nextStatusEnabled ? nextStockStatus ?? "충분" : nextStockStatus;
+    const { error: updateError } = await supabase
+      .from("products")
+      .update({ status_enabled: nextStatusEnabled, stock_status: stockStatus })
+      .eq("id", item.id);
+
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setItem((current) =>
+        current
+          ? {
+              ...current,
+              status_enabled: nextStatusEnabled,
+              stock_status: stockStatus,
+              is_low_stock: nextStatusEnabled ? stockStatus === "발주 필요" : current.total_stock <= current.minimum_stock
+            }
+          : current
+      );
+      setSuccess("상태를 저장했습니다.");
+    }
+    setStatusSaving(false);
   }
 
   async function saveMinimumStock() {
@@ -367,6 +400,40 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
                 +{amount}
               </button>
             ))}
+          </div>
+
+          <div className="mt-4 rounded-md border border-slate-200 p-3 dark:border-slate-800">
+            <label className="flex items-center justify-between gap-3 text-sm font-bold">
+              <span>상태</span>
+              <input
+                type="checkbox"
+                checked={item.status_enabled}
+                disabled={statusSaving}
+                onChange={(event) => void updateStockStatus(event.target.checked)}
+                className="h-6 w-6 accent-brand-600 disabled:opacity-45"
+                aria-label="상태 기능 활성화"
+              />
+            </label>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {STOCK_STATUSES.map((status) => {
+                const selected = item.status_enabled && item.stock_status === status;
+
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    disabled={!item.status_enabled || statusSaving}
+                    onClick={() => void updateStockStatus(true, status)}
+                    className={`touch-button rounded-md px-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-45 ${
+                      selected ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                    }`}
+                  >
+                    {status}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {action === "조정" ? (
