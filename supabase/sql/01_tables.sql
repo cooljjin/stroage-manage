@@ -97,8 +97,8 @@ end;
 create table if not exists public.inventory (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null unique references public.products(id) on delete cascade,
-  warehouse_qty integer not null default 0 check (warehouse_qty >= 0),
-  store_qty integer not null default 0 check (store_qty >= 0),
+  warehouse_qty numeric(12, 2) not null default 0 check (warehouse_qty >= 0),
+  store_qty numeric(12, 2) not null default 0 check (store_qty >= 0),
   updated_at timestamptz not null default now()
 );
 
@@ -109,9 +109,9 @@ create table if not exists public.inventory_logs (
   action text not null check (action in ('입고', '출고', '이동', '조정')),
   source_location text check (source_location in ('창고', '매장') or source_location is null),
   destination_location text check (destination_location in ('창고', '매장') or destination_location is null),
-  previous_quantity integer,
-  new_quantity integer,
-  quantity integer check (quantity is null or quantity >= 0),
+  previous_quantity numeric(12, 2),
+  new_quantity numeric(12, 2),
+  quantity numeric(12, 2) check (quantity is null or quantity >= 0),
   note text,
   created_at timestamptz not null default now()
 );

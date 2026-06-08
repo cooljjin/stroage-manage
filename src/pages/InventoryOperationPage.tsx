@@ -64,7 +64,12 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     void loadProduct();
   }, [loadProduct]);
 
-  const quantityValue = Number(quantity || 0);
+  const quantityValue = quantity.trim() === "" ? 0 : Number(quantity);
+  const quantityStepError = useMemo(() => {
+    if (quantity.trim() === "") return "";
+    if (!Number.isFinite(quantityValue) || quantityValue < 0) return "수량은 0 이상이어야 합니다.";
+    return Number.isInteger(quantityValue * 2) ? "" : "수량은 0.5 단위로 입력해 주세요.";
+  }, [quantity, quantityValue]);
 
   const negativeError = useMemo(() => {
     if (!item) return "";
@@ -79,7 +84,11 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   }, [action, item, location, moveDirection, quantityValue]);
 
   function addQuickAmount(amount: number) {
-    setQuantity((value) => String(Number(value || 0) + amount));
+    setQuantity((value) => String(Number((Number(value || 0) + amount).toFixed(1))));
+  }
+
+  function decreaseQuantity() {
+    setQuantity((value) => String(Math.max(0, Number((Number(value || 0) - 0.5).toFixed(1)))));
   }
 
   async function saveMinimumStock() {
@@ -101,7 +110,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!item || negativeError) return;
+    if (!item || negativeError || quantityStepError) return;
 
     setSaving(true);
     setError("");
@@ -216,6 +225,15 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
         action={<button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "inventory" })}>목록</button>}
       />
 
+      <div className="-mt-2 mb-4 flex flex-wrap gap-2 text-sm">
+        <span className="rounded-md border border-slate-200 bg-white px-3 py-2 font-semibold dark:border-slate-800 dark:bg-slate-900">
+          상품보관위치 <strong className="ml-1 text-slate-950 dark:text-slate-100">{item.storage_type ?? "미지정"}</strong>
+        </span>
+        <span className="rounded-md border border-slate-200 bg-white px-3 py-2 font-semibold dark:border-slate-800 dark:bg-slate-900">
+          발주처 <strong className="ml-1 text-slate-950 dark:text-slate-100">{item.supplier_name ?? "미지정"}</strong>
+        </span>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <div className="panel p-4">
           <div className="grid grid-cols-2 gap-3">
@@ -305,11 +323,19 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
           <label className="mt-4 block">
             <span className="mb-1 block text-sm font-semibold">{action === "조정" ? "실제 재고 수량" : "수량"}</span>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setQuantity((value) => String(Math.max(0, Number(value || 0) - 1)))} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 감소">
+              <button type="button" onClick={decreaseQuantity} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 감소">
                 <Minus size={20} />
               </button>
-              <input className="field text-center text-2xl font-bold" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-              <button type="button" onClick={() => addQuickAmount(1)} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 증가">
+              <input
+                className="field text-center text-2xl font-bold"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.5}
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+              />
+              <button type="button" onClick={() => addQuickAmount(0.5)} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 증가">
                 <Plus size={20} />
               </button>
             </div>
@@ -337,11 +363,12 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
             </div>
           ) : null}
 
+          {quantityStepError ? <div className="mt-4"><StatusMessage type="error">{quantityStepError}</StatusMessage></div> : null}
           {negativeError ? <div className="mt-4"><StatusMessage type="error">{negativeError}</StatusMessage></div> : null}
           {error ? <div className="mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
           {success ? <div className="mt-4"><StatusMessage type="success">{success}</StatusMessage></div> : null}
 
-          <button className="primary-button mt-5 w-full" type="submit" disabled={saving || quantityValue < 0 || Boolean(negativeError)}>
+          <button className="primary-button mt-5 w-full" type="submit" disabled={saving || quantityValue < 0 || Boolean(quantityStepError) || Boolean(negativeError)}>
             {saving ? "저장 중..." : "저장"}
           </button>
         </form>
