@@ -68,7 +68,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const quantityStepError = useMemo(() => {
     if (quantity.trim() === "") return "";
     if (!Number.isFinite(quantityValue) || quantityValue < 0) return "수량은 0 이상이어야 합니다.";
-    return Number.isInteger(quantityValue * 2) ? "" : "수량은 0.5 단위로 입력해 주세요.";
+    return Number.isInteger(quantityValue) ? "" : "수량은 1개 단위로 입력해 주세요.";
   }, [quantity, quantityValue]);
 
   const negativeError = useMemo(() => {
@@ -84,11 +84,11 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   }, [action, item, location, moveDirection, quantityValue]);
 
   function addQuickAmount(amount: number) {
-    setQuantity((value) => String(Number((Number(value || 0) + amount).toFixed(1))));
+    setQuantity((value) => String(Number(value || 0) + amount));
   }
 
   function decreaseQuantity() {
-    setQuantity((value) => String(Math.max(0, Number((Number(value || 0) - 0.5).toFixed(1)))));
+    setQuantity((value) => String(Math.max(0, Number(value || 0) - 1)));
   }
 
   async function saveMinimumStock() {
@@ -329,13 +329,13 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
               <input
                 className="field text-center text-2xl font-bold"
                 type="number"
-                inputMode="decimal"
+                inputMode="numeric"
                 min={0}
-                step={0.5}
+                step={1}
                 value={quantity}
                 onChange={(event) => setQuantity(event.target.value)}
               />
-              <button type="button" onClick={() => addQuickAmount(0.5)} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 증가">
+              <button type="button" onClick={() => addQuickAmount(1)} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 증가">
                 <Plus size={20} />
               </button>
             </div>
