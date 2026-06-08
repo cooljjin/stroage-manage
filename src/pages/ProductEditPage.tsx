@@ -11,6 +11,13 @@ type Props = {
   navigate: (route: AppRoute) => void;
 };
 
+const STORAGE_TYPES: StorageType[] = ["냉장", "냉동", "상온"];
+
+function parseStorageTypes(value: string | null): StorageType[] {
+  if (!value) return [];
+  return STORAGE_TYPES.filter((type) => value.split(",").map((item) => item.trim()).includes(type));
+}
+
 export function ProductEditPage({ productId, navigate }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -19,7 +26,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
   const [barcode, setBarcode] = useState("");
   const [category, setCategory] = useState("기타");
   const [supplierName, setSupplierName] = useState("");
-  const [storageType, setStorageType] = useState<StorageType | "">("");
+  const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
   const [minimumStock, setMinimumStock] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [loading, setLoading] = useState(true);
@@ -55,7 +62,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
       setBarcode(nextProduct.barcode ?? "");
       setCategory(nextProduct.category);
       setSupplierName(nextProduct.supplier_name ?? "");
-      setStorageType(nextProduct.storage_type ?? "");
+      setStorageTypes(parseStorageTypes(nextProduct.storage_type));
       setMinimumStock(String(nextProduct.minimum_stock));
       setProductUrl(nextProduct.product_url ?? "");
     }
@@ -90,7 +97,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
         barcode: barcode.trim() || null,
         category,
         supplier_name: supplierName || null,
-        storage_type: storageType || null,
+        storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
         minimum_stock: nextMinimumStock,
         product_url: productUrl.trim() || null
       })
@@ -145,8 +152,14 @@ export function ProductEditPage({ productId, navigate }: Props) {
                 <button
                   key={type || "none"}
                   type="button"
-                  onClick={() => setStorageType(type)}
-                  className={`touch-button rounded-md px-4 text-sm font-bold ${storageType === type ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                  onClick={() => {
+                    if (!type) {
+                      setStorageTypes([]);
+                      return;
+                    }
+                    setStorageTypes((current) => (current.includes(type) ? current.filter((item) => item !== type) : [...current, type]));
+                  }}
+                  className={`touch-button rounded-md px-4 text-sm font-bold ${type ? (storageTypes.includes(type) ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900") : storageTypes.length === 0 ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
                 >
                   {type || "미지정"}
                 </button>

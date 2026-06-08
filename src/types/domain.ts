@@ -14,7 +14,7 @@ export type Product = {
   name: string;
   category: Category;
   supplier_name: string | null;
-  storage_type: StorageType | null;
+  storage_type: string | null;
   product_url: string | null;
   order_completed: boolean;
   urgent_order_requested: boolean;

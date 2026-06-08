@@ -1,4 +1,4 @@
-import type { Category, InventoryAction, Location, StorageType } from "./domain";
+import type { Category, InventoryAction, Location } from "./domain";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -12,7 +12,7 @@ export type Database = {
           name: string;
           category: Category;
           supplier_name: string | null;
-          storage_type: StorageType | null;
+          storage_type: string | null;
           product_url: string | null;
           order_completed: boolean;
           urgent_order_requested: boolean;
@@ -27,7 +27,7 @@ export type Database = {
           name: string;
           category: Category;
           supplier_name?: string | null;
-          storage_type?: StorageType | null;
+          storage_type?: string | null;
           product_url?: string | null;
           order_completed?: boolean;
           urgent_order_requested?: boolean;
@@ -41,7 +41,7 @@ export type Database = {
           name?: string;
           category?: Category;
           supplier_name?: string | null;
-          storage_type?: StorageType | null;
+          storage_type?: string | null;
           product_url?: string | null;
           order_completed?: boolean;
           urgent_order_requested?: boolean;

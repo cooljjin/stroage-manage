@@ -6,7 +6,7 @@ create table if not exists public.products (
   name text not null,
   category text not null,
   supplier_name text,
-  storage_type text check (storage_type in ('냉장', '냉동', '상온') or storage_type is null),
+  storage_type text,
   product_url text,
   order_completed boolean not null default false,
   urgent_order_requested boolean not null default false,
@@ -28,8 +28,6 @@ alter table public.products drop constraint if exists products_urgent_order_quan
 alter table public.products add constraint products_urgent_order_quantity_check
 check (urgent_order_quantity is null or urgent_order_quantity > 0);
 alter table public.products drop constraint if exists products_storage_type_check;
-alter table public.products add constraint products_storage_type_check
-check (storage_type in ('냉장', '냉동', '상온') or storage_type is null);
 
 create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
