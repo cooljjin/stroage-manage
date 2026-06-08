@@ -227,10 +227,10 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
 
       <div className="-mt-2 mb-4 flex flex-wrap gap-2 text-sm">
         <span className="rounded-md border border-slate-200 bg-white px-3 py-2 font-semibold dark:border-slate-800 dark:bg-slate-900">
-          상품보관위치 <strong className="ml-1 text-slate-950 dark:text-slate-100">{item.storage_type ?? "미지정"}</strong>
+          <strong className="text-slate-950 dark:text-slate-100">{item.storage_type ?? "미지정"}</strong>
         </span>
         <span className="rounded-md border border-slate-200 bg-white px-3 py-2 font-semibold dark:border-slate-800 dark:bg-slate-900">
-          발주처 <strong className="ml-1 text-slate-950 dark:text-slate-100">{item.supplier_name ?? "미지정"}</strong>
+          <strong className="text-slate-950 dark:text-slate-100">{item.supplier_name ?? "미지정"}</strong>
         </span>
       </div>
 
