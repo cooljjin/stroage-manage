@@ -68,7 +68,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const quantityStepError = useMemo(() => {
     if (quantity.trim() === "") return "";
     if (!Number.isFinite(quantityValue) || quantityValue < 0) return "수량은 0 이상이어야 합니다.";
-    return Number.isInteger(quantityValue) ? "" : "수량은 1개 단위로 입력해 주세요.";
+    return "";
   }, [quantity, quantityValue]);
 
   const negativeError = useMemo(() => {
@@ -83,12 +83,24 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     return sourceQty - quantityValue < 0 ? `${sourceLabel} 재고는 음수가 될 수 없습니다.` : "";
   }, [action, item, location, moveDirection, quantityValue]);
 
+  function quantityNumberOrZero(value: string) {
+    const numericValue = Number(value || 0);
+    return Number.isFinite(numericValue) ? numericValue : 0;
+  }
+
   function addQuickAmount(amount: number) {
-    setQuantity((value) => String(Number(value || 0) + amount));
+    setQuantity((value) => String(quantityNumberOrZero(value) + amount));
   }
 
   function decreaseQuantity() {
-    setQuantity((value) => String(Math.max(0, Number(value || 0) - 1)));
+    setQuantity((value) => String(Math.max(0, quantityNumberOrZero(value) - 1)));
+  }
+
+  function updateQuantityInput(value: string) {
+    const nextValue = value.replace(",", ".");
+    if (/^\d*\.?\d*$/.test(nextValue)) {
+      setQuantity(nextValue);
+    }
   }
 
   async function saveMinimumStock() {
@@ -337,12 +349,11 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
               </button>
               <input
                 className="field text-center text-2xl font-bold"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={1}
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.]?[0-9]*"
                 value={quantity}
-                onChange={(event) => setQuantity(event.target.value)}
+                onChange={(event) => updateQuantityInput(event.target.value)}
               />
               <button type="button" onClick={() => addQuickAmount(1)} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 증가">
                 <Plus size={20} />
