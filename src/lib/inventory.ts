@@ -13,6 +13,8 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
   return {
     ...row,
     order_completed: row.order_completed ?? false,
+    urgent_order_requested: row.urgent_order_requested ?? false,
+    urgent_order_quantity: row.urgent_order_quantity ?? null,
     inventory,
     warehouse_qty,
     store_qty,

@@ -17,6 +17,8 @@ export type Product = {
   storage_type: StorageType | null;
   product_url: string | null;
   order_completed: boolean;
+  urgent_order_requested: boolean;
+  urgent_order_quantity: number | null;
   minimum_stock: number;
   is_active: boolean;
   created_at: string;
