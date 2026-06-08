@@ -7,6 +7,7 @@ import { TopMenu } from "./components/TopMenu";
 import { LoginPage } from "./pages/LoginPage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductRegisterPage } from "./pages/ProductRegisterPage";
+import { ProductEditPage } from "./pages/ProductEditPage";
 import { InventoryOperationPage } from "./pages/InventoryOperationPage";
 import { InventoryListPage } from "./pages/InventoryListPage";
 import { LowStockPage } from "./pages/LowStockPage";
@@ -124,6 +125,7 @@ export default function App() {
       <main className="mx-auto min-w-0 max-w-6xl px-4 py-4">
         {route.name === "scan" && <ScanPage navigate={navigate} />}
         {route.name === "register" && <ProductRegisterPage barcode={route.barcode ?? ""} navigate={navigate} />}
+        {route.name === "product-edit" && <ProductEditPage productId={route.productId ?? ""} navigate={navigate} />}
         {route.name === "operation" && <InventoryOperationPage productId={route.productId ?? ""} navigate={navigate} />}
         {route.name === "inventory" && <InventoryListPage navigate={navigate} />}
         {route.name === "low-stock" && <LowStockPage navigate={navigate} />}

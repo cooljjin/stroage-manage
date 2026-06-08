@@ -221,7 +221,12 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     <section>
       <PageTitle
         title="재고 작업"
-        action={<button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "inventory" })}>목록</button>}
+        action={
+          <div className="flex items-center gap-2">
+            <button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })}>수정</button>
+            <button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "inventory" })}>목록</button>
+          </div>
+        }
       />
 
       <div className="-mt-2 mb-4">
