@@ -9,6 +9,8 @@ import type { ProductSupplier } from "../types/domain";
 export function SupplierManagementPage() {
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [name, setName] = useState("");
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +23,9 @@ export function SupplierManagementPage() {
     setLoading(true);
     setError("");
     try {
-      setSuppliers(await loadSuppliers());
+      const nextSuppliers = await loadSuppliers();
+      setSuppliers(nextSuppliers);
+      setNameDrafts(Object.fromEntries(nextSuppliers.map((supplier) => [supplier.id, supplier.name])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "발주처를 불러오지 못했습니다.");
     }
@@ -43,6 +47,36 @@ export function SupplierManagementPage() {
       setMessage("발주처를 추가했습니다.");
       await refresh();
     }
+  }
+
+  async function saveSupplierName(supplier: ProductSupplier) {
+    const nextName = nameDrafts[supplier.id]?.trim();
+    if (!nextName) {
+      setError("발주처 이름은 비워둘 수 없습니다.");
+      return;
+    }
+    if (nextName === supplier.name) {
+      setEditingNameId(null);
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    const { error: updateError } = await supabase.from("suppliers").update({ name: nextName }).eq("id", supplier.id);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    const { error: productUpdateError } = await supabase.from("products").update({ supplier_name: nextName }).eq("supplier_name", supplier.name);
+    if (productUpdateError) {
+      setError(`발주처 이름은 변경됐지만 상품 연결 수정에 실패했습니다: ${productUpdateError.message}`);
+      return;
+    }
+
+    setEditingNameId(null);
+    setMessage("발주처를 수정했습니다.");
+    await refresh();
   }
 
   async function setSupplierActive(supplier: ProductSupplier, isActive: boolean) {
@@ -103,22 +137,63 @@ export function SupplierManagementPage() {
 
       {!loading ? (
         <div className="space-y-2">
-          {suppliers.map((supplier) => (
-            <div key={supplier.id} className="panel p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="break-keep text-lg font-bold leading-tight">{supplier.name}</p>
-                    <span
-                      className={`rounded px-2 py-1 text-xs font-bold ${
-                        supplier.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                      }`}
-                    >
-                      {supplier.is_active ? "활성" : "비활성"}
-                    </span>
+          {suppliers.map((supplier) => {
+            const editingName = editingNameId === supplier.id;
+
+            return (
+              <div key={supplier.id} className="panel p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    {editingName ? (
+                      <div className="space-y-2">
+                        <input
+                          className="field min-h-11 py-2 text-base font-bold"
+                          value={nameDrafts[supplier.id] ?? ""}
+                          onChange={(event) => setNameDrafts((value) => ({ ...value, [supplier.id]: event.target.value }))}
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => saveSupplierName(supplier)} className="rounded border border-brand-600 px-3 py-1 text-base font-bold text-brand-700 dark:text-brand-100">
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNameDrafts((value) => ({ ...value, [supplier.id]: supplier.name }));
+                              setEditingNameId(null);
+                            }}
+                            className="rounded border border-slate-300 px-3 py-1 text-base font-bold dark:border-slate-700"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-base font-bold">{supplier.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNameDrafts((value) => ({ ...value, [supplier.id]: supplier.name }));
+                            setEditingNameId(supplier.id);
+                          }}
+                          className="shrink-0 rounded border border-slate-300 px-2 py-1 text-base font-bold dark:border-slate-700"
+                        >
+                          수정
+                        </button>
+                      </div>
+                    )}
                   </div>
+                  <span
+                    className={`shrink-0 rounded px-2 py-1 text-xs font-bold ${
+                      supplier.is_active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-100" : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    }`}
+                  >
+                    {supplier.is_active ? "활성" : "비활성"}
+                  </span>
                 </div>
-                <div className="flex shrink-0 gap-2">
+
+                <div className="mt-3 flex justify-end gap-2">
                   <button type="button" onClick={() => setSupplierActive(supplier, !supplier.is_active)} className="touch-button rounded-md border border-slate-300 px-3 text-sm font-bold dark:border-slate-700">
                     {supplier.is_active ? "비활성화" : "활성화"}
                   </button>
@@ -134,8 +209,8 @@ export function SupplierManagementPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {suppliers.length === 0 ? <StatusMessage>발주처가 없습니다.</StatusMessage> : null}
         </div>
       ) : null}
