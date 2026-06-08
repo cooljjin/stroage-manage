@@ -62,6 +62,13 @@ create table if not exists public.suppliers (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.product_barcodes (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid not null references public.products(id) on delete cascade,
+  barcode text not null unique,
+  created_at timestamptz not null default now()
+);
+
 insert into public.suppliers (name)
 values ('쿠팡'), ('쿠팡 프레시')
 on conflict (name) do nothing;
@@ -125,6 +132,8 @@ create index if not exists products_name_idx on public.products using gin (to_ts
 create index if not exists products_barcode_idx on public.products (barcode);
 create index if not exists products_supplier_name_idx on public.products (supplier_name);
 create index if not exists products_is_active_idx on public.products (is_active);
+create index if not exists product_barcodes_product_id_idx on public.product_barcodes (product_id);
+create index if not exists product_barcodes_barcode_idx on public.product_barcodes (barcode);
 create index if not exists categories_is_active_idx on public.categories (is_active);
 create index if not exists categories_sort_order_idx on public.categories (sort_order, name);
 create index if not exists suppliers_is_active_idx on public.suppliers (is_active);

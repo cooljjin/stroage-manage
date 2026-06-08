@@ -62,6 +62,13 @@ create table if not exists public.suppliers (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.product_barcodes (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid not null references public.products(id) on delete cascade,
+  barcode text not null unique,
+  created_at timestamptz not null default now()
+);
+
 insert into public.suppliers (name)
 values ('쿠팡'), ('쿠팡 프레시')
 on conflict (name) do nothing;
@@ -125,6 +132,8 @@ create index if not exists products_name_idx on public.products using gin (to_ts
 create index if not exists products_barcode_idx on public.products (barcode);
 create index if not exists products_supplier_name_idx on public.products (supplier_name);
 create index if not exists products_is_active_idx on public.products (is_active);
+create index if not exists product_barcodes_product_id_idx on public.product_barcodes (product_id);
+create index if not exists product_barcodes_barcode_idx on public.product_barcodes (barcode);
 create index if not exists categories_is_active_idx on public.categories (is_active);
 create index if not exists categories_sort_order_idx on public.categories (sort_order, name);
 create index if not exists suppliers_is_active_idx on public.suppliers (is_active);
@@ -157,10 +166,79 @@ before update on public.inventory
 for each row
 execute function public.touch_inventory_updated_at();
 
+create or replace function public.merge_products(target_product_id uuid, source_product_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_barcode text;
+  source_barcode text;
+  source_warehouse_qty numeric(12, 2);
+  source_store_qty numeric(12, 2);
+begin
+  if target_product_id = source_product_id then
+    raise exception '같은 상품은 병합할 수 없습니다.';
+  end if;
+
+  select barcode into target_barcode from public.products where id = target_product_id;
+  if not found then
+    raise exception '남길 상품을 찾을 수 없습니다.';
+  end if;
+
+  select barcode into source_barcode from public.products where id = source_product_id;
+  if not found then
+    raise exception '병합할 상품을 찾을 수 없습니다.';
+  end if;
+
+  insert into public.inventory (product_id)
+  values (target_product_id), (source_product_id)
+  on conflict (product_id) do nothing;
+
+  insert into public.product_barcodes (product_id, barcode)
+  select target_product_id, target_barcode
+  where target_barcode is not null and target_barcode <> ''
+  on conflict (barcode) do update set product_id = excluded.product_id;
+
+  insert into public.product_barcodes (product_id, barcode)
+  select target_product_id, source_barcode
+  where source_barcode is not null and source_barcode <> ''
+  on conflict (barcode) do update set product_id = excluded.product_id;
+
+  update public.product_barcodes
+  set product_id = target_product_id
+  where product_id = source_product_id;
+
+  select warehouse_qty, store_qty
+  into source_warehouse_qty, source_store_qty
+  from public.inventory
+  where product_id = source_product_id;
+
+  update public.inventory
+  set warehouse_qty = warehouse_qty + coalesce(source_warehouse_qty, 0),
+      store_qty = store_qty + coalesce(source_store_qty, 0)
+  where product_id = target_product_id;
+
+  update public.inventory_logs
+  set product_id = target_product_id
+  where product_id = source_product_id;
+
+  delete from public.inventory
+  where product_id = source_product_id;
+
+  update public.products
+  set is_active = false,
+      barcode = null
+  where id = source_product_id;
+end;
+$$;
+
 alter table public.products enable row level security;
 alter table public.categories enable row level security;
 alter table public.profiles enable row level security;
 alter table public.suppliers enable row level security;
+alter table public.product_barcodes enable row level security;
 alter table public.inventory enable row level security;
 alter table public.inventory_logs enable row level security;
 
@@ -239,6 +317,25 @@ on public.suppliers for delete
 to authenticated
 using (is_active = false);
 
+drop policy if exists "Authenticated users can read product barcodes" on public.product_barcodes;
+create policy "Authenticated users can read product barcodes"
+on public.product_barcodes for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert product barcodes" on public.product_barcodes;
+create policy "Authenticated users can insert product barcodes"
+on public.product_barcodes for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users can update product barcodes" on public.product_barcodes;
+create policy "Authenticated users can update product barcodes"
+on public.product_barcodes for update
+to authenticated
+using (true)
+with check (true);
+
 drop policy if exists "Authenticated users can read profiles" on public.profiles;
 create policy "Authenticated users can read profiles"
 on public.profiles for select
@@ -293,9 +390,11 @@ grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.products to authenticated;
 grant select, insert, update, delete on public.categories to authenticated;
 grant select, insert, update, delete on public.suppliers to authenticated;
+grant select, insert, update, delete on public.product_barcodes to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update on public.inventory to authenticated;
 grant select, insert on public.inventory_logs to authenticated;
 grant execute on function public.is_admin(uuid) to authenticated;
+grant execute on function public.merge_products(uuid, uuid) to authenticated;
 
 notify pgrst, 'reload schema';

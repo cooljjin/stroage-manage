@@ -23,6 +23,20 @@ const PRODUCT_BARCODE_FORMATS = [
   Html5QrcodeSupportedFormats.CODABAR
 ];
 
+async function findProductByBarcode(barcode: string): Promise<{ product: Product | null; errorMessage: string }> {
+  const { data, error } = await supabase.from("products").select("*").eq("barcode", barcode).eq("is_active", true).maybeSingle();
+  if (error) return { product: null, errorMessage: error.message };
+  if (data) return { product: data as Product, errorMessage: "" };
+
+  const { data: barcodeData, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").eq("barcode", barcode).maybeSingle();
+  if (barcodeError) return { product: null, errorMessage: barcodeError.message };
+  if (!barcodeData) return { product: null, errorMessage: "" };
+
+  const { data: aliasProduct, error: aliasError } = await supabase.from("products").select("*").eq("id", barcodeData.product_id).eq("is_active", true).maybeSingle();
+  if (aliasError) return { product: null, errorMessage: aliasError.message };
+  return { product: (aliasProduct as Product | null) ?? null, errorMessage: "" };
+}
+
 export function ScanPage({ navigate }: Props) {
   const [scannerActive, setScannerActive] = useState(false);
   const [message, setMessage] = useState("");
@@ -52,15 +66,15 @@ export function ScanPage({ navigate }: Props) {
     }
     setScannerActive(false);
 
-    const { data, error } = await supabase.from("products").select("*").eq("barcode", barcode).eq("is_active", true).maybeSingle();
-    if (error) {
-      setMessage(error.message);
+    const { product, errorMessage } = await findProductByBarcode(barcode);
+    if (errorMessage) {
+      setMessage(errorMessage);
       barcodeHandlingRef.current = false;
       return;
     }
 
-    if (data) {
-      navigate({ name: "operation", productId: data.id });
+    if (product) {
+      navigate({ name: "operation", productId: product.id });
     } else {
       navigate({ name: "register", barcode });
     }
@@ -141,7 +155,25 @@ export function ScanPage({ navigate }: Props) {
       setMessage(error.message);
       setResults([]);
     } else {
-      setResults((data ?? []) as Product[]);
+      const productsById = new Map<string, Product>();
+      ((data ?? []) as Product[]).forEach((product) => productsById.set(product.id, product));
+
+      const { data: barcodeRows, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").ilike("barcode", `%${keyword}%`).limit(20);
+      if (barcodeError) {
+        setMessage(barcodeError.message);
+      } else {
+        const missingProductIds = [...new Set((barcodeRows ?? []).map((row) => row.product_id).filter((id) => !productsById.has(id)))];
+        if (missingProductIds.length > 0) {
+          const { data: aliasProducts, error: aliasProductsError } = await supabase.from("products").select("*").in("id", missingProductIds).eq("is_active", true);
+          if (aliasProductsError) {
+            setMessage(aliasProductsError.message);
+          } else {
+            ((aliasProducts ?? []) as Product[]).forEach((product) => productsById.set(product.id, product));
+          }
+        }
+      }
+
+      setResults([...productsById.values()].sort((left, right) => left.name.localeCompare(right.name, "ko")).slice(0, 20));
     }
     setLoadingSearch(false);
   }

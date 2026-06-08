@@ -123,6 +123,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      product_barcodes: {
+        Row: {
+          id: string;
+          product_id: string;
+          barcode: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          barcode: string;
+          created_at?: string;
+        };
+        Update: {
+          product_id?: string;
+          barcode?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_barcodes_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       inventory: {
         Row: {
           id: string;
@@ -198,6 +225,13 @@ export type Database = {
           user_id: string;
         };
         Returns: boolean;
+      };
+      merge_products: {
+        Args: {
+          target_product_id: string;
+          source_product_id: string;
+        };
+        Returns: undefined;
       };
     };
     Views: Record<string, never>;

@@ -42,6 +42,13 @@ export type ProductSupplier = {
   created_at: string;
 };
 
+export type ProductBarcode = {
+  id: string;
+  product_id: string;
+  barcode: string;
+  created_at: string;
+};
+
 export type StaffProfile = {
   id: string;
   email: string | null;

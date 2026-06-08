@@ -2,6 +2,7 @@ alter table public.products enable row level security;
 alter table public.categories enable row level security;
 alter table public.profiles enable row level security;
 alter table public.suppliers enable row level security;
+alter table public.product_barcodes enable row level security;
 alter table public.inventory enable row level security;
 alter table public.inventory_logs enable row level security;
 
@@ -80,6 +81,25 @@ on public.suppliers for delete
 to authenticated
 using (is_active = false);
 
+drop policy if exists "Authenticated users can read product barcodes" on public.product_barcodes;
+create policy "Authenticated users can read product barcodes"
+on public.product_barcodes for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated users can insert product barcodes" on public.product_barcodes;
+create policy "Authenticated users can insert product barcodes"
+on public.product_barcodes for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users can update product barcodes" on public.product_barcodes;
+create policy "Authenticated users can update product barcodes"
+on public.product_barcodes for update
+to authenticated
+using (true)
+with check (true);
+
 drop policy if exists "Authenticated users can read profiles" on public.profiles;
 create policy "Authenticated users can read profiles"
 on public.profiles for select
@@ -134,7 +154,9 @@ grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.products to authenticated;
 grant select, insert, update, delete on public.categories to authenticated;
 grant select, insert, update, delete on public.suppliers to authenticated;
+grant select, insert, update, delete on public.product_barcodes to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update on public.inventory to authenticated;
 grant select, insert on public.inventory_logs to authenticated;
 grant execute on function public.is_admin(uuid) to authenticated;
+grant execute on function public.merge_products(uuid, uuid) to authenticated;

@@ -20,6 +20,8 @@ export function ProductManagementPage({ navigate }: Props) {
   const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [linkDrafts, setLinkDrafts] = useState<Record<string, string>>({});
+  const [mergeSearchDrafts, setMergeSearchDrafts] = useState<Record<string, string>>({});
+  const [mergingProductIds, setMergingProductIds] = useState<Set<string>>(new Set());
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -48,6 +50,7 @@ export function ProductManagementPage({ navigate }: Props) {
       setCategoryDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.category])));
       setNameDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.name])));
       setLinkDrafts(Object.fromEntries(nextProducts.map((product) => [product.id, product.product_url ?? ""])));
+      setMergeSearchDrafts((current) => Object.fromEntries(nextProducts.map((product) => [product.id, current[product.id] ?? ""])));
     }
     setLoading(false);
   }
@@ -119,6 +122,50 @@ export function ProductManagementPage({ navigate }: Props) {
       setError(updateError.message);
     } else {
       setMessage("상품 링크를 수정했습니다.");
+      await loadProducts();
+    }
+  }
+
+  function mergeCandidates(targetProduct: Product) {
+    const keyword = (mergeSearchDrafts[targetProduct.id] ?? "").trim().toLowerCase();
+    if (!keyword) return [];
+
+    return products
+      .filter((product) => product.id !== targetProduct.id && isProductActive(product))
+      .filter((product) => product.name.toLowerCase().includes(keyword) || (product.barcode ?? "").toLowerCase().includes(keyword))
+      .slice(0, 5);
+  }
+
+  function formatMergeError(message: string) {
+    if (message.includes("merge_products") || message.includes("product_barcodes") || message.includes("schema cache")) {
+      return "병합 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 product_barcodes 테이블과 merge_products 함수 추가를 요청해 주세요.";
+    }
+    return message;
+  }
+
+  async function mergeProduct(targetProduct: Product, sourceProduct: Product) {
+    const ok = window.confirm(`${sourceProduct.name} 상품을 ${targetProduct.name} 상품으로 병합할까요? 병합 후 ${sourceProduct.name}은 비활성화됩니다.`);
+    if (!ok) return;
+
+    setError("");
+    setMessage("");
+    setMergingProductIds((current) => new Set(current).add(targetProduct.id));
+    const { error: mergeError } = await supabase.rpc("merge_products", {
+      target_product_id: targetProduct.id,
+      source_product_id: sourceProduct.id
+    });
+
+    setMergingProductIds((current) => {
+      const next = new Set(current);
+      next.delete(targetProduct.id);
+      return next;
+    });
+
+    if (mergeError) {
+      setError(formatMergeError(mergeError.message));
+    } else {
+      setMergeSearchDrafts((current) => ({ ...current, [targetProduct.id]: "" }));
+      setMessage("상품을 병합했습니다.");
       await loadProducts();
     }
   }
@@ -267,6 +314,37 @@ export function ProductManagementPage({ navigate }: Props) {
                     <Save size={17} />
                     저장
                   </button>
+                </div>
+
+                <div className="mt-3 rounded-md border border-slate-200 p-3 dark:border-slate-800">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">병합할 품목 검색</span>
+                    <input
+                      className="field min-h-11 py-2"
+                      value={mergeSearchDrafts[product.id] ?? ""}
+                      onChange={(event) => setMergeSearchDrafts((value) => ({ ...value, [product.id]: event.target.value }))}
+                      placeholder="상품명 또는 바코드"
+                    />
+                  </label>
+
+                  {mergeCandidates(product).length > 0 ? (
+                    <div className="mt-2 space-y-2">
+                      {mergeCandidates(product).map((candidate) => (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          disabled={mergingProductIds.has(product.id)}
+                          onClick={() => void mergeProduct(product, candidate)}
+                          className="w-full rounded-md border border-slate-200 bg-white p-2 text-left text-sm disabled:opacity-45 dark:border-slate-800 dark:bg-slate-900"
+                        >
+                          <span className="block font-bold">{candidate.name}</span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{candidate.barcode ?? "바코드 없음"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : mergeSearchDrafts[product.id]?.trim() ? (
+                    <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">병합할 품목이 없습니다.</p>
+                  ) : null}
                 </div>
 
                 <div className="mt-3 flex justify-end gap-2">
