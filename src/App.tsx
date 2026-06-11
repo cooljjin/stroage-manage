@@ -129,7 +129,7 @@ export default function App() {
         {route.name === "operation" && <InventoryOperationPage productId={route.productId ?? ""} navigate={navigate} />}
         {route.name === "inventory" && <InventoryListPage navigate={navigate} />}
         {route.name === "low-stock" && <LowStockPage navigate={navigate} />}
-        {route.name === "logs" && <LogsPage />}
+        {route.name === "logs" && <LogsPage navigate={navigate} />}
         {route.name === "product-management" && <ProductManagementPage navigate={navigate} />}
         {route.name === "category-management" && <CategoryManagementPage />}
         {route.name === "supplier-management" && <SupplierManagementPage />}

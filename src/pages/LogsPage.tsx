@@ -4,9 +4,13 @@ import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { formatLogContent } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
-import type { InventoryLog, InventoryLogWithStaff, Product, StaffProfile } from "../types/domain";
+import type { AppRoute, InventoryLog, InventoryLogWithStaff, Product, StaffProfile } from "../types/domain";
 
 type LogPeriod = "day" | "week" | "month";
+
+type Props = {
+  navigate: (route: AppRoute) => void;
+};
 
 function formatDateInputValue(date: Date): string {
   const year = date.getFullYear();
@@ -41,7 +45,7 @@ function getLogRange(period: LogPeriod, baseDateValue: string): { start: Date; e
   return { start, end, label: new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(start) };
 }
 
-export function LogsPage() {
+export function LogsPage({ navigate }: Props) {
   const [logs, setLogs] = useState<InventoryLogWithStaff[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
@@ -183,7 +187,17 @@ export function LogsPage() {
                   <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(log.created_at)}</td>
                   <td className="truncate px-3 py-3 text-xs">{log.staff_name}</td>
                   <td className="px-3 py-3">
-                    <span className="block truncate font-semibold">{log.products?.name ?? "삭제된 상품"}</span>
+                    {log.products ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate({ name: "operation", productId: log.product_id })}
+                        className="block max-w-full truncate text-left font-semibold text-brand-700 hover:underline dark:text-brand-100"
+                      >
+                        {log.products.name}
+                      </button>
+                    ) : (
+                      <span className="block truncate font-semibold">삭제된 상품</span>
+                    )}
                     <span className="block truncate text-xs text-slate-500 dark:text-slate-400 sm:hidden">{formatLogContent(log)}</span>
                   </td>
                   <td className="px-3 py-3 font-bold">{log.action}</td>
