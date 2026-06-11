@@ -5,7 +5,7 @@ import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
 import { normalizeInventoryItem } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, InventoryAction, InventoryItem, Location, StockStatus } from "../types/domain";
+import type { AppRoute, InventoryAction, InventoryItem, InventoryLog, Location, StockStatus } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -13,6 +13,7 @@ type Props = {
 };
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
+const UNDO_NOTE_PREFIX = "[되돌리기:";
 
 function formatStatusUpdateError(message: string) {
   if (message.includes("status_enabled") || message.includes("stock_status") || message.includes("schema cache")) {
@@ -23,6 +24,7 @@ function formatStatusUpdateError(message: string) {
 
 export function InventoryOperationPage({ productId, navigate }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
+  const [latestOperation, setLatestOperation] = useState<InventoryLog | null>(null);
   const [action, setAction] = useState<InventoryAction>("입고");
   const [location, setLocation] = useState<Location>("창고");
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
@@ -32,6 +34,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const [minimumStockDraft, setMinimumStockDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -39,10 +42,21 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const loadProduct = useCallback(async () => {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").eq("id", productId).single();
+    setLatestOperation(null);
+    const [{ data, error: loadError }, { data: logData, error: logError }] = await Promise.all([
+      supabase.from("products").select("*, inventory(*)").eq("id", productId).single(),
+      supabase.from("inventory_logs").select("*").eq("product_id", productId).order("created_at", { ascending: false }).limit(1).maybeSingle()
+    ]);
+
     if (loadError) {
       setError(loadError.message);
     } else {
+      if (logError) {
+        setError(logError.message);
+      } else {
+        setLatestOperation((logData as InventoryLog | null) ?? null);
+      }
+
       const nextItem = normalizeInventoryItem(data as Parameters<typeof normalizeInventoryItem>[0]);
 
       if (!nextItem.inventory) {
@@ -160,6 +174,155 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     }
   }
 
+  async function undoLatestOperation() {
+    if (!item || !latestOperation || latestOperation.note?.startsWith(UNDO_NOTE_PREFIX)) return;
+    if (!window.confirm("이 상품의 가장 최근 재고 작업을 이전 상태로 되돌리시겠습니까?")) return;
+
+    setUndoing(true);
+    setError("");
+    setSuccess("");
+
+    const currentInventory = item.inventory;
+    if (!currentInventory) {
+      setError("재고 정보를 찾을 수 없습니다.");
+      setUndoing(false);
+      return;
+    }
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      setError(userError?.message ?? "로그인이 필요합니다.");
+      setUndoing(false);
+      return;
+    }
+
+    let nextWarehouseQty = item.warehouse_qty;
+    let nextStoreQty = item.store_qty;
+    let undoLog: {
+      product_id: string;
+      user_id: string;
+      action: InventoryAction;
+      source_location: Location | null;
+      destination_location: Location | null;
+      previous_quantity: number;
+      new_quantity: number;
+      quantity: number;
+      note: string;
+    };
+
+    if (latestOperation.action === "이동") {
+      const source = latestOperation.source_location;
+      const destination = latestOperation.destination_location;
+      const previousQuantity = latestOperation.previous_quantity;
+      const newQuantity = latestOperation.new_quantity;
+      const movedQuantity = latestOperation.quantity;
+
+      if (!source || !destination || previousQuantity === null || newQuantity === null || movedQuantity === null) {
+        setError("이동 작업 기록이 불완전하여 되돌릴 수 없습니다.");
+        setUndoing(false);
+        return;
+      }
+
+      const sourceQuantity = source === "창고" ? item.warehouse_qty : item.store_qty;
+      const destinationQuantity = destination === "창고" ? item.warehouse_qty : item.store_qty;
+
+      if (sourceQuantity !== newQuantity) {
+        setError("최근 작업 이후 재고가 변경되어 되돌릴 수 없습니다.");
+        setUndoing(false);
+        return;
+      }
+
+      if (destinationQuantity < movedQuantity) {
+        setError("이동 대상 재고가 부족하여 되돌릴 수 없습니다.");
+        setUndoing(false);
+        return;
+      }
+
+      if (source === "창고") {
+        nextWarehouseQty = previousQuantity;
+        nextStoreQty = destinationQuantity - movedQuantity;
+      } else {
+        nextStoreQty = previousQuantity;
+        nextWarehouseQty = destinationQuantity - movedQuantity;
+      }
+
+      undoLog = {
+        product_id: item.id,
+        user_id: userData.user.id,
+        action: "이동",
+        source_location: destination,
+        destination_location: source,
+        previous_quantity: destinationQuantity,
+        new_quantity: destinationQuantity - movedQuantity,
+        quantity: movedQuantity,
+        note: `${UNDO_NOTE_PREFIX}${latestOperation.id}] 최근 이동 작업 취소`
+      };
+    } else {
+      const targetLocation = latestOperation.destination_location ?? latestOperation.source_location;
+      const previousQuantity = latestOperation.previous_quantity;
+      const newQuantity = latestOperation.new_quantity;
+
+      if (!targetLocation || previousQuantity === null || newQuantity === null) {
+        setError("재고 작업 기록이 불완전하여 되돌릴 수 없습니다.");
+        setUndoing(false);
+        return;
+      }
+
+      const currentQuantity = targetLocation === "창고" ? item.warehouse_qty : item.store_qty;
+      if (currentQuantity !== newQuantity) {
+        setError("최근 작업 이후 재고가 변경되어 되돌릴 수 없습니다.");
+        setUndoing(false);
+        return;
+      }
+
+      if (targetLocation === "창고") {
+        nextWarehouseQty = previousQuantity;
+      } else {
+        nextStoreQty = previousQuantity;
+      }
+
+      undoLog = {
+        product_id: item.id,
+        user_id: userData.user.id,
+        action: "조정",
+        source_location: targetLocation,
+        destination_location: null,
+        previous_quantity: currentQuantity,
+        new_quantity: previousQuantity,
+        quantity: Math.abs(currentQuantity - previousQuantity),
+        note: `${UNDO_NOTE_PREFIX}${latestOperation.id}] 최근 ${latestOperation.action} 작업 취소`
+      };
+    }
+
+    const { error: updateError } = await supabase
+      .from("inventory")
+      .update({ warehouse_qty: nextWarehouseQty, store_qty: nextStoreQty })
+      .eq("id", currentInventory.id);
+
+    if (updateError) {
+      setError(updateError.message);
+      setUndoing(false);
+      return;
+    }
+
+    const { error: logError } = await supabase.from("inventory_logs").insert(undoLog);
+    if (logError) {
+      const { error: rollbackError } = await supabase
+        .from("inventory")
+        .update({ warehouse_qty: item.warehouse_qty, store_qty: item.store_qty })
+        .eq("id", currentInventory.id);
+
+      setError(rollbackError ? `${logError.message} 재고 복구도 실패했습니다: ${rollbackError.message}` : logError.message);
+    } else {
+      setSuccess("최근 재고 작업을 되돌렸습니다.");
+    }
+
+    setQuantity("");
+    setNote("");
+    await loadProduct();
+    setUndoing(false);
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!item || negativeError || quantityStepError) return;
@@ -269,14 +432,26 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   if (loading) return <StatusMessage>상품 정보를 불러오는 중...</StatusMessage>;
   if (!item) return <StatusMessage type="error">상품을 찾을 수 없습니다.</StatusMessage>;
 
+  const canUndo = Boolean(latestOperation && !latestOperation.note?.startsWith(UNDO_NOTE_PREFIX));
+
   return (
     <section>
       <PageTitle
         title="재고 작업"
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
             <button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })}>수정</button>
-            <button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "inventory" })}>목록</button>
+            <div className="flex flex-col gap-2">
+              <button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "inventory" })}>목록</button>
+              <button
+                className="touch-button rounded-md border border-rose-300 px-3 text-sm font-bold text-rose-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-rose-800 dark:text-rose-300"
+                type="button"
+                disabled={!canUndo || undoing || saving}
+                onClick={() => void undoLatestOperation()}
+              >
+                {undoing ? "처리 중..." : "되돌리기"}
+              </button>
+            </div>
           </div>
         }
       />
