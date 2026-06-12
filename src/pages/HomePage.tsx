@@ -97,6 +97,7 @@ export function HomePage({ navigate }: Props) {
             .from("inventory_logs")
             .select("*, products(name, barcode)")
             .eq("action", "입고")
+            .is("reverted_at", null)
             .gte("created_at", range.start)
             .lt("created_at", range.end)
             .order("created_at", { ascending: false })

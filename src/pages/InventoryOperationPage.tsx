@@ -1,9 +1,10 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, Minus, Plus } from "lucide-react";
+import { ArrowLeftRight, History, Minus, Plus, RotateCcw, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
-import { normalizeInventoryItem } from "../lib/inventory";
+import { formatDateTime } from "../lib/date";
+import { formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, InventoryAction, InventoryItem, InventoryLog, Location, StockStatus } from "../types/domain";
 
@@ -13,7 +14,12 @@ type Props = {
 };
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
-const UNDO_NOTE_PREFIX = "[되돌리기:";
+
+type InventoryHistoryPoint = {
+  log: InventoryLog;
+  warehouseQty: number;
+  storeQty: number;
+};
 
 function formatStatusUpdateError(message: string) {
   if (message.includes("status_enabled") || message.includes("stock_status") || message.includes("schema cache")) {
@@ -24,7 +30,9 @@ function formatStatusUpdateError(message: string) {
 
 export function InventoryOperationPage({ productId, navigate }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
-  const [latestOperation, setLatestOperation] = useState<InventoryLog | null>(null);
+  const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [action, setAction] = useState<InventoryAction>("입고");
   const [location, setLocation] = useState<Location>("창고");
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
@@ -34,7 +42,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const [minimumStockDraft, setMinimumStockDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [undoing, setUndoing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -42,21 +50,11 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   const loadProduct = useCallback(async () => {
     setLoading(true);
     setError("");
-    setLatestOperation(null);
-    const [{ data, error: loadError }, { data: logData, error: logError }] = await Promise.all([
-      supabase.from("products").select("*, inventory(*)").eq("id", productId).single(),
-      supabase.from("inventory_logs").select("*").eq("product_id", productId).order("created_at", { ascending: false }).limit(1).maybeSingle()
-    ]);
+    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").eq("id", productId).single();
 
     if (loadError) {
       setError(loadError.message);
     } else {
-      if (logError) {
-        setError(logError.message);
-      } else {
-        setLatestOperation((logData as InventoryLog | null) ?? null);
-      }
-
       const nextItem = normalizeInventoryItem(data as Parameters<typeof normalizeInventoryItem>[0]);
 
       if (!nextItem.inventory) {
@@ -174,153 +172,99 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     }
   }
 
-  async function undoLatestOperation() {
-    if (!item || !latestOperation || latestOperation.note?.startsWith(UNDO_NOTE_PREFIX)) return;
-    if (!window.confirm("이 상품의 가장 최근 재고 작업을 이전 상태로 되돌리시겠습니까?")) return;
+  function getStateBeforeLog(log: InventoryLog, warehouseQty: number, storeQty: number) {
+    if (log.warehouse_qty_before !== null && log.store_qty_before !== null) {
+      return { warehouseQty: log.warehouse_qty_before, storeQty: log.store_qty_before };
+    }
 
-    setUndoing(true);
+    if (log.action === "이동" && log.source_location && log.destination_location && log.quantity !== null) {
+      if (log.source_location === "창고") {
+        return { warehouseQty: warehouseQty + log.quantity, storeQty: storeQty - log.quantity };
+      }
+      return { warehouseQty: warehouseQty - log.quantity, storeQty: storeQty + log.quantity };
+    }
+
+    const targetLocation = log.destination_location ?? log.source_location;
+    if (targetLocation === "창고" && log.previous_quantity !== null) {
+      return { warehouseQty: log.previous_quantity, storeQty };
+    }
+    if (targetLocation === "매장" && log.previous_quantity !== null) {
+      return { warehouseQty, storeQty: log.previous_quantity };
+    }
+    return { warehouseQty, storeQty };
+  }
+
+  async function openHistory() {
+    if (!item) return;
+
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    setError("");
+    const { data, error: historyError } = await supabase
+      .from("inventory_logs")
+      .select("*")
+      .eq("product_id", item.id)
+      .is("reverted_at", null)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(200);
+
+    if (historyError) {
+      setError(
+        historyError.message.includes("reverted_at")
+          ? "상세 되돌리기 기능을 위한 데이터베이스 업데이트가 필요합니다."
+          : historyError.message
+      );
+      setHistory([]);
+    } else {
+      let warehouseQty = item.warehouse_qty;
+      let storeQty = item.store_qty;
+      const points = ((data ?? []) as InventoryLog[]).map((log) => {
+        const point = {
+          log,
+          warehouseQty: log.warehouse_qty_after ?? warehouseQty,
+          storeQty: log.store_qty_after ?? storeQty
+        };
+        const before = getStateBeforeLog(log, point.warehouseQty, point.storeQty);
+        warehouseQty = before.warehouseQty;
+        storeQty = before.storeQty;
+        return point;
+      });
+      setHistory(points);
+    }
+    setHistoryLoading(false);
+  }
+
+  async function restoreToHistoryPoint(point: InventoryHistoryPoint) {
+    if (!item) return;
+    const confirmed = window.confirm(
+      `${formatDateTime(point.log.created_at)} 작업 직후 상태로 복원하시겠습니까?\n창고 ${point.warehouseQty} / 매장 ${point.storeQty}\n선택 시점 이후 작업은 히스토리에서 취소 처리됩니다.`
+    );
+    if (!confirmed) return;
+
+    setRestoring(true);
     setError("");
     setSuccess("");
+    const { error: restoreError } = await supabase.rpc("restore_inventory_to_log", {
+      target_log_id: point.log.id,
+      restored_warehouse_qty: point.warehouseQty,
+      restored_store_qty: point.storeQty
+    });
 
-    const currentInventory = item.inventory;
-    if (!currentInventory) {
-      setError("재고 정보를 찾을 수 없습니다.");
-      setUndoing(false);
-      return;
-    }
-
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData.user) {
-      setError(userError?.message ?? "로그인이 필요합니다.");
-      setUndoing(false);
-      return;
-    }
-
-    let nextWarehouseQty = item.warehouse_qty;
-    let nextStoreQty = item.store_qty;
-    let undoLog: {
-      product_id: string;
-      user_id: string;
-      action: InventoryAction;
-      source_location: Location | null;
-      destination_location: Location | null;
-      previous_quantity: number;
-      new_quantity: number;
-      quantity: number;
-      note: string;
-    };
-
-    if (latestOperation.action === "이동") {
-      const source = latestOperation.source_location;
-      const destination = latestOperation.destination_location;
-      const previousQuantity = latestOperation.previous_quantity;
-      const newQuantity = latestOperation.new_quantity;
-      const movedQuantity = latestOperation.quantity;
-
-      if (!source || !destination || previousQuantity === null || newQuantity === null || movedQuantity === null) {
-        setError("이동 작업 기록이 불완전하여 되돌릴 수 없습니다.");
-        setUndoing(false);
-        return;
-      }
-
-      const sourceQuantity = source === "창고" ? item.warehouse_qty : item.store_qty;
-      const destinationQuantity = destination === "창고" ? item.warehouse_qty : item.store_qty;
-
-      if (sourceQuantity !== newQuantity) {
-        setError("최근 작업 이후 재고가 변경되어 되돌릴 수 없습니다.");
-        setUndoing(false);
-        return;
-      }
-
-      if (destinationQuantity < movedQuantity) {
-        setError("이동 대상 재고가 부족하여 되돌릴 수 없습니다.");
-        setUndoing(false);
-        return;
-      }
-
-      if (source === "창고") {
-        nextWarehouseQty = previousQuantity;
-        nextStoreQty = destinationQuantity - movedQuantity;
-      } else {
-        nextStoreQty = previousQuantity;
-        nextWarehouseQty = destinationQuantity - movedQuantity;
-      }
-
-      undoLog = {
-        product_id: item.id,
-        user_id: userData.user.id,
-        action: "이동",
-        source_location: destination,
-        destination_location: source,
-        previous_quantity: destinationQuantity,
-        new_quantity: destinationQuantity - movedQuantity,
-        quantity: movedQuantity,
-        note: `${UNDO_NOTE_PREFIX}${latestOperation.id}] 최근 이동 작업 취소`
-      };
+    if (restoreError) {
+      setError(
+        restoreError.message.includes("restore_inventory_to_log")
+          ? "상세 되돌리기 기능을 위한 데이터베이스 업데이트가 필요합니다."
+          : restoreError.message
+      );
     } else {
-      const targetLocation = latestOperation.destination_location ?? latestOperation.source_location;
-      const previousQuantity = latestOperation.previous_quantity;
-      const newQuantity = latestOperation.new_quantity;
-
-      if (!targetLocation || previousQuantity === null || newQuantity === null) {
-        setError("재고 작업 기록이 불완전하여 되돌릴 수 없습니다.");
-        setUndoing(false);
-        return;
-      }
-
-      const currentQuantity = targetLocation === "창고" ? item.warehouse_qty : item.store_qty;
-      if (currentQuantity !== newQuantity) {
-        setError("최근 작업 이후 재고가 변경되어 되돌릴 수 없습니다.");
-        setUndoing(false);
-        return;
-      }
-
-      if (targetLocation === "창고") {
-        nextWarehouseQty = previousQuantity;
-      } else {
-        nextStoreQty = previousQuantity;
-      }
-
-      undoLog = {
-        product_id: item.id,
-        user_id: userData.user.id,
-        action: "조정",
-        source_location: targetLocation,
-        destination_location: null,
-        previous_quantity: currentQuantity,
-        new_quantity: previousQuantity,
-        quantity: Math.abs(currentQuantity - previousQuantity),
-        note: `${UNDO_NOTE_PREFIX}${latestOperation.id}] 최근 ${latestOperation.action} 작업 취소`
-      };
+      setHistoryOpen(false);
+      setSuccess(`${formatDateTime(point.log.created_at)} 시점으로 재고를 복원했습니다.`);
+      setQuantity("");
+      setNote("");
+      await loadProduct();
     }
-
-    const { error: updateError } = await supabase
-      .from("inventory")
-      .update({ warehouse_qty: nextWarehouseQty, store_qty: nextStoreQty })
-      .eq("id", currentInventory.id);
-
-    if (updateError) {
-      setError(updateError.message);
-      setUndoing(false);
-      return;
-    }
-
-    const { error: logError } = await supabase.from("inventory_logs").insert(undoLog);
-    if (logError) {
-      const { error: rollbackError } = await supabase
-        .from("inventory")
-        .update({ warehouse_qty: item.warehouse_qty, store_qty: item.store_qty })
-        .eq("id", currentInventory.id);
-
-      setError(rollbackError ? `${logError.message} 재고 복구도 실패했습니다: ${rollbackError.message}` : logError.message);
-    } else {
-      setSuccess("최근 재고 작업을 되돌렸습니다.");
-    }
-
-    setQuantity("");
-    setNote("");
-    await loadProduct();
-    setUndoing(false);
+    setRestoring(false);
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -415,7 +359,11 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
       previous_quantity: previousQuantity,
       new_quantity: newQuantity,
       quantity: quantityValue,
-      note: note.trim() || null
+      note: note.trim() || null,
+      warehouse_qty_before: item.warehouse_qty,
+      store_qty_before: item.store_qty,
+      warehouse_qty_after: nextWarehouseQty,
+      store_qty_after: nextStoreQty
     });
 
     if (logError) {
@@ -432,8 +380,6 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
   if (loading) return <StatusMessage>상품 정보를 불러오는 중...</StatusMessage>;
   if (!item) return <StatusMessage type="error">상품을 찾을 수 없습니다.</StatusMessage>;
 
-  const canUndo = Boolean(latestOperation && !latestOperation.note?.startsWith(UNDO_NOTE_PREFIX));
-
   return (
     <section>
       <PageTitle
@@ -446,10 +392,10 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
               <button
                 className="touch-button rounded-md border border-rose-300 px-3 text-sm font-bold text-rose-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-rose-800 dark:text-rose-300"
                 type="button"
-                disabled={!canUndo || undoing || saving}
-                onClick={() => void undoLatestOperation()}
+                disabled={restoring || saving}
+                onClick={() => void openHistory()}
               >
-                {undoing ? "처리 중..." : "되돌리기"}
+                {restoring ? "처리 중..." : "되돌리기"}
               </button>
             </div>
           </div>
@@ -642,6 +588,62 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
           </button>
         </form>
       </div>
+
+      {historyOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="재고 작업 히스토리">
+          <div className="flex max-h-[86dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <History className="shrink-0 text-brand-700 dark:text-brand-100" size={20} />
+                  <h2 className="truncate font-extrabold">재고 작업 히스토리</h2>
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{item.name} · 원하는 작업 시점을 선택하세요.</p>
+              </div>
+              <button type="button" onClick={() => setHistoryOpen(false)} className="touch-button icon-button shrink-0" aria-label="닫기">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {historyLoading ? <StatusMessage>작업 히스토리를 불러오는 중...</StatusMessage> : null}
+              {!historyLoading && history.length === 0 ? <StatusMessage>복원할 작업 히스토리가 없습니다.</StatusMessage> : null}
+              <div className="space-y-2">
+                {history.map((point, index) => (
+                  <button
+                    key={point.log.id}
+                    type="button"
+                    disabled={restoring || index === 0}
+                    onClick={() => void restoreToHistoryPoint(point)}
+                    className="w-full rounded-lg border border-slate-200 p-3 text-left transition-colors hover:border-brand-500 hover:bg-brand-50 disabled:cursor-default disabled:opacity-60 dark:border-slate-800 dark:hover:border-brand-500 dark:hover:bg-brand-950"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-slate-100 px-2 py-1 text-xs font-extrabold dark:bg-slate-800">{point.log.action}</span>
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(point.log.created_at)}</span>
+                          {index === 0 ? <span className="rounded bg-brand-100 px-2 py-1 text-[10px] font-extrabold text-brand-700 dark:bg-brand-950 dark:text-brand-100">현재 상태</span> : null}
+                        </div>
+                        <p className="mt-2 text-sm font-bold">{formatLogContent(point.log)}</p>
+                        {point.log.note ? <p className="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">{point.log.note}</p> : null}
+                      </div>
+                      {index > 0 ? <RotateCcw className="mt-1 shrink-0 text-brand-700 dark:text-brand-100" size={18} /> : null}
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+                      <span className="rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-900">
+                        창고 <strong className="ml-1 text-sm">{point.warehouseQty}</strong>
+                      </span>
+                      <span className="rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-900">
+                        매장 <strong className="ml-1 text-sm">{point.storeQty}</strong>
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

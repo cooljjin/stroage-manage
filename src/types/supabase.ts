@@ -198,6 +198,13 @@ export type Database = {
           new_quantity: number | null;
           quantity: number | null;
           note: string | null;
+          warehouse_qty_before: number | null;
+          store_qty_before: number | null;
+          warehouse_qty_after: number | null;
+          store_qty_after: number | null;
+          reverted_at: string | null;
+          reverted_by: string | null;
+          restored_to_log_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -211,9 +218,19 @@ export type Database = {
           new_quantity?: number | null;
           quantity?: number | null;
           note?: string | null;
+          warehouse_qty_before?: number | null;
+          store_qty_before?: number | null;
+          warehouse_qty_after?: number | null;
+          store_qty_after?: number | null;
+          reverted_at?: string | null;
+          reverted_by?: string | null;
+          restored_to_log_id?: string | null;
           created_at?: string;
         };
-        Update: never;
+        Update: {
+          reverted_at?: string | null;
+          reverted_by?: string | null;
+        };
         Relationships: [
           {
             foreignKeyName: "inventory_logs_product_id_fkey";
@@ -285,6 +302,14 @@ export type Database = {
         Args: {
           target_product_id: string;
           source_product_id: string;
+        };
+        Returns: undefined;
+      };
+      restore_inventory_to_log: {
+        Args: {
+          target_log_id: string;
+          restored_warehouse_qty: number;
+          restored_store_qty: number;
         };
         Returns: undefined;
       };

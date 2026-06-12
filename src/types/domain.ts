@@ -100,6 +100,13 @@ export type InventoryLog = {
   new_quantity: number | null;
   quantity: number | null;
   note: string | null;
+  warehouse_qty_before: number | null;
+  store_qty_before: number | null;
+  warehouse_qty_after: number | null;
+  store_qty_after: number | null;
+  reverted_at: string | null;
+  reverted_by: string | null;
+  restored_to_log_id: string | null;
   created_at: string;
   products: Pick<Product, "name" | "barcode"> | null;
 };
