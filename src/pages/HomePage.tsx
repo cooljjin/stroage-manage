@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, X } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { supabase } from "../lib/supabase";
@@ -84,6 +84,7 @@ export function HomePage({ navigate }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const selectedDate = dashboardView === "today" ? todayValue : tomorrowValue;
 
@@ -210,6 +211,30 @@ export function HomePage({ navigate }: Props) {
     }
   }
 
+  async function deleteTodo(todo: DashboardTodo) {
+    if (dashboardView !== "tomorrow") return;
+    if (!window.confirm(`"${todo.content}" 할 일을 삭제할까요?`)) return;
+
+    setDeletingIds((current) => new Set(current).add(todo.id));
+    setError("");
+    const { error: deleteError } = await supabase
+      .from("dashboard_todos")
+      .delete()
+      .eq("id", todo.id)
+      .eq("task_date", tomorrowValue);
+
+    if (deleteError) {
+      setError(deleteError.message);
+    } else {
+      setTodos((current) => current.filter((item) => item.id !== todo.id));
+    }
+    setDeletingIds((current) => {
+      const next = new Set(current);
+      next.delete(todo.id);
+      return next;
+    });
+  }
+
   async function addHandover(event: FormEvent) {
     event.preventDefault();
     const content = handoverDraft.trim();
@@ -237,6 +262,30 @@ export function HomePage({ navigate }: Props) {
       await loadDashboard();
     }
     setSaving(false);
+  }
+
+  async function deleteHandover(note: HandoverNote) {
+    if (dashboardView !== "tomorrow") return;
+    if (!window.confirm("이 인수인계 내용을 삭제할까요?")) return;
+
+    setDeletingIds((current) => new Set(current).add(note.id));
+    setError("");
+    const { error: deleteError } = await supabase
+      .from("handover_notes")
+      .delete()
+      .eq("id", note.id)
+      .eq("handover_date", tomorrowValue);
+
+    if (deleteError) {
+      setError(deleteError.message);
+    } else {
+      setHandovers((current) => current.filter((item) => item.id !== note.id));
+    }
+    setDeletingIds((current) => {
+      const next = new Set(current);
+      next.delete(note.id);
+      return next;
+    });
   }
 
   async function openHistory() {
@@ -351,16 +400,30 @@ export function HomePage({ navigate }: Props) {
               </div>
             ) : null}
             {todos.map((todo) => (
-              <label key={todo.id} className="flex min-h-11 cursor-pointer items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
-                <input
-                  type="checkbox"
-                  checked={todo.is_completed}
-                  disabled={!isToday}
-                  onChange={() => void toggleTodo(todo)}
-                  className="h-5 w-5 shrink-0 accent-teal-700 disabled:cursor-default disabled:opacity-60"
-                />
-                <span className={`min-w-0 flex-1 text-sm font-semibold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
-              </label>
+              <div key={todo.id} className="flex min-h-11 items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
+                <label className={`flex min-w-0 flex-1 items-center gap-2.5 ${isToday ? "cursor-pointer" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={todo.is_completed}
+                    disabled={!isToday}
+                    onChange={() => void toggleTodo(todo)}
+                    className="h-5 w-5 shrink-0 accent-teal-700 disabled:cursor-default disabled:opacity-60"
+                  />
+                  <span className={`min-w-0 flex-1 text-sm font-semibold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
+                </label>
+                {!isToday ? (
+                  <button
+                    type="button"
+                    disabled={deletingIds.has(todo.id)}
+                    onClick={() => void deleteTodo(todo)}
+                    className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                    aria-label={`${todo.content} 삭제`}
+                    title="삭제"
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                ) : null}
+              </div>
             ))}
           </div>
         </article>
@@ -398,9 +461,23 @@ export function HomePage({ navigate }: Props) {
               </div>
             ) : null}
             {handovers.map((note) => (
-              <div key={note.id} className="border-b border-slate-100 px-3 py-2.5 last:border-0 dark:border-slate-800">
-                <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-snug">{note.content}</p>
-                <p className="mt-1 text-[10px] text-slate-400">{profiles.get(note.created_by) ?? "직원"} · {formatDateTime(note.created_at)}</p>
+              <div key={note.id} className="flex gap-2 border-b border-slate-100 px-3 py-2.5 last:border-0 dark:border-slate-800">
+                <div className="min-w-0 flex-1">
+                  <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-snug">{note.content}</p>
+                  <p className="mt-1 text-[10px] text-slate-400">{profiles.get(note.created_by) ?? "직원"} · {formatDateTime(note.created_at)}</p>
+                </div>
+                {!isToday ? (
+                  <button
+                    type="button"
+                    disabled={deletingIds.has(note.id)}
+                    onClick={() => void deleteHandover(note)}
+                    className="touch-button grid shrink-0 place-items-center self-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                    aria-label="인수인계 삭제"
+                    title="삭제"
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>
