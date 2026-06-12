@@ -8,6 +8,7 @@ export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
 export type RouteName =
+  | "home"
   | "scan"
   | "register"
   | "product-edit"
@@ -105,6 +106,26 @@ export type InventoryLog = {
 
 export type InventoryLogWithStaff = InventoryLog & {
   staff_name: string;
+};
+
+export type DashboardTodo = {
+  id: string;
+  task_date: string;
+  content: string;
+  is_completed: boolean;
+  completed_at: string | null;
+  completed_by: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export type HandoverNote = {
+  id: string;
+  handover_date: string;
+  content: string;
+  created_by: string;
+  created_at: string;
+  author_name?: string;
 };
 
 export type AppRoute = {

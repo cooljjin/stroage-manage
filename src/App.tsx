@@ -5,6 +5,7 @@ import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { TopMenu } from "./components/TopMenu";
 import { LoginPage } from "./pages/LoginPage";
+import { HomePage } from "./pages/HomePage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductRegisterPage } from "./pages/ProductRegisterPage";
 import { ProductEditPage } from "./pages/ProductEditPage";
@@ -22,13 +23,13 @@ import { ensureCurrentProfile } from "./lib/profiles";
 import { supabase } from "./lib/supabase";
 import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 
-const NAV_ROUTES: RouteName[] = ["scan", "inventory", "low-stock", "logs"];
+const NAV_ROUTES: RouteName[] = ["home", "scan", "inventory", "low-stock", "logs"];
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
-  const [route, setRoute] = useState<AppRoute>({ name: "scan" });
+  const [route, setRoute] = useState<AppRoute>({ name: "home" });
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -61,7 +62,7 @@ export default function App() {
   }, [darkMode]);
 
   const activeRoute = useMemo<RouteName>(() => {
-    return NAV_ROUTES.includes(route.name) ? route.name : "scan";
+    return NAV_ROUTES.includes(route.name) ? route.name : "home";
   }, [route.name]);
 
   function navigate(next: AppRoute) {
@@ -72,7 +73,7 @@ export default function App() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    setRoute({ name: "scan" });
+    setRoute({ name: "home" });
   }
 
   if (authLoading) {
@@ -124,6 +125,7 @@ export default function App() {
       </header>
 
       <main className="mx-auto min-w-0 max-w-6xl px-4 py-4">
+        {route.name === "home" && <HomePage navigate={navigate} />}
         {route.name === "scan" && <ScanPage navigate={navigate} />}
         {route.name === "register" && <ProductRegisterPage barcode={route.barcode ?? ""} navigate={navigate} />}
         {route.name === "product-edit" && <ProductEditPage productId={route.productId ?? ""} navigate={navigate} />}

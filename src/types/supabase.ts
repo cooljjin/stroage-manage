@@ -224,6 +224,55 @@ export type Database = {
           }
         ];
       };
+      dashboard_todos: {
+        Row: {
+          id: string;
+          task_date: string;
+          content: string;
+          is_completed: boolean;
+          completed_at: string | null;
+          completed_by: string | null;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          task_date: string;
+          content: string;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          completed_by?: string | null;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          content?: string;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          completed_by?: string | null;
+        };
+        Relationships: [];
+      };
+      handover_notes: {
+        Row: {
+          id: string;
+          handover_date: string;
+          content: string;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          handover_date: string;
+          content: string;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          content?: string;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       is_admin: {
