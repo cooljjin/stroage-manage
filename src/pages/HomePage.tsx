@@ -3,7 +3,7 @@ import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck,
 import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, DashboardTodo, HandoverNote, InventoryLog, StaffProfile } from "../types/domain";
+import type { AppRoute, DashboardTodo, HandoverNote, InventoryLog, Product, StaffProfile } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -12,9 +12,11 @@ type Props = {
 type ReceiptItem = {
   productId: string;
   name: string;
-  quantity: number;
-  lastReceivedAt: string;
+  quantity: number | null;
+  lastReceivedAt: string | null;
 };
+
+type DashboardView = "today" | "tomorrow";
 
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
@@ -69,37 +71,46 @@ export function HomePage({ navigate }: Props) {
   const today = useMemo(() => new Date(), []);
   const todayValue = useMemo(() => formatDateValue(today), [today]);
   const tomorrowValue = useMemo(() => formatDateValue(addDays(today, 1)), [today]);
+  const [dashboardView, setDashboardView] = useState<DashboardView>("today");
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [todos, setTodos] = useState<DashboardTodo[]>([]);
   const [handovers, setHandovers] = useState<HandoverNote[]>([]);
   const [history, setHistory] = useState<HandoverNote[]>([]);
   const [profiles, setProfiles] = useState<Map<string, string>>(new Map());
   const [todoDraft, setTodoDraft] = useState("");
-  const [todoDate, setTodoDate] = useState(tomorrowValue);
   const [handoverDraft, setHandoverDraft] = useState("");
-  const [handoverDate, setHandoverDate] = useState(tomorrowValue);
   const [showTodoForm, setShowTodoForm] = useState(false);
   const [showHandoverForm, setShowHandoverForm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const selectedDate = dashboardView === "today" ? todayValue : tomorrowValue;
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
-    const range = getDayRange(new Date());
+    const range = getDayRange(new Date(`${selectedDate}T00:00:00`));
+    const receiptQuery =
+      dashboardView === "today"
+        ? supabase
+            .from("inventory_logs")
+            .select("*, products(name, barcode)")
+            .eq("action", "입고")
+            .gte("created_at", range.start)
+            .lt("created_at", range.end)
+            .order("created_at", { ascending: false })
+        : supabase
+            .from("products")
+            .select("*")
+            .eq("is_active", true)
+            .eq("fresh_order_selected", true)
+            .order("name", { ascending: true });
 
     const [receiptResult, todoResult, handoverResult, profileResult] = await Promise.all([
-      supabase
-        .from("inventory_logs")
-        .select("*, products(name, barcode)")
-        .eq("action", "입고")
-        .gte("created_at", range.start)
-        .lt("created_at", range.end)
-        .order("created_at", { ascending: false }),
-      supabase.from("dashboard_todos").select("*").eq("task_date", todayValue).order("created_at", { ascending: true }),
-      supabase.from("handover_notes").select("*").eq("handover_date", todayValue).order("created_at", { ascending: false }),
+      receiptQuery,
+      supabase.from("dashboard_todos").select("*").eq("task_date", selectedDate).order("created_at", { ascending: true }),
+      supabase.from("handover_notes").select("*").eq("handover_date", selectedDate).order("created_at", { ascending: false }),
       supabase.from("profiles").select("*")
     ]);
 
@@ -113,18 +124,29 @@ export function HomePage({ navigate }: Props) {
     }
 
     if (!receiptResult.error) {
-      const grouped = new Map<string, ReceiptItem>();
-      ((receiptResult.data ?? []) as unknown as InventoryLog[]).forEach((log) => {
-        const current = grouped.get(log.product_id);
-        const name = log.products?.name ?? "삭제된 상품";
-        grouped.set(log.product_id, {
-          productId: log.product_id,
-          name,
-          quantity: (current?.quantity ?? 0) + (log.quantity ?? 0),
-          lastReceivedAt: current?.lastReceivedAt ?? log.created_at
+      if (dashboardView === "today") {
+        const grouped = new Map<string, ReceiptItem>();
+        ((receiptResult.data ?? []) as unknown as InventoryLog[]).forEach((log) => {
+          const current = grouped.get(log.product_id);
+          const name = log.products?.name ?? "삭제된 상품";
+          grouped.set(log.product_id, {
+            productId: log.product_id,
+            name,
+            quantity: (current?.quantity ?? 0) + (log.quantity ?? 0),
+            lastReceivedAt: current?.lastReceivedAt ?? log.created_at
+          });
         });
-      });
-      setReceipts(Array.from(grouped.values()));
+        setReceipts(Array.from(grouped.values()));
+      } else {
+        setReceipts(
+          ((receiptResult.data ?? []) as Product[]).map((product) => ({
+            productId: product.id,
+            name: product.name,
+            quantity: null,
+            lastReceivedAt: product.fresh_order_selected_at
+          }))
+        );
+      }
     }
 
     if (!todoResult.error) setTodos((todoResult.data ?? []) as DashboardTodo[]);
@@ -133,7 +155,7 @@ export function HomePage({ navigate }: Props) {
       setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
     }
     setLoading(false);
-  }, [todayValue]);
+  }, [dashboardView, selectedDate]);
 
   useEffect(() => {
     void loadDashboard();
@@ -154,7 +176,7 @@ export function HomePage({ navigate }: Props) {
     }
 
     const { error: insertError } = await supabase.from("dashboard_todos").insert({
-      task_date: todoDate,
+      task_date: selectedDate,
       content,
       created_by: userData.user.id
     });
@@ -163,7 +185,7 @@ export function HomePage({ navigate }: Props) {
     } else {
       setTodoDraft("");
       setShowTodoForm(false);
-      if (todoDate === todayValue) await loadDashboard();
+      await loadDashboard();
     }
     setSaving(false);
   }
@@ -202,7 +224,7 @@ export function HomePage({ navigate }: Props) {
     }
 
     const { error: insertError } = await supabase.from("handover_notes").insert({
-      handover_date: handoverDate,
+      handover_date: selectedDate,
       content,
       created_by: userData.user.id
     });
@@ -211,7 +233,7 @@ export function HomePage({ navigate }: Props) {
     } else {
       setHandoverDraft("");
       setShowHandoverForm(false);
-      if (handoverDate === todayValue) await loadDashboard();
+      await loadDashboard();
     }
     setSaving(false);
   }
@@ -237,25 +259,55 @@ export function HomePage({ navigate }: Props) {
   }
 
   const completedCount = todos.filter((todo) => todo.is_completed).length;
+  const isToday = dashboardView === "today";
+
+  function changeDashboardView(nextView: DashboardView) {
+    setDashboardView(nextView);
+    setShowTodoForm(false);
+    setShowHandoverForm(false);
+    setTodoDraft("");
+    setHandoverDraft("");
+    setError("");
+  }
 
   return (
     <section className="flex h-[calc(100dvh-10.5rem)] min-h-[520px] flex-col">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-brand-700 dark:text-brand-100">오늘의 업무</p>
-          <h1 className="text-xl font-extrabold">{shortDateLabel(todayValue)}</h1>
+          <p className="text-xs font-bold text-brand-700 dark:text-brand-100">{isToday ? "오늘의 업무" : "내일의 업무"}</p>
+          <h1 className="text-xl font-extrabold">{shortDateLabel(selectedDate)}</h1>
         </div>
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">한눈에 확인하세요</span>
+        <div className="grid grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+          {(["today", "tomorrow"] as DashboardView[]).map((view) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => changeDashboardView(view)}
+              aria-pressed={dashboardView === view}
+              className={`min-h-9 rounded-md px-4 text-xs font-extrabold transition-colors ${
+                dashboardView === view
+                  ? "bg-brand-600 text-white"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              }`}
+            >
+              {view === "today" ? "오늘" : "내일"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error ? <div className="mb-2"><StatusMessage type="error">{error}</StatusMessage></div> : null}
 
       <div className="grid min-h-0 flex-1 grid-rows-3 gap-2.5 md:grid-cols-3 md:grid-rows-1">
         <article className="panel flex min-h-0 flex-col overflow-hidden">
-          <SectionHeader icon={PackageCheck} title="금일 입고품목" badge={`${receipts.length}종`} />
+          <SectionHeader icon={PackageCheck} title={isToday ? "금일 입고품목" : "내일 입고예정 품목"} badge={`${receipts.length}종`} />
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
-            {!loading && receipts.length === 0 ? <div className="grid h-full place-items-center p-3 text-xs text-slate-400">오늘 입고된 품목이 없습니다.</div> : null}
+            {!loading && receipts.length === 0 ? (
+              <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
+                {isToday ? "오늘 입고된 품목이 없습니다." : "내일 입고예정 품목이 없습니다."}
+              </div>
+            ) : null}
             {receipts.map((item) => (
               <button
                 key={item.productId}
@@ -264,8 +316,8 @@ export function HomePage({ navigate }: Props) {
                 className="flex min-h-11 w-full items-center gap-2 border-b border-slate-100 px-3 text-left last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
               >
                 <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
-                <span className="shrink-0 text-xs font-bold text-brand-700 dark:text-brand-100">+{item.quantity}</span>
-                <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span>
+                {item.quantity !== null ? <span className="shrink-0 text-xs font-bold text-brand-700 dark:text-brand-100">+{item.quantity}</span> : null}
+                {item.lastReceivedAt && isToday ? <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span> : null}
                 <ChevronRight className="shrink-0 text-slate-400" size={16} />
               </button>
             ))}
@@ -277,15 +329,14 @@ export function HomePage({ navigate }: Props) {
             icon={ClipboardCheck}
             title="To do list"
             badge={`${completedCount}/${todos.length}`}
-            action={
+            action={!isToday ? (
               <button type="button" onClick={() => setShowTodoForm((value) => !value)} className="touch-button grid place-items-center text-brand-700 dark:text-brand-100" aria-label="할 일 추가">
                 {showTodoForm ? <X size={19} /> : <Plus size={19} />}
               </button>
-            }
+            ) : undefined}
           />
           {showTodoForm ? (
-            <form onSubmit={addTodo} className="grid grid-cols-[112px_1fr_auto] gap-1.5 border-b border-slate-100 p-2 dark:border-slate-800">
-              <input className="field min-w-0 px-2 py-2 text-xs" type="date" value={todoDate} onChange={(event) => setTodoDate(event.target.value)} />
+            <form onSubmit={addTodo} className="grid grid-cols-[1fr_auto] gap-1.5 border-b border-slate-100 p-2 dark:border-slate-800">
               <input className="field min-w-0 px-2 py-2 text-xs" value={todoDraft} onChange={(event) => setTodoDraft(event.target.value)} placeholder="할 일 입력" autoFocus />
               <button className="grid min-h-10 min-w-10 place-items-center rounded-md bg-brand-600 text-white" type="submit" disabled={saving || !todoDraft.trim()} aria-label="저장">
                 <Check size={18} />
@@ -293,14 +344,19 @@ export function HomePage({ navigate }: Props) {
             </form>
           ) : null}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {!loading && todos.length === 0 ? <div className="grid h-full place-items-center p-3 text-xs text-slate-400">오늘 등록된 할 일이 없습니다.</div> : null}
+            {!loading && todos.length === 0 ? (
+              <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
+                {isToday ? "오늘 해야 할 일이 없습니다." : "내일 근무자를 위한 할 일이 없습니다."}
+              </div>
+            ) : null}
             {todos.map((todo) => (
               <label key={todo.id} className="flex min-h-11 cursor-pointer items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
                 <input
                   type="checkbox"
                   checked={todo.is_completed}
+                  disabled={!isToday}
                   onChange={() => void toggleTodo(todo)}
-                  className="h-5 w-5 shrink-0 accent-teal-700"
+                  className="h-5 w-5 shrink-0 accent-teal-700 disabled:cursor-default disabled:opacity-60"
                 />
                 <span className={`min-w-0 flex-1 text-sm font-semibold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
               </label>
@@ -318,25 +374,28 @@ export function HomePage({ navigate }: Props) {
                 <button type="button" onClick={() => void openHistory()} className="touch-button grid place-items-center text-slate-500 dark:text-slate-300" aria-label="인수인계 히스토리">
                   <History size={18} />
                 </button>
-                <button type="button" onClick={() => setShowHandoverForm((value) => !value)} className="touch-button grid place-items-center text-brand-700 dark:text-brand-100" aria-label="인수인계 추가">
-                  {showHandoverForm ? <X size={19} /> : <Plus size={19} />}
-                </button>
+                {!isToday ? (
+                  <button type="button" onClick={() => setShowHandoverForm((value) => !value)} className="touch-button grid place-items-center text-brand-700 dark:text-brand-100" aria-label="인수인계 추가">
+                    {showHandoverForm ? <X size={19} /> : <Plus size={19} />}
+                  </button>
+                ) : null}
               </div>
             }
           />
           {showHandoverForm ? (
             <form onSubmit={addHandover} className="border-b border-slate-100 p-2 dark:border-slate-800">
-              <div className="mb-1.5 flex gap-1.5">
-                <input className="field w-[128px] shrink-0 px-2 py-2 text-xs" type="date" value={handoverDate} onChange={(event) => setHandoverDate(event.target.value)} />
-                <button className="min-h-10 flex-1 rounded-md bg-brand-600 px-3 text-xs font-bold text-white" type="submit" disabled={saving || !handoverDraft.trim()}>
-                  전달사항 저장
-                </button>
-              </div>
-              <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="다음 근무자에게 전달할 내용을 입력하세요." autoFocus />
+              <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="내일 근무자에게 전달할 내용을 입력하세요." autoFocus />
+              <button className="mt-1.5 min-h-10 w-full rounded-md bg-brand-600 px-3 text-xs font-bold text-white" type="submit" disabled={saving || !handoverDraft.trim()}>
+                내일 인수인계 저장
+              </button>
             </form>
           ) : null}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {!loading && handovers.length === 0 ? <div className="grid h-full place-items-center p-3 text-xs text-slate-400">오늘 전달받은 인수인계가 없습니다.</div> : null}
+            {!loading && handovers.length === 0 ? (
+              <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
+                {isToday ? "오늘 인지할 인수인계가 없습니다." : "내일 근무자를 위한 인수인계가 없습니다."}
+              </div>
+            ) : null}
             {handovers.map((note) => (
               <div key={note.id} className="border-b border-slate-100 px-3 py-2.5 last:border-0 dark:border-slate-800">
                 <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-snug">{note.content}</p>
