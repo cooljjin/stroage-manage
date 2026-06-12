@@ -109,9 +109,16 @@ export function LowStockPage({ navigate }: Props) {
     const changedItems = freshItems.filter((item) => item.fresh_order_selected !== selectedFreshIds.has(item.id));
 
     const results = await Promise.all(
-      changedItems.map((item) =>
-        supabase.from("products").update({ fresh_order_selected: selectedFreshIds.has(item.id) }).eq("id", item.id)
-      )
+      changedItems.map((item) => {
+        const selected = selectedFreshIds.has(item.id);
+        return supabase
+          .from("products")
+          .update({
+            fresh_order_selected: selected,
+            fresh_order_selected_at: selected ? new Date().toISOString() : null
+          })
+          .eq("id", item.id);
+      })
     );
     const saveError = results.find((result) => result.error)?.error;
 
@@ -121,7 +128,13 @@ export function LowStockPage({ navigate }: Props) {
     } else {
       setItems((current) =>
         current.map((item) =>
-          item.supplier_name === "쿠팡 프레시" ? { ...item, fresh_order_selected: selectedFreshIds.has(item.id) } : item
+          item.supplier_name === "쿠팡 프레시"
+            ? {
+                ...item,
+                fresh_order_selected: selectedFreshIds.has(item.id),
+                fresh_order_selected_at: selectedFreshIds.has(item.id) ? item.fresh_order_selected_at ?? new Date().toISOString() : null
+              }
+            : item
         )
       );
       setFreshModalOpen(false);

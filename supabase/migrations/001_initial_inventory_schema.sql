@@ -12,6 +12,7 @@ create table if not exists public.products (
   urgent_order_requested boolean not null default false,
   urgent_order_quantity integer check (urgent_order_quantity is null or urgent_order_quantity > 0),
   fresh_order_selected boolean not null default false,
+  fresh_order_selected_at timestamptz,
   status_enabled boolean not null default false,
   stock_status text check (stock_status in ('충분', '절반 이하', '발주 필요') or stock_status is null),
   minimum_stock integer not null default 0 check (minimum_stock >= 0),
@@ -28,6 +29,7 @@ alter table public.products add column if not exists order_completed boolean not
 alter table public.products add column if not exists urgent_order_requested boolean not null default false;
 alter table public.products add column if not exists urgent_order_quantity integer;
 alter table public.products add column if not exists fresh_order_selected boolean not null default false;
+alter table public.products add column if not exists fresh_order_selected_at timestamptz;
 alter table public.products add column if not exists status_enabled boolean not null default false;
 alter table public.products add column if not exists stock_status text;
 alter table public.products drop constraint if exists products_urgent_order_quantity_check;
@@ -135,6 +137,34 @@ create index if not exists suppliers_is_active_idx on public.suppliers (is_activ
 create index if not exists inventory_product_id_idx on public.inventory (product_id);
 create index if not exists inventory_logs_created_at_idx on public.inventory_logs (created_at desc);
 create index if not exists inventory_logs_product_id_idx on public.inventory_logs (product_id);
+
+create or replace function public.clear_fresh_order_after_next_day_receipt()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.action = '입고' then
+    update public.products
+    set fresh_order_selected = false,
+        fresh_order_selected_at = null
+    where id = new.product_id
+      and fresh_order_selected = true
+      and fresh_order_selected_at is not null
+      and (fresh_order_selected_at at time zone 'Asia/Seoul')::date
+          < (new.created_at at time zone 'Asia/Seoul')::date;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists clear_fresh_order_after_next_day_receipt on public.inventory_logs;
+create trigger clear_fresh_order_after_next_day_receipt
+after insert on public.inventory_logs
+for each row
+execute function public.clear_fresh_order_after_next_day_receipt();
 
 insert into public.inventory (product_id)
 select products.id

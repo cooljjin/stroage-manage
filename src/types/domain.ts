@@ -33,6 +33,7 @@ export type Product = {
   urgent_order_requested: boolean;
   urgent_order_quantity: number | null;
   fresh_order_selected: boolean;
+  fresh_order_selected_at: string | null;
   status_enabled: boolean;
   stock_status: StockStatus | null;
   minimum_stock: number;
