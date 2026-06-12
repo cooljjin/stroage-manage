@@ -11,6 +11,7 @@ import { ProductEditPage } from "./pages/ProductEditPage";
 import { InventoryOperationPage } from "./pages/InventoryOperationPage";
 import { InventoryListPage } from "./pages/InventoryListPage";
 import { LowStockPage } from "./pages/LowStockPage";
+import { StatusItemsPage } from "./pages/StatusItemsPage";
 import { LogsPage } from "./pages/LogsPage";
 import { ProductManagementPage } from "./pages/ProductManagementPage";
 import { CategoryManagementPage } from "./pages/CategoryManagementPage";
@@ -129,6 +130,7 @@ export default function App() {
         {route.name === "operation" && <InventoryOperationPage productId={route.productId ?? ""} navigate={navigate} />}
         {route.name === "inventory" && <InventoryListPage navigate={navigate} />}
         {route.name === "low-stock" && <LowStockPage navigate={navigate} />}
+        {route.name === "status-items" && <StatusItemsPage navigate={navigate} />}
         {route.name === "logs" && <LogsPage navigate={navigate} />}
         {route.name === "product-management" && <ProductManagementPage navigate={navigate} />}
         {route.name === "category-management" && <CategoryManagementPage />}

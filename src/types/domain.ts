@@ -7,7 +7,19 @@ export type InventoryAction = "입고" | "출고" | "이동" | "조정";
 export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
-export type RouteName = "scan" | "register" | "product-edit" | "operation" | "inventory" | "low-stock" | "logs" | "product-management" | "category-management" | "supplier-management" | "admin";
+export type RouteName =
+  | "scan"
+  | "register"
+  | "product-edit"
+  | "operation"
+  | "inventory"
+  | "low-stock"
+  | "status-items"
+  | "logs"
+  | "product-management"
+  | "category-management"
+  | "supplier-management"
+  | "admin";
 
 export type Product = {
   id: string;
