@@ -17,6 +17,7 @@ export type Database = {
           order_completed: boolean;
           urgent_order_requested: boolean;
           urgent_order_quantity: number | null;
+          fresh_order_selected: boolean;
           status_enabled: boolean;
           stock_status: StockStatus | null;
           minimum_stock: number;
@@ -34,6 +35,7 @@ export type Database = {
           order_completed?: boolean;
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
+          fresh_order_selected?: boolean;
           status_enabled?: boolean;
           stock_status?: StockStatus | null;
           minimum_stock?: number;
@@ -50,6 +52,7 @@ export type Database = {
           order_completed?: boolean;
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
+          fresh_order_selected?: boolean;
           status_enabled?: boolean;
           stock_status?: StockStatus | null;
           minimum_stock?: number;

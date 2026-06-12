@@ -15,6 +15,7 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
     order_completed: row.order_completed ?? false,
     urgent_order_requested: row.urgent_order_requested ?? false,
     urgent_order_quantity: row.urgent_order_quantity ?? null,
+    fresh_order_selected: row.fresh_order_selected ?? false,
     status_enabled: row.status_enabled ?? false,
     stock_status: row.stock_status ?? null,
     inventory,

@@ -11,6 +11,7 @@ create table if not exists public.products (
   order_completed boolean not null default false,
   urgent_order_requested boolean not null default false,
   urgent_order_quantity integer check (urgent_order_quantity is null or urgent_order_quantity > 0),
+  fresh_order_selected boolean not null default false,
   status_enabled boolean not null default false,
   stock_status text check (stock_status in ('충분', '절반 이하', '발주 필요') or stock_status is null),
   minimum_stock integer not null default 0 check (minimum_stock >= 0),
@@ -26,6 +27,7 @@ alter table public.products add column if not exists product_url text;
 alter table public.products add column if not exists order_completed boolean not null default false;
 alter table public.products add column if not exists urgent_order_requested boolean not null default false;
 alter table public.products add column if not exists urgent_order_quantity integer;
+alter table public.products add column if not exists fresh_order_selected boolean not null default false;
 alter table public.products add column if not exists status_enabled boolean not null default false;
 alter table public.products add column if not exists stock_status text;
 alter table public.products drop constraint if exists products_urgent_order_quantity_check;
@@ -132,6 +134,7 @@ create index if not exists products_name_idx on public.products using gin (to_ts
 create index if not exists products_barcode_idx on public.products (barcode);
 create index if not exists products_supplier_name_idx on public.products (supplier_name);
 create index if not exists products_is_active_idx on public.products (is_active);
+create index if not exists products_fresh_order_selected_idx on public.products (fresh_order_selected) where fresh_order_selected = true;
 create index if not exists product_barcodes_product_id_idx on public.product_barcodes (product_id);
 create index if not exists product_barcodes_barcode_idx on public.product_barcodes (barcode);
 create index if not exists categories_is_active_idx on public.categories (is_active);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Search, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { normalizeInventoryItem } from "../lib/inventory";
@@ -37,6 +38,10 @@ export function LowStockPage({ navigate }: Props) {
   const [urgentProductId, setUrgentProductId] = useState("");
   const [urgentQuantity, setUrgentQuantity] = useState("");
   const [savingUrgent, setSavingUrgent] = useState(false);
+  const [freshModalOpen, setFreshModalOpen] = useState(false);
+  const [freshSearch, setFreshSearch] = useState("");
+  const [selectedFreshIds, setSelectedFreshIds] = useState<Set<string>>(new Set());
+  const [savingFresh, setSavingFresh] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -57,14 +62,73 @@ export function LowStockPage({ navigate }: Props) {
 
   const lowStockItems = useMemo(() => {
     return items
-      .filter((item) => item.is_low_stock)
+      .filter((item) => item.is_low_stock || item.fresh_order_selected)
       .sort((a, b) => {
         if (a.urgent_order_requested !== b.urgent_order_requested) {
           return a.urgent_order_requested ? -1 : 1;
         }
+        if (a.fresh_order_selected !== b.fresh_order_selected) {
+          return a.fresh_order_selected ? -1 : 1;
+        }
         return a.name.localeCompare(b.name, "ko");
       });
   }, [items]);
+
+  const freshProducts = useMemo(() => {
+    const keyword = freshSearch.trim().toLocaleLowerCase("ko");
+    return items.filter((item) => {
+      if (item.supplier_name !== "쿠팡 프레시") return false;
+      return !keyword || item.name.toLocaleLowerCase("ko").includes(keyword);
+    });
+  }, [freshSearch, items]);
+
+  function openFreshModal() {
+    setError("");
+    setFreshSearch("");
+    setSelectedFreshIds(new Set(items.filter((item) => item.supplier_name === "쿠팡 프레시" && item.fresh_order_selected).map((item) => item.id)));
+    setFreshModalOpen(true);
+  }
+
+  function toggleFreshProduct(productId: string) {
+    setSelectedFreshIds((current) => {
+      const next = new Set(current);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  }
+
+  async function saveFreshProducts() {
+    setSavingFresh(true);
+    setError("");
+
+    const freshItems = items.filter((item) => item.supplier_name === "쿠팡 프레시");
+    const changedItems = freshItems.filter((item) => item.fresh_order_selected !== selectedFreshIds.has(item.id));
+
+    const results = await Promise.all(
+      changedItems.map((item) =>
+        supabase.from("products").update({ fresh_order_selected: selectedFreshIds.has(item.id) }).eq("id", item.id)
+      )
+    );
+    const saveError = results.find((result) => result.error)?.error;
+
+    if (saveError) {
+      setError(saveError.message);
+      await loadItems();
+    } else {
+      setItems((current) =>
+        current.map((item) =>
+          item.supplier_name === "쿠팡 프레시" ? { ...item, fresh_order_selected: selectedFreshIds.has(item.id) } : item
+        )
+      );
+      setFreshModalOpen(false);
+    }
+
+    setSavingFresh(false);
+  }
 
   function openUrgentModal() {
     setError("");
@@ -132,6 +196,13 @@ export function LowStockPage({ navigate }: Props) {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
+              onClick={openFreshModal}
+              className="touch-button rounded-md bg-emerald-600 px-3 text-sm font-bold text-white"
+            >
+              프레시상품
+            </button>
+            <button
+              type="button"
               disabled={lowStockItems.length === 0}
               onClick={openUrgentModal}
               className="touch-button rounded-md bg-red-600 px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
@@ -153,12 +224,19 @@ export function LowStockPage({ navigate }: Props) {
               <div
                 key={item.id}
                 onClick={() => navigate({ name: "operation", productId: item.id })}
-                className="cursor-pointer rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                className={`cursor-pointer rounded-md border p-3 ${
+                  item.fresh_order_selected
+                    ? "border-emerald-300 bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950"
+                    : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                }`}
               >
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <span className="break-words text-base font-bold leading-snug">{item.name}</span>
                   {item.urgent_order_requested ? (
                     <span className="rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">긴급 {item.urgent_order_quantity ?? 0}개</span>
+                  ) : null}
+                  {item.fresh_order_selected ? (
+                    <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">프레시</span>
                   ) : null}
                 </div>
                 <div className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2 text-sm">
@@ -200,12 +278,23 @@ export function LowStockPage({ navigate }: Props) {
               </thead>
               <tbody>
                 {lowStockItems.map((item) => (
-                  <tr key={item.id} onClick={() => navigate({ name: "operation", productId: item.id })} className="cursor-pointer border-t border-slate-100 dark:border-slate-900">
+                  <tr
+                    key={item.id}
+                    onClick={() => navigate({ name: "operation", productId: item.id })}
+                    className={`cursor-pointer border-t ${
+                      item.fresh_order_selected
+                        ? "border-emerald-200 bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950"
+                        : "border-slate-100 dark:border-slate-900"
+                    }`}
+                  >
                     <td className="px-3 py-3 font-semibold">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="truncate">{item.name}</span>
                         {item.urgent_order_requested ? (
                           <span className="shrink-0 rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">긴급 {item.urgent_order_quantity ?? 0}개</span>
+                        ) : null}
+                        {item.fresh_order_selected ? (
+                          <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">프레시</span>
                         ) : null}
                       </div>
                     </td>
@@ -231,6 +320,93 @@ export function LowStockPage({ navigate }: Props) {
           </div>
 
           {lowStockItems.length === 0 ? <StatusMessage type="success">부족 재고가 없습니다.</StatusMessage> : null}
+
+          {freshModalOpen ? (
+            <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-4 py-6">
+              <div className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
+                  <div>
+                    <h2 className="text-lg font-bold">프레시상품</h2>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">쿠팡 프레시 발주처의 상품을 선택합니다.</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={savingFresh}
+                    onClick={() => void saveFreshProducts()}
+                    className="touch-button shrink-0 rounded-md bg-emerald-600 px-4 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    {savingFresh ? "저장 중" : "저장"}
+                  </button>
+                </div>
+
+                <div className="border-b border-slate-200 p-4 dark:border-slate-800">
+                  <label className="relative block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input
+                      className="field pl-10 pr-10"
+                      value={freshSearch}
+                      onChange={(event) => setFreshSearch(event.target.value)}
+                      placeholder="품목 검색"
+                      autoFocus
+                    />
+                    {freshSearch ? (
+                      <button
+                        type="button"
+                        onClick={() => setFreshSearch("")}
+                        className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center text-slate-500"
+                        aria-label="검색어 지우기"
+                      >
+                        <X size={19} />
+                      </button>
+                    ) : null}
+                  </label>
+                  <p className="mt-2 text-right text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    {selectedFreshIds.size}개 선택
+                  </p>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  <div className="space-y-2">
+                    {freshProducts.map((item) => {
+                      const selected = selectedFreshIds.has(item.id);
+
+                      return (
+                        <label
+                          key={item.id}
+                          className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 ${
+                            selected
+                              ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                              : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleFreshProduct(item.id)}
+                            className="h-6 w-6 shrink-0 rounded border-slate-300 accent-emerald-600"
+                          />
+                          <span className="min-w-0 flex-1 break-words font-bold">{item.name}</span>
+                        </label>
+                      );
+                    })}
+
+                    {freshProducts.length === 0 ? <StatusMessage>검색 결과가 없습니다.</StatusMessage> : null}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 p-3 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setFreshModalOpen(false)}
+                    disabled={savingFresh}
+                    className="touch-button w-full rounded-md border border-slate-300 px-4 font-bold dark:border-slate-700"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {urgentModalOpen ? (
             <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-4">
