@@ -45,6 +45,12 @@ to authenticated
 using (true)
 with check (completed_by is null or completed_by = auth.uid());
 
+drop policy if exists "Authenticated users can delete future dashboard todos" on public.dashboard_todos;
+create policy "Authenticated users can delete future dashboard todos"
+on public.dashboard_todos for delete
+to authenticated
+using (task_date > (now() at time zone 'Asia/Seoul')::date);
+
 drop policy if exists "Authenticated users can read handover notes" on public.handover_notes;
 create policy "Authenticated users can read handover notes"
 on public.handover_notes for select
@@ -57,7 +63,13 @@ on public.handover_notes for insert
 to authenticated
 with check (created_by = auth.uid());
 
-grant select, insert, update on public.dashboard_todos to authenticated;
-grant select, insert on public.handover_notes to authenticated;
+drop policy if exists "Authenticated users can delete future handover notes" on public.handover_notes;
+create policy "Authenticated users can delete future handover notes"
+on public.handover_notes for delete
+to authenticated
+using (handover_date > (now() at time zone 'Asia/Seoul')::date);
+
+grant select, insert, update, delete on public.dashboard_todos to authenticated;
+grant select, insert, delete on public.handover_notes to authenticated;
 
 notify pgrst, 'reload schema';
