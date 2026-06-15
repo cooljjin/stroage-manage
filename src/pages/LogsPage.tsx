@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { formatLogContent } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, InventoryLog, InventoryLogWithStaff, Product, StaffProfile } from "../types/domain";
+import type { AppRoute, InventoryLog, InventoryLogWithStaff, StaffProfile } from "../types/domain";
 
 type LogPeriod = "day" | "week" | "month";
 
@@ -47,24 +48,29 @@ function getLogRange(period: LogPeriod, baseDateValue: string): { start: Date; e
 
 export function LogsPage({ navigate }: Props) {
   const [logs, setLogs] = useState<InventoryLogWithStaff[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
   const [period, setPeriod] = useState<LogPeriod>("day");
   const [baseDate, setBaseDate] = useState(() => formatDateInputValue(new Date()));
-  const [productId, setProductId] = useState("all");
+  const [productSearch, setProductSearch] = useState("");
   const [staffId, setStaffId] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const range = useMemo(() => getLogRange(period, baseDate), [baseDate, period]);
+  const filteredLogs = useMemo(() => {
+    const keyword = productSearch.trim().toLocaleLowerCase("ko");
+    if (!keyword) return logs;
 
-  async function loadFilterOptions() {
-    const [productResult, profileResult] = await Promise.all([
-      supabase.from("products").select("*").order("name", { ascending: true }),
-      supabase.from("profiles").select("*").order("display_name", { ascending: true })
-    ]);
+    return logs.filter((log) => {
+      const productName = log.products?.name ?? "삭제된 상품";
+      const barcode = log.products?.barcode ?? "";
+      return productName.toLocaleLowerCase("ko").includes(keyword) || barcode.toLocaleLowerCase("ko").includes(keyword);
+    });
+  }, [logs, productSearch]);
 
-    if (!productResult.error) setProducts((productResult.data ?? []) as Product[]);
+  async function loadProfiles() {
+    const profileResult = await supabase.from("profiles").select("*").order("display_name", { ascending: true });
+
     if (!profileResult.error) setProfiles((profileResult.data ?? []) as StaffProfile[]);
   }
 
@@ -77,10 +83,6 @@ export function LogsPage({ navigate }: Props) {
       .select("*, products(name, barcode)")
       .gte("created_at", range.start.toISOString())
       .lt("created_at", range.end.toISOString());
-
-    if (productId !== "all") {
-      query = query.eq("product_id", productId);
-    }
 
     if (staffId !== "all") {
       query = query.eq("user_id", staffId);
@@ -104,14 +106,14 @@ export function LogsPage({ navigate }: Props) {
       );
     }
     setLoading(false);
-  }, [productId, range.end, range.start, staffId]);
+  }, [range.end, range.start, staffId]);
 
   useEffect(() => {
     void loadLogs();
   }, [loadLogs]);
 
   useEffect(() => {
-    void loadFilterOptions();
+    void loadProfiles();
   }, []);
 
   return (
@@ -143,14 +145,15 @@ export function LogsPage({ navigate }: Props) {
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">상품</span>
-            <select className="field" value={productId} onChange={(event) => setProductId(event.target.value)}>
-              <option value="all">전체 상품</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
+            <span className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                className="field pl-10"
+                value={productSearch}
+                onChange={(event) => setProductSearch(event.target.value)}
+                placeholder="상품명 또는 바코드 검색"
+              />
+            </span>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">직원</span>
@@ -182,7 +185,7 @@ export function LogsPage({ navigate }: Props) {
               </tr>
             </thead>
             <tbody>
-              {logs.map((log) => (
+              {filteredLogs.map((log) => (
                 <tr key={log.id} className="border-t border-slate-100 dark:border-slate-900">
                   <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(log.created_at)}</td>
                   <td className="truncate px-3 py-3 text-xs">{log.staff_name}</td>
@@ -206,7 +209,11 @@ export function LogsPage({ navigate }: Props) {
               ))}
             </tbody>
           </table>
-          {logs.length === 0 ? <div className="p-4"><StatusMessage>작업 로그가 없습니다.</StatusMessage></div> : null}
+          {filteredLogs.length === 0 ? (
+            <div className="p-4">
+              <StatusMessage>{productSearch.trim() ? "검색 조건에 맞는 작업 로그가 없습니다." : "작업 로그가 없습니다."}</StatusMessage>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
