@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, X } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
@@ -77,13 +77,18 @@ export function HomePage({ navigate }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [receiptActioning, setReceiptActioning] = useState(false);
+  const [receiptDeletingIds, setReceiptDeletingIds] = useState<Set<string>>(new Set());
+  const [hasReceiptDeletion, setHasReceiptDeletion] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const selectedDate = dashboardView === "today" ? todayValue : nextBusinessDate;
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
+    setMessage("");
     const [weeklyClosureResult, specificClosureResult] = await Promise.all([
       supabase.from("weekly_store_closures").select("weekday"),
       supabase.from("store_closure_dates").select("closure_date").gte("closure_date", todayValue)
@@ -132,17 +137,28 @@ export function HomePage({ navigate }: Props) {
             .eq("fresh_order_selected", true)
             .order("name", { ascending: true });
 
-    const [receiptResult, todoResult, handoverResult, profileResult] = await Promise.all([
+    const [receiptResult, todoResult, handoverResult, profileResult, receiptDeletionResult] = await Promise.all([
       receiptQuery,
       supabase.from("dashboard_todos").select("*").eq("task_date", dashboardDate).order("created_at", { ascending: true }),
       supabase.from("handover_notes").select("*").eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
-      supabase.from("profiles").select("*")
+      supabase.from("profiles").select("*"),
+      supabase
+        .from("dashboard_receipt_deletions")
+        .select("id")
+        .is("restored_at", null)
+        .gte("deleted_at", range.start)
+        .lt("deleted_at", range.end)
+        .order("deleted_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
     ]);
 
-    const firstError = receiptResult.error ?? todoResult.error ?? handoverResult.error ?? profileResult.error;
+    const firstError = receiptResult.error ?? todoResult.error ?? handoverResult.error ?? profileResult.error ?? receiptDeletionResult.error;
     if (firstError) {
       setError(
-        firstError.message.includes("dashboard_todos") || firstError.message.includes("handover_notes")
+        firstError.message.includes("dashboard_todos")
+          || firstError.message.includes("handover_notes")
+          || firstError.message.includes("dashboard_receipt_deletions")
           ? "메인페이지용 데이터베이스 업데이트가 필요합니다."
           : firstError.message
       );
@@ -179,12 +195,65 @@ export function HomePage({ navigate }: Props) {
     if (!profileResult.error) {
       setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
     }
+    if (!receiptDeletionResult.error) setHasReceiptDeletion(Boolean(receiptDeletionResult.data));
     setLoading(false);
   }, [dashboardView, todayValue]);
 
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  function receiptActionError(message: string) {
+    return message.includes("delete_today_product_receipts")
+      || message.includes("restore_latest_dashboard_receipt_deletion")
+      || message.includes("dashboard_receipt_deletions")
+      ? "금일 입고 삭제 기능을 위한 데이터베이스 업데이트가 필요합니다."
+      : message;
+  }
+
+  async function deleteTodayReceipt(item: ReceiptItem) {
+    if (!isToday || item.quantity === null) return;
+    if (!window.confirm(`${item.name}의 오늘 입고 수량 ${item.quantity}개를 삭제할까요?\n재고에서도 해당 수량이 차감됩니다.`)) return;
+
+    setReceiptDeletingIds((current) => new Set(current).add(item.productId));
+    setError("");
+    setMessage("");
+    const { error: deleteError } = await supabase.rpc("delete_today_product_receipts", {
+      target_product_id: item.productId
+    });
+
+    if (deleteError) {
+      setError(receiptActionError(deleteError.message));
+    } else {
+      setMessage(`${item.name}의 금일 입고 기록을 삭제했습니다.`);
+      await loadDashboard();
+      setMessage(`${item.name}의 금일 입고 기록을 삭제했습니다.`);
+    }
+
+    setReceiptDeletingIds((current) => {
+      const next = new Set(current);
+      next.delete(item.productId);
+      return next;
+    });
+  }
+
+  async function restoreLatestReceiptDeletion() {
+    if (!isToday || !hasReceiptDeletion) return;
+    if (!window.confirm("가장 최근에 삭제한 금일 입고 기록을 되돌릴까요?")) return;
+
+    setReceiptActioning(true);
+    setError("");
+    setMessage("");
+    const { error: restoreError } = await supabase.rpc("restore_latest_dashboard_receipt_deletion");
+
+    if (restoreError) {
+      setError(receiptActionError(restoreError.message));
+    } else {
+      await loadDashboard();
+      setMessage("가장 최근 금일 입고 삭제를 되돌렸습니다.");
+    }
+    setReceiptActioning(false);
+  }
 
   async function addTodo(event: FormEvent) {
     event.preventDefault();
@@ -370,10 +439,27 @@ export function HomePage({ navigate }: Props) {
       </div>
 
       {error ? <div className="mb-2"><StatusMessage type="error">{error}</StatusMessage></div> : null}
+      {message ? <div className="mb-2"><StatusMessage type="success">{message}</StatusMessage></div> : null}
 
       <div className="grid min-h-0 flex-1 grid-rows-3 gap-2.5 md:grid-cols-3 md:grid-rows-1">
         <article className="panel flex min-h-0 flex-col overflow-hidden">
-          <SectionHeader icon={PackageCheck} title={isToday ? "금일 입고품목" : "내일 입고예정 품목"} badge={`${receipts.length}종`} />
+          <SectionHeader
+            icon={PackageCheck}
+            title={isToday ? "금일 입고품목" : "내일 입고예정 품목"}
+            badge={`${receipts.length}종`}
+            action={isToday ? (
+              <button
+                type="button"
+                disabled={!hasReceiptDeletion || receiptActioning}
+                onClick={() => void restoreLatestReceiptDeletion()}
+                className="touch-button grid shrink-0 place-items-center text-brand-700 disabled:cursor-default disabled:opacity-30 dark:text-brand-100"
+                aria-label="최근 금일 입고 삭제 되돌리기"
+                title="최근 삭제 되돌리기"
+              >
+                <Undo2 size={18} />
+              </button>
+            ) : undefined}
+          />
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
             {!loading && receipts.length === 0 ? (
@@ -382,17 +468,30 @@ export function HomePage({ navigate }: Props) {
               </div>
             ) : null}
             {receipts.map((item) => (
-              <button
-                key={item.productId}
-                type="button"
-                onClick={() => navigate({ name: "operation", productId: item.productId })}
-                className="flex min-h-11 w-full items-center gap-2 border-b border-slate-100 px-3 text-left last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-              >
-                <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
+              <div key={item.productId} className="flex min-h-11 items-center gap-1 border-b border-slate-100 px-2 last:border-0 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => navigate({ name: "operation", productId: item.productId })}
+                  className="flex min-w-0 flex-1 items-center gap-2 px-1 text-left hover:text-brand-700 dark:hover:text-brand-100"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
+                  {item.lastReceivedAt && isToday ? <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span> : null}
+                  <ChevronRight className="shrink-0 text-slate-400" size={16} />
+                </button>
                 {item.quantity !== null ? <span className="shrink-0 text-xs font-bold text-brand-700 dark:text-brand-100">+{item.quantity}</span> : null}
-                {item.lastReceivedAt && isToday ? <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span> : null}
-                <ChevronRight className="shrink-0 text-slate-400" size={16} />
-              </button>
+                {isToday ? (
+                  <button
+                    type="button"
+                    disabled={receiptDeletingIds.has(item.productId) || receiptActioning}
+                    onClick={() => void deleteTodayReceipt(item)}
+                    className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                    aria-label={`${item.name} 금일 입고 삭제`}
+                    title="금일 입고 삭제"
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                ) : null}
+              </div>
             ))}
           </div>
         </article>

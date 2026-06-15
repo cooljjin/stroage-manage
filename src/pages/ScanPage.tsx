@@ -1,5 +1,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { BrowserMultiFormatOneDReader } from "@zxing/browser";
+import type { IScannerControls } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
@@ -10,22 +12,31 @@ type Props = {
   navigate: (route: AppRoute) => void;
 };
 
-const SCANNER_ID = "barcode-scanner";
-const PRODUCT_BARCODE_FORMATS = [
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.CODABAR
+const PRODUCT_LIVE_BARCODE_FORMATS = [
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.CODE_93,
+  BarcodeFormat.ITF,
+  BarcodeFormat.CODABAR
 ];
-const DEFAULT_CAMERA_ZOOM = 1.5;
+const SCAN_ATTEMPT_DELAY_MS = 80;
 
-type FocusMediaTrackConstraints = MediaTrackConstraints & {
-  advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
+type ExtendedMediaTrackCapabilities = MediaTrackCapabilities & {
+  focusMode?: string[];
+  zoom?: { min: number; max: number; step: number };
+};
+
+type ExtendedMediaTrackSettings = MediaTrackSettings & {
+  zoom?: number;
+};
+
+type ExtendedMediaTrackConstraintSet = MediaTrackConstraintSet & {
+  focusMode?: string;
+  zoom?: number;
 };
 
 function getBarcodeCandidates(barcode: string): string[] {
@@ -36,6 +47,13 @@ function getBarcodeCandidates(barcode: string): string[] {
   if (/^0\d{12}$/.test(normalized)) candidates.add(normalized.slice(1));
 
   return [...candidates];
+}
+
+function createBarcodeHints() {
+  const hints = new Map<DecodeHintType, unknown>();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, PRODUCT_LIVE_BARCODE_FORMATS);
+  hints.set(DecodeHintType.TRY_HARDER, true);
+  return hints;
 }
 
 async function findProductByBarcode(barcode: string): Promise<{ product: Product | null; errorMessage: string }> {
@@ -61,7 +79,9 @@ export function ScanPage({ navigate }: Props) {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
   const [zoom, setZoom] = useState(1);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const liveReaderRef = useRef<BrowserMultiFormatOneDReader | null>(null);
+  const liveControlsRef = useRef<IScannerControls | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const barcodeHandlingRef = useRef(false);
   const autoStartAttemptedRef = useRef(false);
@@ -69,10 +89,13 @@ export function ScanPage({ navigate }: Props) {
   const canScan = useMemo(() => "mediaDevices" in navigator, []);
 
   useEffect(() => {
+    const videoElement = videoRef.current;
     return () => {
-      if (scannerRef.current?.isScanning) {
-        scannerRef.current.stop().catch(() => undefined);
-      }
+      liveControlsRef.current?.stop();
+      liveControlsRef.current = null;
+      liveReaderRef.current = null;
+      const stream = videoElement?.srcObject;
+      if (stream instanceof MediaStream) stream.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
@@ -80,10 +103,11 @@ export function ScanPage({ navigate }: Props) {
     if (barcodeHandlingRef.current) return;
     barcodeHandlingRef.current = true;
     setMessage(`스캔됨: ${barcode}`);
-    if (scannerRef.current?.isScanning) {
-      await scannerRef.current.stop().catch(() => undefined);
-    }
+    liveControlsRef.current?.stop();
+    liveControlsRef.current = null;
+    liveReaderRef.current = null;
     setScannerActive(false);
+    setZoomRange(null);
 
     const { product, errorMessage } = await findProductByBarcode(barcode);
     if (errorMessage) {
@@ -106,58 +130,64 @@ export function ScanPage({ navigate }: Props) {
       return;
     }
 
-    if (scannerRef.current?.isScanning) return;
+    if (liveControlsRef.current || !videoRef.current) return;
 
-    const scanner = new Html5Qrcode(SCANNER_ID, {
-      formatsToSupport: PRODUCT_BARCODE_FORMATS,
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true
-      },
-      verbose: false
+    const reader = new BrowserMultiFormatOneDReader(createBarcodeHints(), {
+      delayBetweenScanAttempts: SCAN_ATTEMPT_DELAY_MS,
+      delayBetweenScanSuccess: 0,
+      tryPlayVideoTimeout: 10000
     });
-    scannerRef.current = scanner;
+    liveReaderRef.current = reader;
     barcodeHandlingRef.current = false;
     setZoomRange(null);
     setZoom(1);
     setScannerActive(true);
 
     try {
-      await scanner.start(
-        { facingMode: { ideal: "environment" } },
+      const controls = await reader.decodeFromConstraints(
         {
-          fps: 12,
-          qrbox: (viewfinderWidth, viewfinderHeight) => ({
-            width: Math.floor(Math.min(viewfinderWidth * 0.92, 520)),
-            height: Math.floor(Math.min(viewfinderHeight * 0.32, 150))
-          }),
-          aspectRatio: 4 / 3,
-          disableFlip: true,
-          videoConstraints: {
+          audio: false,
+          video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1440 }
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1440 },
+            frameRate: { ideal: 30, min: 15 }
           }
         },
-        (decodedText) => void handleBarcode(decodedText),
-        () => undefined
+        videoRef.current,
+        (result) => {
+          if (result) void handleBarcode(result.getText());
+        }
       );
+      liveControlsRef.current = controls;
+      if (barcodeHandlingRef.current) {
+        controls.stop();
+        liveControlsRef.current = null;
+        liveReaderRef.current = null;
+        return;
+      }
 
-      const focusConstraints: FocusMediaTrackConstraints = {
-        advanced: [{ focusMode: "continuous" }]
-      };
-      await scanner.applyVideoConstraints(focusConstraints).catch(() => undefined);
-
-      const zoomFeature = scanner.getRunningTrackCameraCapabilities().zoomFeature();
-      if (zoomFeature.isSupported()) {
-        const min = zoomFeature.min();
-        const max = zoomFeature.max();
-        const step = zoomFeature.step() || 0.1;
-        const initialZoom = Math.min(max, Math.max(min, DEFAULT_CAMERA_ZOOM));
-        setZoomRange({ min, max, step });
-        setZoom(initialZoom);
-        await zoomFeature.apply(initialZoom).catch(() => undefined);
+      const stream = videoRef.current.srcObject;
+      const track = stream instanceof MediaStream ? stream.getVideoTracks()[0] : undefined;
+      if (track) {
+        const capabilities = track.getCapabilities() as ExtendedMediaTrackCapabilities;
+        const settings = track.getSettings() as ExtendedMediaTrackSettings;
+        if (capabilities.focusMode?.includes("continuous")) {
+          await track.applyConstraints({
+            advanced: [{ focusMode: "continuous" } as ExtendedMediaTrackConstraintSet]
+          }).catch(() => undefined);
+        }
+        if (capabilities.zoom) {
+          setZoomRange(capabilities.zoom);
+          setZoom(settings.zoom ?? capabilities.zoom.min);
+        }
       }
     } catch (error) {
+      liveControlsRef.current?.stop();
+      liveControlsRef.current = null;
+      liveReaderRef.current = null;
+      const stream = videoRef.current?.srcObject;
+      if (stream instanceof MediaStream) stream.getTracks().forEach((track) => track.stop());
       setScannerActive(false);
       setMessage(error instanceof Error ? error.message : "카메라 실행에 실패했습니다.");
     }
@@ -174,21 +204,23 @@ export function ScanPage({ navigate }: Props) {
   }, [startScanner]);
 
   async function stopScanner() {
-    if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+    liveControlsRef.current?.stop();
+    liveControlsRef.current = null;
+    liveReaderRef.current = null;
     barcodeHandlingRef.current = false;
     setScannerActive(false);
     setZoomRange(null);
   }
 
   async function changeZoom(nextZoom: number) {
-    const scanner = scannerRef.current;
-    if (!scanner?.isScanning) return;
-
-    const zoomFeature = scanner.getRunningTrackCameraCapabilities().zoomFeature();
-    if (!zoomFeature.isSupported()) return;
+    const stream = videoRef.current?.srcObject;
+    const track = stream instanceof MediaStream ? stream.getVideoTracks()[0] : undefined;
+    if (!track) return;
 
     setZoom(nextZoom);
-    await zoomFeature.apply(nextZoom).catch(() => {
+    await track.applyConstraints({
+      advanced: [{ zoom: nextZoom } as ExtendedMediaTrackConstraintSet]
+    }).catch(() => {
       setMessage("이 기기에서는 확대 배율을 변경할 수 없습니다.");
     });
   }
@@ -199,26 +231,22 @@ export function ScanPage({ navigate }: Props) {
     if (!file) return;
 
     setMessage("사진에서 바코드를 찾는 중...");
-    if (scannerRef.current?.isScanning) {
-      await scannerRef.current.stop().catch(() => undefined);
-      setScannerActive(false);
-      setZoomRange(null);
-    }
+    liveControlsRef.current?.stop();
+    liveControlsRef.current = null;
+    liveReaderRef.current = null;
+    setScannerActive(false);
+    setZoomRange(null);
 
-    const imageScanner = new Html5Qrcode(SCANNER_ID, {
-      formatsToSupport: PRODUCT_BARCODE_FORMATS,
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true
-      },
-      verbose: false
-    });
-    scannerRef.current = imageScanner;
+    const imageReader = new BrowserMultiFormatOneDReader(createBarcodeHints());
+    const imageUrl = URL.createObjectURL(file);
 
     try {
-      const result = await imageScanner.scanFileV2(file, false);
-      await handleBarcode(result.decodedText);
+      const result = await imageReader.decodeFromImageUrl(imageUrl);
+      await handleBarcode(result.getText());
     } catch {
       setMessage("사진에서 바코드를 찾지 못했습니다. 바코드가 화면을 크게 차지하도록 다시 촬영해 주세요.");
+    } finally {
+      URL.revokeObjectURL(imageUrl);
     }
   }
 
@@ -270,11 +298,20 @@ export function ScanPage({ navigate }: Props) {
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="panel p-4">
           <div className="relative overflow-hidden rounded-md bg-slate-900">
-            <div id={SCANNER_ID} className="min-h-[320px]" />
+            <video
+              ref={videoRef}
+              className="h-[min(58dvh,520px)] min-h-[320px] w-full object-cover"
+              playsInline
+              muted
+              autoPlay
+            />
             {scannerActive ? (
-              <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
-                바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
-              </div>
+              <>
+                <div className="pointer-events-none absolute inset-2 rounded-lg border-2 border-white/70 shadow-[0_0_0_999px_rgba(15,23,42,0.08)]" />
+                <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
+                  화면 어디든 바코드가 보이게 하고, 가까우면 20~30cm 떨어뜨려 주세요.
+                </div>
+              </>
             ) : null}
           </div>
 

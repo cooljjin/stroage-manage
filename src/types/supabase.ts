@@ -241,6 +241,35 @@ export type Database = {
           }
         ];
       };
+      dashboard_receipt_deletions: {
+        Row: {
+          id: string;
+          product_id: string;
+          log_ids: string[];
+          warehouse_quantity: number;
+          store_quantity: number;
+          deleted_by: string;
+          deleted_at: string;
+          restored_by: string | null;
+          restored_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          log_ids: string[];
+          warehouse_quantity?: number;
+          store_quantity?: number;
+          deleted_by: string;
+          deleted_at?: string;
+          restored_by?: string | null;
+          restored_at?: string | null;
+        };
+        Update: {
+          restored_by?: string | null;
+          restored_at?: string | null;
+        };
+        Relationships: [];
+      };
       dashboard_todos: {
         Row: {
           id: string;
@@ -346,6 +375,16 @@ export type Database = {
           restored_store_qty: number;
         };
         Returns: undefined;
+      };
+      delete_today_product_receipts: {
+        Args: {
+          target_product_id: string;
+        };
+        Returns: string;
+      };
+      restore_latest_dashboard_receipt_deletion: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
       };
     };
     Views: Record<string, never>;
