@@ -1,6 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { Search, ScanLine } from "lucide-react";
+import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { supabase } from "../lib/supabase";
@@ -22,13 +22,29 @@ const PRODUCT_BARCODE_FORMATS = [
   Html5QrcodeSupportedFormats.ITF,
   Html5QrcodeSupportedFormats.CODABAR
 ];
+const DEFAULT_CAMERA_ZOOM = 1.5;
+
+type FocusMediaTrackConstraints = MediaTrackConstraints & {
+  advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
+};
+
+function getBarcodeCandidates(barcode: string): string[] {
+  const normalized = barcode.trim();
+  const candidates = new Set([normalized]);
+
+  if (/^\d{12}$/.test(normalized)) candidates.add(`0${normalized}`);
+  if (/^0\d{12}$/.test(normalized)) candidates.add(normalized.slice(1));
+
+  return [...candidates];
+}
 
 async function findProductByBarcode(barcode: string): Promise<{ product: Product | null; errorMessage: string }> {
-  const { data, error } = await supabase.from("products").select("*").eq("barcode", barcode).eq("is_active", true).maybeSingle();
+  const barcodeCandidates = getBarcodeCandidates(barcode);
+  const { data, error } = await supabase.from("products").select("*").in("barcode", barcodeCandidates).eq("is_active", true).limit(1).maybeSingle();
   if (error) return { product: null, errorMessage: error.message };
   if (data) return { product: data as Product, errorMessage: "" };
 
-  const { data: barcodeData, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").eq("barcode", barcode).maybeSingle();
+  const { data: barcodeData, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").in("barcode", barcodeCandidates).limit(1).maybeSingle();
   if (barcodeError) return { product: null, errorMessage: barcodeError.message };
   if (!barcodeData) return { product: null, errorMessage: "" };
 
@@ -43,7 +59,10 @@ export function ScanPage({ navigate }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState<Product[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
+  const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const barcodeHandlingRef = useRef(false);
   const autoStartAttemptedRef = useRef(false);
 
@@ -98,23 +117,46 @@ export function ScanPage({ navigate }: Props) {
     });
     scannerRef.current = scanner;
     barcodeHandlingRef.current = false;
+    setZoomRange(null);
+    setZoom(1);
     setScannerActive(true);
 
     try {
       await scanner.start(
-        { facingMode: "environment" },
+        { facingMode: { ideal: "environment" } },
         {
-          fps: 15,
+          fps: 12,
+          qrbox: (viewfinderWidth, viewfinderHeight) => ({
+            width: Math.floor(Math.min(viewfinderWidth * 0.92, 520)),
+            height: Math.floor(Math.min(viewfinderHeight * 0.32, 150))
+          }),
+          aspectRatio: 4 / 3,
           disableFlip: true,
           videoConstraints: {
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1440 }
           }
         },
         (decodedText) => void handleBarcode(decodedText),
         () => undefined
       );
+
+      const focusConstraints: FocusMediaTrackConstraints = {
+        advanced: [{ focusMode: "continuous" }]
+      };
+      await scanner.applyVideoConstraints(focusConstraints).catch(() => undefined);
+
+      const zoomFeature = scanner.getRunningTrackCameraCapabilities().zoomFeature();
+      if (zoomFeature.isSupported()) {
+        const min = zoomFeature.min();
+        const max = zoomFeature.max();
+        const step = zoomFeature.step() || 0.1;
+        const initialZoom = Math.min(max, Math.max(min, DEFAULT_CAMERA_ZOOM));
+        setZoomRange({ min, max, step });
+        setZoom(initialZoom);
+        await zoomFeature.apply(initialZoom).catch(() => undefined);
+      }
     } catch (error) {
       setScannerActive(false);
       setMessage(error instanceof Error ? error.message : "카메라 실행에 실패했습니다.");
@@ -135,6 +177,49 @@ export function ScanPage({ navigate }: Props) {
     if (scannerRef.current?.isScanning) await scannerRef.current.stop();
     barcodeHandlingRef.current = false;
     setScannerActive(false);
+    setZoomRange(null);
+  }
+
+  async function changeZoom(nextZoom: number) {
+    const scanner = scannerRef.current;
+    if (!scanner?.isScanning) return;
+
+    const zoomFeature = scanner.getRunningTrackCameraCapabilities().zoomFeature();
+    if (!zoomFeature.isSupported()) return;
+
+    setZoom(nextZoom);
+    await zoomFeature.apply(nextZoom).catch(() => {
+      setMessage("이 기기에서는 확대 배율을 변경할 수 없습니다.");
+    });
+  }
+
+  async function scanImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setMessage("사진에서 바코드를 찾는 중...");
+    if (scannerRef.current?.isScanning) {
+      await scannerRef.current.stop().catch(() => undefined);
+      setScannerActive(false);
+      setZoomRange(null);
+    }
+
+    const imageScanner = new Html5Qrcode(SCANNER_ID, {
+      formatsToSupport: PRODUCT_BARCODE_FORMATS,
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      },
+      verbose: false
+    });
+    scannerRef.current = imageScanner;
+
+    try {
+      const result = await imageScanner.scanFileV2(file, false);
+      await handleBarcode(result.decodedText);
+    } catch {
+      setMessage("사진에서 바코드를 찾지 못했습니다. 바코드가 화면을 크게 차지하도록 다시 촬영해 주세요.");
+    }
   }
 
   async function handleSearch(event: FormEvent) {
@@ -184,7 +269,32 @@ export function ScanPage({ navigate }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="panel p-4">
-          <div id={SCANNER_ID} className="min-h-[320px] overflow-hidden rounded-md bg-slate-900" />
+          <div className="relative overflow-hidden rounded-md bg-slate-900">
+            <div id={SCANNER_ID} className="min-h-[320px]" />
+            {scannerActive ? (
+              <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
+                바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
+              </div>
+            ) : null}
+          </div>
+
+          {scannerActive && zoomRange ? (
+            <label className="mt-3 flex items-center gap-3 rounded-md bg-slate-100 px-3 py-2 dark:bg-slate-900">
+              <ZoomIn className="shrink-0 text-slate-500" size={18} />
+              <input
+                type="range"
+                min={zoomRange.min}
+                max={zoomRange.max}
+                step={zoomRange.step}
+                value={zoom}
+                onChange={(event) => void changeZoom(Number(event.target.value))}
+                className="min-w-0 flex-1 accent-teal-700"
+                aria-label="카메라 확대"
+              />
+              <span className="w-10 text-right text-xs font-bold">{zoom.toFixed(1)}x</span>
+            </label>
+          ) : null}
+
           <div className="mt-4 grid grid-cols-2 gap-3">
             <button type="button" onClick={startScanner} disabled={scannerActive} className="primary-button inline-flex items-center justify-center gap-2">
               <ScanLine size={20} />
@@ -194,6 +304,22 @@ export function ScanPage({ navigate }: Props) {
               중지
             </button>
           </div>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(event) => void scanImage(event)}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            className="secondary-button mt-3 inline-flex w-full items-center justify-center gap-2"
+          >
+            <Camera size={19} />
+            사진으로 바코드 인식
+          </button>
           {message ? <div className="mt-3"><StatusMessage type={message.includes("실패") ? "error" : "info"}>{message}</StatusMessage></div> : null}
         </div>
 

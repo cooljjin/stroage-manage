@@ -107,7 +107,7 @@ export function HomePage({ navigate }: Props) {
         new Set((specificClosureResult.data ?? []).map((item) => item.closure_date))
       );
     } catch (calendarError) {
-      setError(calendarError instanceof Error ? calendarError.message : "다음 영업일을 계산하지 못했습니다.");
+      setError(calendarError instanceof Error ? calendarError.message : "내일 날짜를 계산하지 못했습니다.");
       setLoading(false);
       return;
     }
@@ -347,7 +347,7 @@ export function HomePage({ navigate }: Props) {
     <section className="flex h-[calc(100dvh-10.5rem)] min-h-[520px] flex-col">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-brand-700 dark:text-brand-100">{isToday ? "오늘의 업무" : "다음 영업일 업무"}</p>
+          <p className="text-xs font-bold text-brand-700 dark:text-brand-100">{isToday ? "오늘의 업무" : "내일의 업무"}</p>
           <h1 className="text-xl font-extrabold">{selectedDate ? shortDateLabel(selectedDate) : "날짜 계산 중..."}</h1>
         </div>
         <div className="grid grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
@@ -363,7 +363,7 @@ export function HomePage({ navigate }: Props) {
                   : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               }`}
             >
-              {view === "today" ? "오늘" : "다음 영업일"}
+              {view === "today" ? "오늘" : "내일"}
             </button>
           ))}
         </div>
@@ -373,12 +373,12 @@ export function HomePage({ navigate }: Props) {
 
       <div className="grid min-h-0 flex-1 grid-rows-3 gap-2.5 md:grid-cols-3 md:grid-rows-1">
         <article className="panel flex min-h-0 flex-col overflow-hidden">
-          <SectionHeader icon={PackageCheck} title={isToday ? "금일 입고품목" : "다음 영업일 입고예정"} badge={`${receipts.length}종`} />
+          <SectionHeader icon={PackageCheck} title={isToday ? "금일 입고품목" : "내일 입고예정 품목"} badge={`${receipts.length}종`} />
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
             {!loading && receipts.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 입고된 품목이 없습니다." : "다음 영업일 입고예정 품목이 없습니다."}
+                {isToday ? "오늘 입고된 품목이 없습니다." : "내일 입고예정 품목이 없습니다."}
               </div>
             ) : null}
             {receipts.map((item) => (
@@ -419,7 +419,7 @@ export function HomePage({ navigate }: Props) {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {!loading && todos.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 해야 할 일이 없습니다." : "다음 영업일 근무자를 위한 할 일이 없습니다."}
+                {isToday ? "오늘 해야 할 일이 없습니다." : "내일 근무자를 위한 할 일이 없습니다."}
               </div>
             ) : null}
             {todos.map((todo) => (
@@ -471,16 +471,16 @@ export function HomePage({ navigate }: Props) {
           />
           {showHandoverForm ? (
             <form onSubmit={addHandover} className="border-b border-slate-100 p-2 dark:border-slate-800">
-              <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="다음 영업일 근무자에게 전달할 내용을 입력하세요." autoFocus />
+              <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="내일 근무자에게 전달할 내용을 입력하세요." autoFocus />
               <button className="mt-1.5 min-h-10 w-full rounded-md bg-brand-600 px-3 text-xs font-bold text-white" type="submit" disabled={saving || !handoverDraft.trim()}>
-                다음 영업일 인수인계 저장
+                내일 인수인계 저장
               </button>
             </form>
           ) : null}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {!loading && handovers.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 인지할 인수인계가 없습니다." : "다음 영업일 근무자를 위한 인수인계가 없습니다."}
+                {isToday ? "오늘 인지할 인수인계가 없습니다." : "내일 근무자를 위한 인수인계가 없습니다."}
               </div>
             ) : null}
             {handovers.map((note) => (
