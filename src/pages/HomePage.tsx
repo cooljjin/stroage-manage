@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
+import { getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, DashboardTodo, HandoverNote, InventoryLog, Product, StaffProfile } from "../types/domain";
@@ -17,13 +18,6 @@ type ReceiptItem = {
 };
 
 type DashboardView = "today" | "tomorrow";
-
-function formatDateValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -68,9 +62,8 @@ function SectionHeader({
 }
 
 export function HomePage({ navigate }: Props) {
-  const today = useMemo(() => new Date(), []);
-  const todayValue = useMemo(() => formatDateValue(today), [today]);
-  const tomorrowValue = useMemo(() => formatDateValue(addDays(today, 1)), [today]);
+  const todayValue = useMemo(() => getSeoulDateValue(), []);
+  const [nextBusinessDate, setNextBusinessDate] = useState<string | null>(null);
   const [dashboardView, setDashboardView] = useState<DashboardView>("today");
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [todos, setTodos] = useState<DashboardTodo[]>([]);
@@ -86,12 +79,42 @@ export function HomePage({ navigate }: Props) {
   const [saving, setSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
-  const selectedDate = dashboardView === "today" ? todayValue : tomorrowValue;
+  const selectedDate = dashboardView === "today" ? todayValue : nextBusinessDate;
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
-    const range = getDayRange(new Date(`${selectedDate}T00:00:00`));
+    const [weeklyClosureResult, specificClosureResult] = await Promise.all([
+      supabase.from("weekly_store_closures").select("weekday"),
+      supabase.from("store_closure_dates").select("closure_date").gte("closure_date", todayValue)
+    ]);
+    const closureError = weeklyClosureResult.error ?? specificClosureResult.error;
+    if (closureError) {
+      setError(
+        closureError.message.includes("weekly_store_closures") || closureError.message.includes("store_closure_dates")
+          ? "휴무일용 데이터베이스 업데이트가 필요합니다."
+          : closureError.message
+      );
+      setLoading(false);
+      return;
+    }
+
+    let calculatedNextBusinessDate: string;
+    try {
+      calculatedNextBusinessDate = getNextBusinessDate(
+        todayValue,
+        new Set((weeklyClosureResult.data ?? []).map((item) => item.weekday)),
+        new Set((specificClosureResult.data ?? []).map((item) => item.closure_date))
+      );
+    } catch (calendarError) {
+      setError(calendarError instanceof Error ? calendarError.message : "다음 영업일을 계산하지 못했습니다.");
+      setLoading(false);
+      return;
+    }
+
+    setNextBusinessDate(calculatedNextBusinessDate);
+    const dashboardDate = dashboardView === "today" ? todayValue : calculatedNextBusinessDate;
+    const range = getDayRange(new Date(`${dashboardDate}T00:00:00`));
     const receiptQuery =
       dashboardView === "today"
         ? supabase
@@ -111,8 +134,8 @@ export function HomePage({ navigate }: Props) {
 
     const [receiptResult, todoResult, handoverResult, profileResult] = await Promise.all([
       receiptQuery,
-      supabase.from("dashboard_todos").select("*").eq("task_date", selectedDate).order("created_at", { ascending: true }),
-      supabase.from("handover_notes").select("*").eq("handover_date", selectedDate).order("created_at", { ascending: false }),
+      supabase.from("dashboard_todos").select("*").eq("task_date", dashboardDate).order("created_at", { ascending: true }),
+      supabase.from("handover_notes").select("*").eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
       supabase.from("profiles").select("*")
     ]);
 
@@ -157,7 +180,7 @@ export function HomePage({ navigate }: Props) {
       setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
     }
     setLoading(false);
-  }, [dashboardView, selectedDate]);
+  }, [dashboardView, todayValue]);
 
   useEffect(() => {
     void loadDashboard();
@@ -166,7 +189,7 @@ export function HomePage({ navigate }: Props) {
   async function addTodo(event: FormEvent) {
     event.preventDefault();
     const content = todoDraft.trim();
-    if (!content) return;
+    if (!content || !selectedDate) return;
 
     setSaving(true);
     setError("");
@@ -212,7 +235,7 @@ export function HomePage({ navigate }: Props) {
   }
 
   async function deleteTodo(todo: DashboardTodo) {
-    if (dashboardView !== "tomorrow") return;
+    if (dashboardView !== "tomorrow" || !nextBusinessDate) return;
     if (!window.confirm(`"${todo.content}" 할 일을 삭제할까요?`)) return;
 
     setDeletingIds((current) => new Set(current).add(todo.id));
@@ -221,7 +244,7 @@ export function HomePage({ navigate }: Props) {
       .from("dashboard_todos")
       .delete()
       .eq("id", todo.id)
-      .eq("task_date", tomorrowValue);
+      .eq("task_date", nextBusinessDate);
 
     if (deleteError) {
       setError(deleteError.message);
@@ -238,7 +261,7 @@ export function HomePage({ navigate }: Props) {
   async function addHandover(event: FormEvent) {
     event.preventDefault();
     const content = handoverDraft.trim();
-    if (!content) return;
+    if (!content || !selectedDate) return;
 
     setSaving(true);
     setError("");
@@ -265,7 +288,7 @@ export function HomePage({ navigate }: Props) {
   }
 
   async function deleteHandover(note: HandoverNote) {
-    if (dashboardView !== "tomorrow") return;
+    if (dashboardView !== "tomorrow" || !nextBusinessDate) return;
     if (!window.confirm("이 인수인계 내용을 삭제할까요?")) return;
 
     setDeletingIds((current) => new Set(current).add(note.id));
@@ -274,7 +297,7 @@ export function HomePage({ navigate }: Props) {
       .from("handover_notes")
       .delete()
       .eq("id", note.id)
-      .eq("handover_date", tomorrowValue);
+      .eq("handover_date", nextBusinessDate);
 
     if (deleteError) {
       setError(deleteError.message);
@@ -324,8 +347,8 @@ export function HomePage({ navigate }: Props) {
     <section className="flex h-[calc(100dvh-10.5rem)] min-h-[520px] flex-col">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-brand-700 dark:text-brand-100">{isToday ? "오늘의 업무" : "내일의 업무"}</p>
-          <h1 className="text-xl font-extrabold">{shortDateLabel(selectedDate)}</h1>
+          <p className="text-xs font-bold text-brand-700 dark:text-brand-100">{isToday ? "오늘의 업무" : "다음 영업일 업무"}</p>
+          <h1 className="text-xl font-extrabold">{selectedDate ? shortDateLabel(selectedDate) : "날짜 계산 중..."}</h1>
         </div>
         <div className="grid grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
           {(["today", "tomorrow"] as DashboardView[]).map((view) => (
@@ -340,7 +363,7 @@ export function HomePage({ navigate }: Props) {
                   : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               }`}
             >
-              {view === "today" ? "오늘" : "내일"}
+              {view === "today" ? "오늘" : "다음 영업일"}
             </button>
           ))}
         </div>
@@ -350,12 +373,12 @@ export function HomePage({ navigate }: Props) {
 
       <div className="grid min-h-0 flex-1 grid-rows-3 gap-2.5 md:grid-cols-3 md:grid-rows-1">
         <article className="panel flex min-h-0 flex-col overflow-hidden">
-          <SectionHeader icon={PackageCheck} title={isToday ? "금일 입고품목" : "내일 입고예정 품목"} badge={`${receipts.length}종`} />
+          <SectionHeader icon={PackageCheck} title={isToday ? "금일 입고품목" : "다음 영업일 입고예정"} badge={`${receipts.length}종`} />
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
             {!loading && receipts.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 입고된 품목이 없습니다." : "내일 입고예정 품목이 없습니다."}
+                {isToday ? "오늘 입고된 품목이 없습니다." : "다음 영업일 입고예정 품목이 없습니다."}
               </div>
             ) : null}
             {receipts.map((item) => (
@@ -396,7 +419,7 @@ export function HomePage({ navigate }: Props) {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {!loading && todos.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 해야 할 일이 없습니다." : "내일 근무자를 위한 할 일이 없습니다."}
+                {isToday ? "오늘 해야 할 일이 없습니다." : "다음 영업일 근무자를 위한 할 일이 없습니다."}
               </div>
             ) : null}
             {todos.map((todo) => (
@@ -448,16 +471,16 @@ export function HomePage({ navigate }: Props) {
           />
           {showHandoverForm ? (
             <form onSubmit={addHandover} className="border-b border-slate-100 p-2 dark:border-slate-800">
-              <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="내일 근무자에게 전달할 내용을 입력하세요." autoFocus />
+              <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="다음 영업일 근무자에게 전달할 내용을 입력하세요." autoFocus />
               <button className="mt-1.5 min-h-10 w-full rounded-md bg-brand-600 px-3 text-xs font-bold text-white" type="submit" disabled={saving || !handoverDraft.trim()}>
-                내일 인수인계 저장
+                다음 영업일 인수인계 저장
               </button>
             </form>
           ) : null}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {!loading && handovers.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 인지할 인수인계가 없습니다." : "내일 근무자를 위한 인수인계가 없습니다."}
+                {isToday ? "오늘 인지할 인수인계가 없습니다." : "다음 영업일 근무자를 위한 인수인계가 없습니다."}
               </div>
             ) : null}
             {handovers.map((note) => (

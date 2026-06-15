@@ -1,4 +1,4 @@
-import { Box, ClipboardCheck, Menu, Tags, Truck, X } from "lucide-react";
+import { Box, ClipboardCheck, Menu, Settings, Tags, Truck, X } from "lucide-react";
 import type { RouteName } from "../types/domain";
 
 type Props = {
@@ -58,6 +58,15 @@ export function TopMenu({ open, onOpenChange, onNavigate }: Props) {
           >
             <Truck size={19} />
             발주처 관리
+          </button>
+          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+          <button
+            type="button"
+            onClick={() => go("settings")}
+            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+          >
+            <Settings size={19} />
+            환경설정
           </button>
         </div>
       ) : null}

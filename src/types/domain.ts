@@ -20,6 +20,7 @@ export type RouteName =
   | "product-management"
   | "category-management"
   | "supplier-management"
+  | "settings"
   | "admin";
 
 export type Product = {
@@ -133,6 +134,19 @@ export type HandoverNote = {
   created_by: string;
   created_at: string;
   author_name?: string;
+};
+
+export type WeeklyStoreClosure = {
+  weekday: number;
+  created_by: string;
+  created_at: string;
+};
+
+export type StoreClosureDate = {
+  closure_date: string;
+  reason: string | null;
+  created_by: string;
+  created_at: string;
 };
 
 export type AppRoute = {

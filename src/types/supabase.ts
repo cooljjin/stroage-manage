@@ -290,6 +290,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      weekly_store_closures: {
+        Row: {
+          weekday: number;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          weekday: number;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          weekday?: number;
+        };
+        Relationships: [];
+      };
+      store_closure_dates: {
+        Row: {
+          closure_date: string;
+          reason: string | null;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          closure_date: string;
+          reason?: string | null;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          reason?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       is_admin: {
