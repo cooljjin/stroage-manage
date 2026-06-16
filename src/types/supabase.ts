@@ -88,24 +88,33 @@ export type Database = {
       profiles: {
         Row: {
           id: string;
+          store_id: string;
           email: string | null;
           display_name: string;
           is_admin: boolean;
+          role: "master" | "store_admin" | "staff";
+          invited_by: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id: string;
+          store_id?: string;
           email?: string | null;
           display_name: string;
           is_admin?: boolean;
+          role?: "master" | "store_admin" | "staff";
+          invited_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
+          store_id?: string;
           email?: string | null;
           display_name?: string;
           is_admin?: boolean;
+          role?: "master" | "store_admin" | "staff";
+          invited_by?: string | null;
           updated_at?: string;
         };
         Relationships: [];

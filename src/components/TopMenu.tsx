@@ -1,13 +1,14 @@
-import { Box, ClipboardCheck, Menu, Settings, Tags, Truck, X } from "lucide-react";
-import type { RouteName } from "../types/domain";
+import { Box, ClipboardCheck, Menu, Settings, Store, Tags, Truck, Users, X } from "lucide-react";
+import type { ProfileRole, RouteName } from "../types/domain";
 
 type Props = {
   open: boolean;
+  role: ProfileRole;
   onOpenChange: (open: boolean) => void;
   onNavigate: (route: RouteName) => void;
 };
 
-export function TopMenu({ open, onOpenChange, onNavigate }: Props) {
+export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
   function go(route: RouteName) {
     onNavigate(route);
     onOpenChange(false);
@@ -27,6 +28,26 @@ export function TopMenu({ open, onOpenChange, onNavigate }: Props) {
 
       {open ? (
         <div className="absolute left-0 top-12 z-50 w-56 rounded-md border border-slate-200 bg-white p-2 shadow-soft dark:border-slate-800 dark:bg-slate-950">
+          {role === "master" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => go("master-stores")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Store size={19} />
+                전체 매장
+              </button>
+              <button
+                type="button"
+                onClick={() => go("master-users")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Users size={19} />
+                전체 사용자
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={() => go("status-items")}
@@ -35,39 +56,55 @@ export function TopMenu({ open, onOpenChange, onNavigate }: Props) {
             <ClipboardCheck size={19} />
             최소재고 품목
           </button>
-          <button
-            type="button"
-            onClick={() => go("product-management")}
-            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-          >
-            <Box size={19} />
-            상품 관리
-          </button>
-          <button
-            type="button"
-            onClick={() => go("category-management")}
-            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-          >
-            <Tags size={19} />
-            카테고리 관리
-          </button>
-          <button
-            type="button"
-            onClick={() => go("supplier-management")}
-            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-          >
-            <Truck size={19} />
-            발주처 관리
-          </button>
+          {role !== "staff" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => go("product-management")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Box size={19} />
+                상품 관리
+              </button>
+              <button
+                type="button"
+                onClick={() => go("category-management")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Tags size={19} />
+                카테고리 관리
+              </button>
+              <button
+                type="button"
+                onClick={() => go("supplier-management")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Truck size={19} />
+                발주처 관리
+              </button>
+            </>
+          ) : null}
+          {role === "store_admin" ? (
+            <button
+              type="button"
+              onClick={() => go("staff-management")}
+              className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+            >
+              <Users size={19} />
+              직원 관리
+            </button>
+          ) : null}
           <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-          <button
-            type="button"
-            onClick={() => go("settings")}
-            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-          >
-            <Settings size={19} />
-            환경설정
-          </button>
+          {role === "store_admin" ? (
+            <button
+              type="button"
+              onClick={() => go("settings")}
+              className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+            >
+              <Settings size={19} />
+              환경설정
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

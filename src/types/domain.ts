@@ -7,7 +7,12 @@ export type InventoryAction = "입고" | "출고" | "이동" | "조정";
 export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
+export type ProfileRole = "master" | "store_admin" | "staff";
 export type RouteName =
+  | "landing"
+  | "login"
+  | "signup-request"
+  | "invite-accept"
   | "home"
   | "scan"
   | "register"
@@ -21,6 +26,10 @@ export type RouteName =
   | "category-management"
   | "supplier-management"
   | "settings"
+  | "staff-management"
+  | "master-stores"
+  | "master-store-detail"
+  | "master-users"
   | "admin";
 
 export type Product = {
@@ -67,11 +76,36 @@ export type ProductBarcode = {
 
 export type StaffProfile = {
   id: string;
+  store_id: string;
   email: string | null;
   display_name: string;
   is_admin: boolean;
+  role: ProfileRole;
+  invited_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Store = {
+  id: string;
+  name: string;
+  business_name: string | null;
+  status: "active" | "inactive";
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoreInvite = {
+  id: string;
+  store_id: string;
+  email: string;
+  role: Exclude<ProfileRole, "master">;
+  token: string;
+  invited_by: string;
+  accepted_by: string | null;
+  accepted_at: string | null;
+  expires_at: string;
+  created_at: string;
 };
 
 export type Inventory = {
@@ -153,6 +187,8 @@ export type AppRoute = {
   name: RouteName;
   barcode?: string;
   productId?: string;
+  storeId?: string;
+  inviteToken?: string;
 };
 
 export type SortKey = "name" | "warehouse_qty" | "store_qty" | "total_stock";
