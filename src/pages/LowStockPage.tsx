@@ -10,6 +10,12 @@ type Props = {
   navigate: (route: AppRoute) => void;
 };
 
+type FreshReceivingUndoEntry = {
+  productId: string;
+  freshOrderSelected: boolean;
+  freshOrderSelectedAt: string | null;
+};
+
 function ProductLinkButton({ url }: { url: string | null }) {
   const hasUrl = Boolean(url);
 
@@ -35,6 +41,8 @@ export function LowStockPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set());
   const [completingFreshIds, setCompletingFreshIds] = useState<Set<string>>(new Set());
+  const [freshReceivingUndoStack, setFreshReceivingUndoStack] = useState<FreshReceivingUndoEntry[]>([]);
+  const [undoingFreshReceiving, setUndoingFreshReceiving] = useState(false);
   const [urgentModalOpen, setUrgentModalOpen] = useState(false);
   const [urgentProductId, setUrgentProductId] = useState("");
   const [urgentQuantity, setUrgentQuantity] = useState("");
@@ -184,6 +192,14 @@ export function LowStockPage({ navigate }: Props) {
     if (updateError) {
       setError(updateError.message);
     } else {
+      setFreshReceivingUndoStack((current) => [
+        ...current,
+        {
+          productId: item.id,
+          freshOrderSelected: item.fresh_order_selected,
+          freshOrderSelectedAt: item.fresh_order_selected_at
+        }
+      ]);
       setItems((current) =>
         current.map((product) =>
           product.id === item.id
@@ -202,6 +218,41 @@ export function LowStockPage({ navigate }: Props) {
       next.delete(item.id);
       return next;
     });
+  }
+
+  async function undoFreshReceiving() {
+    const previous = freshReceivingUndoStack[freshReceivingUndoStack.length - 1];
+    if (!previous) return;
+
+    setError("");
+    setUndoingFreshReceiving(true);
+
+    const { error: updateError } = await supabase
+      .from("products")
+      .update({
+        fresh_order_selected: previous.freshOrderSelected,
+        fresh_order_selected_at: previous.freshOrderSelectedAt
+      })
+      .eq("id", previous.productId);
+
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setItems((current) =>
+        current.map((product) =>
+          product.id === previous.productId
+            ? {
+                ...product,
+                fresh_order_selected: previous.freshOrderSelected,
+                fresh_order_selected_at: previous.freshOrderSelectedAt
+              }
+            : product
+        )
+      );
+      setFreshReceivingUndoStack((current) => current.slice(0, -1));
+    }
+
+    setUndoingFreshReceiving(false);
   }
 
   async function submitUrgentOrder(event: React.FormEvent<HTMLFormElement>) {
@@ -249,6 +300,14 @@ export function LowStockPage({ navigate }: Props) {
               className="touch-button rounded-md bg-emerald-600 px-3 text-sm font-bold text-white"
             >
               프레시상품
+            </button>
+            <button
+              type="button"
+              disabled={freshReceivingUndoStack.length === 0 || undoingFreshReceiving}
+              onClick={() => void undoFreshReceiving()}
+              className="touch-button rounded-md border border-emerald-600 px-3 text-sm font-bold text-emerald-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:opacity-60 dark:text-emerald-200 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+            >
+              {undoingFreshReceiving ? "되돌리는 중" : `입고완료 되돌리기 (${freshReceivingUndoStack.length})`}
             </button>
             <button
               type="button"

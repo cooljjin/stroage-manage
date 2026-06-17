@@ -1,4 +1,4 @@
-import { Box, ClipboardCheck, Menu, Settings, Store, Tags, Truck, Users, X } from "lucide-react";
+import { Box, ClipboardCheck, Menu, Package, Settings, Store, Tags, Truck, Users, X } from "lucide-react";
 import type { ProfileRole, RouteName } from "../types/domain";
 
 type Props = {
@@ -73,6 +73,14 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
               >
                 <Tags size={19} />
                 카테고리 관리
+              </button>
+              <button
+                type="button"
+                onClick={() => go("unit-management")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Package size={19} />
+                품목 단위 관리
               </button>
               <button
                 type="button"

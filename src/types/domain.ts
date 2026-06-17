@@ -1,4 +1,5 @@
 export const DEFAULT_CATEGORIES = ["원두", "우유", "시럽", "베이커리", "아이스크림", "소모품", "음료", "기타"] as const;
+export const DEFAULT_PRODUCT_UNITS = ["박스", "낱개", "줄", "팩"] as const;
 
 export type Category = string;
 export type CategoryFilter = "전체" | string;
@@ -24,6 +25,7 @@ export type RouteName =
   | "logs"
   | "product-management"
   | "category-management"
+  | "unit-management"
   | "supplier-management"
   | "settings"
   | "staff-management"
@@ -39,6 +41,7 @@ export type Product = {
   category: Category;
   supplier_name: string | null;
   storage_type: string | null;
+  unit_name: string | null;
   product_url: string | null;
   order_completed: boolean;
   urgent_order_requested: boolean;
@@ -64,6 +67,14 @@ export type ProductSupplier = {
   id: string;
   name: string;
   is_active: boolean;
+  created_at: string;
+};
+
+export type ProductUnit = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
   created_at: string;
 };
 

@@ -2,9 +2,10 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
+import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, Product, ProductCategory, ProductSupplier, StorageType } from "../types/domain";
+import type { AppRoute, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -22,11 +23,13 @@ export function ProductEditPage({ productId, navigate }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
+  const [units, setUnits] = useState<ProductUnit[]>([]);
   const [name, setName] = useState("");
   const [barcode, setBarcode] = useState("");
   const [category, setCategory] = useState("기타");
   const [supplierName, setSupplierName] = useState("");
   const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
+  const [unitName, setUnitName] = useState("");
   const [minimumStock, setMinimumStock] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [loading, setLoading] = useState(true);
@@ -37,9 +40,10 @@ export function ProductEditPage({ productId, navigate }: Props) {
     setLoading(true);
     setError("");
 
-    const [categoryResult, supplierResult, productResult] = await Promise.all([
+    const [categoryResult, supplierResult, unitResult, productResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => fallbackSuppliers()),
+      loadProductUnits({ activeOnly: true }).catch(() => fallbackProductUnits()),
       supabase.from("products").select("*").eq("id", productId).single()
     ]);
 
@@ -54,15 +58,20 @@ export function ProductEditPage({ productId, navigate }: Props) {
       const nextSuppliers = nextProduct.supplier_name && !supplierResult.some((item) => item.name === nextProduct.supplier_name)
         ? [...supplierResult, { id: nextProduct.supplier_name, name: nextProduct.supplier_name, is_active: true, created_at: new Date(0).toISOString() }]
         : supplierResult;
+      const nextUnits = nextProduct.unit_name && !unitResult.some((item) => item.name === nextProduct.unit_name)
+        ? [...unitResult, { id: nextProduct.unit_name, name: nextProduct.unit_name, is_active: true, sort_order: unitResult.length + 1, created_at: new Date(0).toISOString() }]
+        : unitResult;
 
       setProduct(nextProduct);
       setCategories(nextCategories);
       setSuppliers(nextSuppliers);
+      setUnits(nextUnits);
       setName(nextProduct.name);
       setBarcode(nextProduct.barcode ?? "");
       setCategory(nextProduct.category);
       setSupplierName(nextProduct.supplier_name ?? "");
       setStorageTypes(parseStorageTypes(nextProduct.storage_type));
+      setUnitName(nextProduct.unit_name ?? "");
       setMinimumStock(String(nextProduct.minimum_stock));
       setProductUrl(nextProduct.product_url ?? "");
     }
@@ -98,6 +107,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
         category,
         supplier_name: supplierName || null,
         storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+        unit_name: unitName || null,
         minimum_stock: nextMinimumStock,
         product_url: productUrl.trim() || null
       })
@@ -174,6 +184,18 @@ export function ProductEditPage({ productId, navigate }: Props) {
               {suppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.name}>
                   {supplier.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-semibold">품목 단위</span>
+            <select className="field" value={unitName} onChange={(event) => setUnitName(event.target.value)}>
+              <option value="">미지정</option>
+              {units.map((unit) => (
+                <option key={unit.id} value={unit.name}>
+                  {unit.name}
                 </option>
               ))}
             </select>

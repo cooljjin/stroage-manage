@@ -19,6 +19,7 @@ import { StatusItemsPage } from "./pages/StatusItemsPage";
 import { LogsPage } from "./pages/LogsPage";
 import { ProductManagementPage } from "./pages/ProductManagementPage";
 import { CategoryManagementPage } from "./pages/CategoryManagementPage";
+import { ProductUnitManagementPage } from "./pages/ProductUnitManagementPage";
 import { SupplierManagementPage } from "./pages/SupplierManagementPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminPage } from "./pages/AdminPage";
@@ -64,7 +65,7 @@ function canAccess(routeName: RouteName, profile: StaffProfile) {
   const masterRoutes: RouteName[] = ["master-stores", "master-store-detail", "master-users"];
   if (masterRoutes.includes(routeName)) return false;
 
-  const adminRoutes: RouteName[] = ["admin", "product-management", "category-management", "supplier-management", "settings", "staff-management"];
+  const adminRoutes: RouteName[] = ["admin", "product-management", "category-management", "unit-management", "supplier-management", "settings", "staff-management"];
   if (adminRoutes.includes(routeName)) return role === "store_admin";
 
   return true;
@@ -292,6 +293,7 @@ export default function App() {
         {permittedRoute.name === "logs" && <LogsPage navigate={navigate} />}
         {permittedRoute.name === "product-management" && <ProductManagementPage navigate={navigate} />}
         {permittedRoute.name === "category-management" && <CategoryManagementPage />}
+        {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
         {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
         {permittedRoute.name === "settings" && <SettingsPage />}
         {permittedRoute.name === "staff-management" && <StaffManagementPage />}

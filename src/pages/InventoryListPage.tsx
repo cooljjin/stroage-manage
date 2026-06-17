@@ -169,10 +169,17 @@ export function InventoryListPage({ navigate }: Props) {
                   className={`cursor-pointer border-t border-slate-100 dark:border-slate-900 ${item.is_low_stock && viewMode === "full" ? "bg-red-50 dark:bg-red-950/30" : ""}`}
                 >
                   <td className="px-3 py-3 font-semibold">
-                    <span className="flex min-w-0 items-center gap-1">
-                      {item.is_low_stock ? <TriangleAlert className="shrink-0 text-amber-500" size={17} /> : null}
-                      <span className="min-w-0 whitespace-normal break-words leading-snug">{item.name}</span>
-                    </span>
+                    <div className="min-w-0">
+                      <span className="flex min-w-0 items-center gap-1">
+                        {item.is_low_stock ? <TriangleAlert className="shrink-0 text-amber-500" size={17} /> : null}
+                        <span className="min-w-0 whitespace-normal break-words leading-snug">{item.name}</span>
+                      </span>
+                      <span className="mt-1 flex flex-wrap gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                        {item.storage_type ? <span className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">{item.storage_type}</span> : null}
+                        {item.supplier_name ? <span className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">{item.supplier_name}</span> : null}
+                        {item.unit_name ? <span className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">{item.unit_name}</span> : null}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-2 py-3 text-right tabular-nums">{item.warehouse_qty}</td>
                   <td className="px-2 py-3 text-right tabular-nums">{item.store_qty}</td>

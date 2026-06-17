@@ -2,8 +2,9 @@ import { FormEvent, useEffect, useState } from "react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
+import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
-import type { AppRoute, ProductCategory, ProductSupplier, StorageType } from "../types/domain";
+import type { AppRoute, ProductCategory, ProductSupplier, ProductUnit, StorageType } from "../types/domain";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -18,29 +19,37 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
   const [category, setCategory] = useState("기타");
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [supplierName, setSupplierName] = useState("");
-  const [storageType, setStorageType] = useState<StorageType | "">("");
+  const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
+  const [units, setUnits] = useState<ProductUnit[]>([]);
+  const [unitName, setUnitName] = useState("낱개");
   const [minimumStock, setMinimumStock] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([loadCategories({ activeOnly: true }), loadSuppliers({ activeOnly: true })])
-      .then(([categoryData, supplierData]) => {
+    Promise.all([loadCategories({ activeOnly: true }), loadSuppliers({ activeOnly: true }), loadProductUnits({ activeOnly: true })])
+      .then(([categoryData, supplierData, unitData]) => {
         const nextCategories = categoryData.length > 0 ? categoryData : fallbackCategories();
         const nextSuppliers = supplierData.length > 0 ? supplierData : fallbackSuppliers();
+        const nextUnits = unitData.length > 0 ? unitData : fallbackProductUnits();
         setCategories(nextCategories);
         setSuppliers(nextSuppliers);
+        setUnits(nextUnits);
         setCategory((current) => (nextCategories.some((item) => item.name === current) ? current : nextCategories[0]?.name ?? "기타"));
         setSupplierName((current) => (nextSuppliers.some((item) => item.name === current) ? current : nextSuppliers[0]?.name ?? ""));
+        setUnitName((current) => (nextUnits.some((item) => item.name === current) ? current : nextUnits[0]?.name ?? ""));
       })
       .catch(() => {
         const nextCategories = fallbackCategories();
         const nextSuppliers = fallbackSuppliers();
+        const nextUnits = fallbackProductUnits();
         setCategories(nextCategories);
         setSuppliers(nextSuppliers);
+        setUnits(nextUnits);
         setCategory(nextCategories[0]?.name ?? "기타");
         setSupplierName(nextSuppliers[0]?.name ?? "");
+        setUnitName(nextUnits.some((item) => item.name === "낱개") ? "낱개" : nextUnits[0]?.name ?? "");
       });
   }, []);
 
@@ -56,7 +65,8 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
         barcode: barcodeValue.trim() || null,
         category,
         supplier_name: supplierName || null,
-        storage_type: storageType || null,
+        storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+        unit_name: unitName || null,
         product_url: productUrl.trim() || null,
         minimum_stock: Math.max(0, Number(minimumStock || 0))
       })
@@ -103,15 +113,21 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
           </label>
           <div className="min-w-0 sm:col-span-2">
             <span className="mb-2 block text-sm font-semibold">보관 구분</span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {(["냉장", "냉동", "상온"] as StorageType[]).map((type) => (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(["", "냉장", "냉동", "상온"] as const).map((type) => (
                 <button
-                  key={type}
+                  key={type || "none"}
                   type="button"
-                  onClick={() => setStorageType(type)}
-                  className={`touch-button rounded-md px-4 text-sm font-bold ${storageType === type ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                  onClick={() => {
+                    if (!type) {
+                      setStorageTypes([]);
+                      return;
+                    }
+                    setStorageTypes((current) => (current.includes(type) ? current.filter((item) => item !== type) : [...current, type]));
+                  }}
+                  className={`touch-button rounded-md px-4 text-sm font-bold ${type ? (storageTypes.includes(type) ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900") : storageTypes.length === 0 ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
                 >
-                  {type}
+                  {type || "미지정"}
                 </button>
               ))}
             </div>
@@ -131,6 +147,16 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
               ))}
             </div>
           </div>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-semibold">품목 단위</span>
+            <select className="field" value={unitName} onChange={(event) => setUnitName(event.target.value)}>
+              {units.map((unit) => (
+                <option key={unit.id} value={unit.name}>
+                  {unit.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">최소 재고</span>
             <input className="field" type="number" min={0} value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} />
