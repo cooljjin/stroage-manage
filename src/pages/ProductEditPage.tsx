@@ -24,6 +24,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [units, setUnits] = useState<ProductUnit[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [name, setName] = useState("");
   const [barcode, setBarcode] = useState("");
   const [category, setCategory] = useState("기타");
@@ -34,22 +35,27 @@ export function ProductEditPage({ productId, navigate }: Props) {
   const [productUrl, setProductUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
     setError("");
+    setMessage("");
 
-    const [categoryResult, supplierResult, unitResult, productResult] = await Promise.all([
+    const [categoryResult, supplierResult, unitResult, productResult, productsResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => fallbackSuppliers()),
       loadProductUnits({ activeOnly: true }).catch(() => fallbackProductUnits()),
-      supabase.from("products").select("*").eq("id", productId).single()
+      supabase.from("products").select("*").eq("id", productId).single(),
+      supabase.from("products").select("*").order("name", { ascending: true })
     ]);
 
     const { data, error: loadError } = productResult;
-    if (loadError) {
-      setError(loadError.message);
+    if (loadError || productsResult.error) {
+      setError(loadError?.message ?? productsResult.error?.message ?? "상품 정보를 불러오지 못했습니다.");
     } else {
       const nextProduct = data as Product;
       const nextCategories = categoryResult.some((item) => item.name === nextProduct.category)
@@ -77,6 +83,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
       setCategories(nextCategories);
       setSuppliers(nextSuppliers);
       setUnits(nextUnits);
+      setProducts((productsResult.data ?? []) as Product[]);
       setName(nextProduct.name);
       setBarcode(nextProduct.barcode ?? "");
       setCategory(nextProduct.category);
@@ -130,6 +137,48 @@ export function ProductEditPage({ productId, navigate }: Props) {
     } else {
       navigate({ name: "operation", productId });
     }
+  }
+
+  const mergeCandidates = product
+    ? products
+        .filter((candidate) => candidate.id !== product.id && candidate.is_active !== false)
+        .filter((candidate) => {
+          const keyword = mergeSearch.trim().toLowerCase();
+          return keyword && (candidate.name.toLowerCase().includes(keyword) || (candidate.barcode ?? "").toLowerCase().includes(keyword));
+        })
+        .slice(0, 5)
+    : [];
+
+  function formatMergeError(errorMessage: string) {
+    if (errorMessage.includes("merge_products") || errorMessage.includes("product_barcodes") || errorMessage.includes("schema cache")) {
+      return "병합 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 product_barcodes 테이블과 merge_products 함수 추가를 요청해 주세요.";
+    }
+    return errorMessage;
+  }
+
+  async function mergeProduct(sourceProduct: Product) {
+    if (!product) return;
+
+    const ok = window.confirm(`${sourceProduct.name} 상품을 ${product.name} 상품으로 병합할까요? 병합 후 ${sourceProduct.name}은 비활성화됩니다.`);
+    if (!ok) return;
+
+    setError("");
+    setMessage("");
+    setMerging(true);
+    const { error: mergeError } = await supabase.rpc("merge_products", {
+      target_product_id: product.id,
+      source_product_id: sourceProduct.id
+    });
+    setMerging(false);
+
+    if (mergeError) {
+      setError(formatMergeError(mergeError.message));
+      return;
+    }
+
+    setMergeSearch("");
+    await loadProduct();
+    setMessage("상품을 병합했습니다.");
   }
 
   if (loading) return <StatusMessage>상품 정보를 불러오는 중...</StatusMessage>;
@@ -224,6 +273,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
         </div>
 
         {error ? <div className="mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
+        {message ? <div className="mt-4"><StatusMessage type="success">{message}</StatusMessage></div> : null}
 
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button type="button" onClick={() => navigate({ name: "operation", productId })} className="secondary-button">
@@ -234,6 +284,40 @@ export function ProductEditPage({ productId, navigate }: Props) {
           </button>
         </div>
       </form>
+
+      <div className="panel mt-4 w-full max-w-2xl p-4">
+        <h2 className="text-base font-bold">상품 병합</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">중복 상품을 현재 상품으로 합치고, 선택한 상품은 비활성화합니다.</p>
+
+        <label className="mt-3 block">
+          <span className="mb-1 block text-sm font-semibold">병합할 품목 검색</span>
+          <input
+            className="field"
+            value={mergeSearch}
+            onChange={(event) => setMergeSearch(event.target.value)}
+            placeholder="상품명 또는 바코드"
+          />
+        </label>
+
+        {mergeCandidates.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {mergeCandidates.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                disabled={merging}
+                onClick={() => void mergeProduct(candidate)}
+                className="w-full rounded-md border border-slate-200 bg-white p-3 text-left text-sm disabled:opacity-45 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <span className="block font-bold">{candidate.name}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{candidate.barcode ?? "바코드 없음"}</span>
+              </button>
+            ))}
+          </div>
+        ) : mergeSearch.trim() ? (
+          <p className="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">병합할 품목이 없습니다.</p>
+        ) : null}
+      </div>
     </section>
   );
 }

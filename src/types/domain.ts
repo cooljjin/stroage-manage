@@ -23,7 +23,6 @@ export type RouteName =
   | "low-stock"
   | "status-items"
   | "logs"
-  | "product-management"
   | "category-management"
   | "unit-management"
   | "supplier-management"
