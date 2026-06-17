@@ -34,6 +34,7 @@ function ProductLinkButton({ url }: { url: string | null }) {
 export function LowStockPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set());
+  const [completingFreshIds, setCompletingFreshIds] = useState<Set<string>>(new Set());
   const [urgentModalOpen, setUrgentModalOpen] = useState(false);
   const [urgentProductId, setUrgentProductId] = useState("");
   const [urgentQuantity, setUrgentQuantity] = useState("");
@@ -168,6 +169,41 @@ export function LowStockPage({ navigate }: Props) {
     });
   }
 
+  async function completeFreshReceiving(item: InventoryItem) {
+    setError("");
+    setCompletingFreshIds((current) => new Set(current).add(item.id));
+
+    const { error: updateError } = await supabase
+      .from("products")
+      .update({
+        fresh_order_selected: false,
+        fresh_order_selected_at: null
+      })
+      .eq("id", item.id);
+
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setItems((current) =>
+        current.map((product) =>
+          product.id === item.id
+            ? {
+                ...product,
+                fresh_order_selected: false,
+                fresh_order_selected_at: null
+              }
+            : product
+        )
+      );
+    }
+
+    setCompletingFreshIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+  }
+
   async function submitUrgentOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const quantity = Number(urgentQuantity);
@@ -261,17 +297,29 @@ export function LowStockPage({ navigate }: Props) {
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">최소</p>
                     <p className="tabular-nums">{item.minimum_stock}</p>
                   </div>
-                  <label className="flex min-w-[54px] flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300" onClick={(event) => event.stopPropagation()}>
-                    발주 완료
-                    <input
-                      type="checkbox"
-                      checked={item.order_completed}
-                      disabled={updatingOrderIds.has(item.id)}
-                      onChange={(event) => void toggleOrderCompleted(item, event.target.checked)}
-                      aria-label={`${item.name} 발주 완료`}
-                      className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
-                    />
-                  </label>
+                  <div className="flex min-w-[72px] flex-col items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                    <label className="flex flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300">
+                      발주 완료
+                      <input
+                        type="checkbox"
+                        checked={item.order_completed}
+                        disabled={updatingOrderIds.has(item.id)}
+                        onChange={(event) => void toggleOrderCompleted(item, event.target.checked)}
+                        aria-label={`${item.name} 발주 완료`}
+                        className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
+                      />
+                    </label>
+                    {item.fresh_order_selected ? (
+                      <button
+                        type="button"
+                        disabled={completingFreshIds.has(item.id)}
+                        onClick={() => void completeFreshReceiving(item)}
+                        className="min-h-9 whitespace-nowrap rounded-md bg-emerald-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                      >
+                        입고 완료
+                      </button>
+                    ) : null}
+                  </div>
                   <ProductLinkButton url={item.product_url} />
                 </div>
               </div>
@@ -285,7 +333,7 @@ export function LowStockPage({ navigate }: Props) {
                   <th className="px-3 py-3">상품명</th>
                   <th className="w-16 px-2 py-3 text-right">총재고</th>
                   <th className="w-16 px-2 py-3 text-right">최소</th>
-                  <th className="w-[76px] px-2 py-3 text-center">발주완료</th>
+                  <th className="w-[92px] px-2 py-3 text-center">발주완료</th>
                   <th className="w-[72px] px-2 py-3 text-center">링크</th>
                 </tr>
               </thead>
@@ -322,6 +370,16 @@ export function LowStockPage({ navigate }: Props) {
                         aria-label={`${item.name} 발주 완료`}
                         className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
                       />
+                      {item.fresh_order_selected ? (
+                        <button
+                          type="button"
+                          disabled={completingFreshIds.has(item.id)}
+                          onClick={() => void completeFreshReceiving(item)}
+                          className="mt-2 min-h-9 w-full rounded-md bg-emerald-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                        >
+                          입고 완료
+                        </button>
+                      ) : null}
                     </td>
                     <td className="px-2 py-2 text-center">
                       <ProductLinkButton url={item.product_url} />

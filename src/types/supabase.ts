@@ -30,6 +30,41 @@ export type Database = {
         };
         Relationships: [];
       };
+      store_invites: {
+        Row: {
+          id: string;
+          store_id: string;
+          email: string;
+          role: "store_admin" | "staff";
+          token: string;
+          invited_by: string;
+          accepted_by: string | null;
+          accepted_at: string | null;
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          email: string;
+          role?: "store_admin" | "staff";
+          token?: string;
+          invited_by: string;
+          accepted_by?: string | null;
+          accepted_at?: string | null;
+          expires_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          email?: string;
+          role?: "store_admin" | "staff";
+          token?: string;
+          accepted_by?: string | null;
+          accepted_at?: string | null;
+          expires_at?: string;
+        };
+        Relationships: [];
+      };
       products: {
         Row: {
           id: string;

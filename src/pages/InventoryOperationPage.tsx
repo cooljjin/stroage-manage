@@ -1,6 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, History, Minus, Plus, RotateCcw, X } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
+import { ArrowLeft, ArrowLeftRight, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
 import { formatDateTime } from "../lib/date";
@@ -11,6 +10,8 @@ import type { AppRoute, InventoryAction, InventoryItem, InventoryLog, Location, 
 type Props = {
   productId: string;
   navigate: (route: AppRoute) => void;
+  canGoBack?: boolean;
+  onBack?: () => void;
 };
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
@@ -28,12 +29,12 @@ function formatStatusUpdateError(message: string) {
   return message;
 }
 
-export function InventoryOperationPage({ productId, navigate }: Props) {
+export function InventoryOperationPage({ productId, navigate, canGoBack = false, onBack }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [action, setAction] = useState<InventoryAction>("입고");
+  const [action, setAction] = useState<InventoryAction>("조정");
   const [location, setLocation] = useState<Location>("창고");
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
   const [quantity, setQuantity] = useState("");
@@ -369,6 +370,21 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
     if (logError) {
       setError(logError.message);
     } else {
+      if (action === "입고" && item.fresh_order_selected) {
+        const { error: freshCompleteError } = await supabase
+          .from("products")
+          .update({
+            fresh_order_selected: false,
+            fresh_order_selected_at: null
+          })
+          .eq("id", item.id);
+
+        if (freshCompleteError) {
+          setError(freshCompleteError.message);
+          setSaving(false);
+          return;
+        }
+      }
       setSuccess("저장되었습니다.");
       setQuantity("");
       setNote("");
@@ -382,53 +398,60 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
 
   return (
     <section>
-      <PageTitle
-        title="재고 작업"
-        action={
-          <div className="flex items-start gap-2">
-            <button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })}>수정</button>
-            <div className="flex flex-col gap-2">
-              <button className="secondary-button px-3" type="button" onClick={() => navigate({ name: "inventory" })}>목록</button>
-              <button
-                className="touch-button rounded-md border border-rose-300 px-3 text-sm font-bold text-rose-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-rose-800 dark:text-rose-300"
-                type="button"
-                disabled={restoring || saving}
-                onClick={() => void openHistory()}
-              >
-                {restoring ? "처리 중..." : "되돌리기"}
-              </button>
-            </div>
-          </div>
-        }
-      />
+      <div className="mb-4 flex min-w-0 items-center gap-2">
+        {canGoBack && onBack ? (
+          <button className="touch-button icon-button shrink-0" type="button" onClick={onBack} aria-label="뒤로가기" title="뒤로가기">
+            <ArrowLeft size={18} />
+          </button>
+        ) : null}
+        <h1 className="min-w-0 flex-1 truncate text-2xl font-bold tracking-normal">재고 작업</h1>
+        <div className="flex shrink-0 items-center gap-2">
+          <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })} aria-label="상품 수정" title="수정">
+            <Pencil size={18} />
+          </button>
+          <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "inventory" })} aria-label="목록으로 이동" title="목록">
+            <List size={19} />
+          </button>
+          <button
+            className="touch-button icon-button text-rose-700 disabled:cursor-not-allowed disabled:opacity-45 dark:text-rose-300"
+            type="button"
+            disabled={restoring || saving}
+            onClick={() => void openHistory()}
+            aria-label="되돌리기"
+            title={restoring ? "처리 중" : "되돌리기"}
+          >
+            <History size={19} />
+          </button>
+        </div>
+      </div>
 
-      <div className="-mt-2 mb-4">
+      <div className="-mt-2 mb-2">
         <p className="break-words text-2xl font-bold leading-tight text-slate-950 dark:text-slate-100">{item.name}</p>
         <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">{item.barcode ?? "바코드 없음"}</p>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2 text-sm">
-        <span className="rounded-md border border-slate-200 bg-white px-3 py-2 font-semibold dark:border-slate-800 dark:bg-slate-900">
+      <div className="mb-3 flex flex-wrap gap-2 text-sm">
+        <span className="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-semibold dark:border-slate-800 dark:bg-slate-900">
           <strong className="text-slate-950 dark:text-slate-100">{item.storage_type ?? "미지정"}</strong>
         </span>
-        <span className="rounded-md border border-slate-200 bg-white px-3 py-2 font-semibold dark:border-slate-800 dark:bg-slate-900">
+        <span className="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-semibold dark:border-slate-800 dark:bg-slate-900">
           <strong className="text-slate-950 dark:text-slate-100">{item.supplier_name ?? "미지정"}</strong>
         </span>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="panel p-4">
+      <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="panel p-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900">
+            <div className="rounded-md bg-slate-100 p-2.5 dark:bg-slate-900">
               <p className="text-sm text-slate-500 dark:text-slate-400">창고</p>
-              <p className="text-3xl font-bold">{item.warehouse_qty}</p>
+              <p className="text-2xl font-bold">{item.warehouse_qty}</p>
             </div>
-            <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900">
+            <div className="rounded-md bg-slate-100 p-2.5 dark:bg-slate-900">
               <p className="text-sm text-slate-500 dark:text-slate-400">매장</p>
-              <p className="text-3xl font-bold">{item.store_qty}</p>
+              <p className="text-2xl font-bold">{item.store_qty}</p>
             </div>
           </div>
-          <div className="mt-3 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800">
+          <div className="mt-3 rounded-md border border-slate-200 p-2.5 text-sm dark:border-slate-800">
             <div className="flex flex-wrap items-center gap-2">
               <span>
                 총재고 <strong>{item.total_stock}</strong> · 최소재고 <strong>{item.minimum_stock}</strong>
@@ -473,10 +496,10 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="panel p-4">
+        <form onSubmit={handleSubmit} className="panel p-3">
           <div className="grid grid-cols-4 gap-2">
             {ACTIONS.map((name) => (
-              <label key={name} className={`rounded-md border p-3 text-center text-sm font-bold ${action === name ? "border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100" : "border-slate-200 dark:border-slate-800"}`}>
+              <label key={name} className={`rounded-md border p-2.5 text-center text-sm font-bold ${action === name ? "border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100" : "border-slate-200 dark:border-slate-800"}`}>
                 <input className="sr-only" type="radio" checked={action === name} onChange={() => setAction(name)} />
                 {name}
               </label>
@@ -484,7 +507,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
           </div>
 
           {action !== "이동" ? (
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {(["창고", "매장"] as Location[]).map((name) => (
                 <button key={name} type="button" onClick={() => setLocation(name)} className={location === name ? "primary-button" : "secondary-button"}>
                   {name}
@@ -492,7 +515,7 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
               ))}
             </div>
           ) : (
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setMoveDirection("warehouse-to-store")} className={moveDirection === "warehouse-to-store" ? "primary-button" : "secondary-button"}>
                 창고 → 매장
               </button>
@@ -502,14 +525,14 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
             </div>
           )}
 
-          <label className="mt-4 block">
+          <label className="mt-3 block">
             <span className="mb-1 block text-sm font-semibold">{action === "조정" ? "실제 재고 수량" : "수량"}</span>
             <div className="flex gap-2">
               <button type="button" onClick={decreaseQuantity} className="secondary-button inline-flex w-14 items-center justify-center" aria-label="수량 감소">
                 <Minus size={20} />
               </button>
               <input
-                className="field text-center text-2xl font-bold"
+                className="field text-center text-xl font-bold"
                 type="text"
                 inputMode="decimal"
                 pattern="[0-9]*[.]?[0-9]*"
@@ -522,13 +545,22 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
             </div>
           </label>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-2 grid grid-cols-3 gap-2">
             {QUICK_AMOUNTS.map((amount) => (
               <button key={amount} type="button" onClick={() => addQuickAmount(amount)} className="secondary-button">
                 +{amount}
               </button>
             ))}
           </div>
+
+          {quantityStepError ? <div className="mt-3"><StatusMessage type="error">{quantityStepError}</StatusMessage></div> : null}
+          {negativeError ? <div className="mt-3"><StatusMessage type="error">{negativeError}</StatusMessage></div> : null}
+          {error ? <div className="mt-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
+          {success ? <div className="mt-3"><StatusMessage type="success">{success}</StatusMessage></div> : null}
+
+          <button className="primary-button mt-3 w-full" type="submit" disabled={saving || quantityValue < 0 || Boolean(quantityStepError) || Boolean(negativeError)}>
+            {saving ? "저장 중..." : "저장"}
+          </button>
 
           <div className="mt-4 rounded-md border border-slate-200 p-3 dark:border-slate-800">
             <label className="flex items-center justify-between gap-3 text-sm font-bold">
@@ -578,14 +610,6 @@ export function InventoryOperationPage({ productId, navigate }: Props) {
             </div>
           ) : null}
 
-          {quantityStepError ? <div className="mt-4"><StatusMessage type="error">{quantityStepError}</StatusMessage></div> : null}
-          {negativeError ? <div className="mt-4"><StatusMessage type="error">{negativeError}</StatusMessage></div> : null}
-          {error ? <div className="mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
-          {success ? <div className="mt-4"><StatusMessage type="success">{success}</StatusMessage></div> : null}
-
-          <button className="primary-button mt-5 w-full" type="submit" disabled={saving || quantityValue < 0 || Boolean(quantityStepError) || Boolean(negativeError)}>
-            {saving ? "저장 중..." : "저장"}
-          </button>
         </form>
       </div>
 

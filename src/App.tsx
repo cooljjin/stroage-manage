@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Moon, Shield, Sun } from "lucide-react";
+import { ArrowLeft, Moon, Shield, Sun } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { TopMenu } from "./components/TopMenu";
@@ -32,6 +32,11 @@ import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 import type { ProfileRole } from "./types/domain";
 
 const NAV_ROUTES: RouteName[] = ["home", "scan", "inventory", "low-stock", "logs"];
+
+type RouteHistoryEntry = {
+  route: AppRoute;
+  scrollY: number;
+};
 
 function initialRoute(): AppRoute {
   const inviteMatch = window.location.pathname.match(/^\/invite\/([^/]+)$/);
@@ -65,6 +70,18 @@ function canAccess(routeName: RouteName, profile: StaffProfile) {
   return true;
 }
 
+function routeKey(route: AppRoute) {
+  return JSON.stringify(route);
+}
+
+function updateBrowserPath(next: AppRoute) {
+  if (next.name === "invite-accept" && next.inviteToken) {
+    window.history.replaceState(null, "", `/invite/${encodeURIComponent(next.inviteToken)}`);
+  } else {
+    window.history.replaceState(null, "", "/");
+  }
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -72,6 +89,9 @@ export default function App() {
   const [route, setRoute] = useState<AppRoute>(() => initialRoute());
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const routeHistoryRef = useRef<RouteHistoryEntry[]>([]);
+  const pendingScrollYRef = useRef<number | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -99,9 +119,23 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     if (route.name === "landing" || route.name === "login" || route.name === "signup-request") {
-      navigate({ name: "home" });
+      const homeRoute: AppRoute = { name: "home" };
+      pendingScrollYRef.current = 0;
+      setRoute(homeRoute);
+      updateBrowserPath(homeRoute);
     }
   }, [session, route.name]);
+
+  useEffect(() => {
+    const pendingScrollY = pendingScrollYRef.current;
+    if (pendingScrollY === null) return;
+
+    pendingScrollYRef.current = null;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: pendingScrollY, behavior: "auto" });
+      window.setTimeout(() => window.scrollTo({ top: pendingScrollY, behavior: "auto" }), 150);
+    });
+  }, [route]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -112,20 +146,34 @@ export default function App() {
     return NAV_ROUTES.includes(route.name) ? route.name : "home";
   }, [route.name]);
 
-  function navigate(next: AppRoute) {
+  function navigate(next: AppRoute, options: { replace?: boolean; scrollY?: number } = {}) {
     setMenuOpen(false);
-    setRoute(next);
-    if (next.name === "invite-accept" && next.inviteToken) {
-      window.history.replaceState(null, "", `/invite/${encodeURIComponent(next.inviteToken)}`);
-    } else {
-      window.history.replaceState(null, "", "/");
+    if (!options.replace && routeKey(route) !== routeKey(next)) {
+      routeHistoryRef.current.push({ route, scrollY: window.scrollY });
+      setCanGoBack(true);
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    pendingScrollYRef.current = options.scrollY ?? 0;
+    setRoute(next);
+    updateBrowserPath(next);
+  }
+
+  function goBack() {
+    const previous = routeHistoryRef.current.pop();
+    if (!previous) return;
+
+    setMenuOpen(false);
+    setCanGoBack(routeHistoryRef.current.length > 0);
+    pendingScrollYRef.current = previous.scrollY;
+    setRoute(previous.route);
+    updateBrowserPath(previous.route);
   }
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    navigate({ name: "landing" });
+    routeHistoryRef.current = [];
+    setCanGoBack(false);
+    navigate({ name: "landing" }, { replace: true });
   }
 
   if (authLoading) {
@@ -142,7 +190,7 @@ export default function App() {
     }
 
     if (route.name === "invite-accept" && route.inviteToken) {
-      return <InviteAcceptPage token={route.inviteToken} signedIn={false} onLogin={() => navigate({ name: "login" })} onAccepted={setProfile} />;
+      return <InviteAcceptPage token={route.inviteToken} signedIn={false} onAccepted={setProfile} />;
     }
 
     return <LandingPage onLogin={() => navigate({ name: "login" })} onSignupRequest={() => navigate({ name: "signup-request" })} />;
@@ -153,10 +201,9 @@ export default function App() {
       <InviteAcceptPage
         token={route.inviteToken}
         signedIn={true}
-        onLogin={() => navigate({ name: "login" })}
         onAccepted={(nextProfile) => {
           setProfile(nextProfile);
-          navigate({ name: "home" });
+          navigate({ name: "home" }, { replace: true });
         }}
       />
     );
@@ -220,11 +267,25 @@ export default function App() {
       </header>
 
       <main className="mx-auto min-w-0 max-w-6xl px-4 py-4">
+        {canGoBack && permittedRoute.name !== "operation" ? (
+          <button
+            type="button"
+            onClick={goBack}
+            className="secondary-button mb-4 inline-flex items-center gap-2"
+            aria-label="뒤로가기"
+            title="뒤로가기"
+          >
+            <ArrowLeft size={18} />
+            뒤로가기
+          </button>
+        ) : null}
         {permittedRoute.name === "home" && <HomePage navigate={navigate} />}
         {permittedRoute.name === "scan" && <ScanPage navigate={navigate} />}
         {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
         {permittedRoute.name === "product-edit" && <ProductEditPage productId={permittedRoute.productId ?? ""} navigate={navigate} />}
-        {permittedRoute.name === "operation" && <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} />}
+        {permittedRoute.name === "operation" && (
+          <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} />
+        )}
         {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} />}
         {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} />}
         {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} />}
