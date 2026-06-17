@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
+import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
 import { normalizeInventoryItem } from "../lib/inventory";
+import { loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, InventoryItem } from "../types/domain";
+import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -16,29 +18,10 @@ type FreshReceivingUndoEntry = {
   freshOrderSelectedAt: string | null;
 };
 
-function ProductLinkButton({ url }: { url: string | null }) {
-  const hasUrl = Boolean(url);
-
-  return (
-    <span className="inline-flex justify-center" onClick={(event) => event.stopPropagation()}>
-      <button
-        type="button"
-        disabled={!hasUrl}
-        onClick={() => {
-          if (url) {
-            window.open(url, "_blank", "noopener,noreferrer");
-          }
-        }}
-        className="min-h-10 min-w-[54px] whitespace-nowrap rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
-      >
-        [링크]
-      </button>
-    </span>
-  );
-}
-
 export function LowStockPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
+  const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set());
   const [completingFreshIds, setCompletingFreshIds] = useState<Set<string>>(new Set());
   const [freshReceivingUndoStack, setFreshReceivingUndoStack] = useState<FreshReceivingUndoEntry[]>([]);
@@ -60,7 +43,12 @@ export function LowStockPage({ navigate }: Props) {
 
   async function loadItems() {
     setLoading(true);
-    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").eq("is_active", true).order("name", { ascending: true });
+    const [supplierResult, productResult] = await Promise.all([
+      loadSuppliers({ activeOnly: true }).catch(() => []),
+      supabase.from("products").select("*, inventory(*)").eq("is_active", true).order("name", { ascending: true })
+    ]);
+    const { data, error: loadError } = productResult;
+    setSuppliers(supplierResult);
     if (loadError) {
       setError(loadError.message);
     } else {
@@ -90,6 +78,10 @@ export function LowStockPage({ navigate }: Props) {
       return !keyword || item.name.toLocaleLowerCase("ko").includes(keyword);
     });
   }, [freshSearch, items]);
+
+  const suppliersByName = useMemo(() => {
+    return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
+  }, [suppliers]);
 
   function openFreshModal() {
     setError("");
@@ -379,7 +371,12 @@ export function LowStockPage({ navigate }: Props) {
                       </button>
                     ) : null}
                   </div>
-                  <ProductLinkButton url={item.product_url} />
+                  <ProductOrderAction
+                    item={item}
+                    supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
+                    quantity={orderQuantities[item.id] ?? ""}
+                    onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.id]: quantity }))}
+                  />
                 </div>
               </div>
             ))}
@@ -393,7 +390,7 @@ export function LowStockPage({ navigate }: Props) {
                   <th className="w-16 px-2 py-3 text-right">총재고</th>
                   <th className="w-16 px-2 py-3 text-right">최소</th>
                   <th className="w-[92px] px-2 py-3 text-center">발주완료</th>
-                  <th className="w-[72px] px-2 py-3 text-center">링크</th>
+                  <th className="w-[122px] px-2 py-3 text-center">발주</th>
                 </tr>
               </thead>
               <tbody>
@@ -441,7 +438,12 @@ export function LowStockPage({ navigate }: Props) {
                       ) : null}
                     </td>
                     <td className="px-2 py-2 text-center">
-                      <ProductLinkButton url={item.product_url} />
+                      <ProductOrderAction
+                        item={item}
+                        supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
+                        quantity={orderQuantities[item.id] ?? ""}
+                        onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.id]: quantity }))}
+                      />
                     </td>
                   </tr>
                 ))}

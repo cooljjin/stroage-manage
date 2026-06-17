@@ -56,7 +56,18 @@ export function ProductEditPage({ productId, navigate }: Props) {
         ? categoryResult
         : [...categoryResult, { id: nextProduct.category, name: nextProduct.category, is_active: true, sort_order: categoryResult.length + 1, created_at: new Date(0).toISOString() }];
       const nextSuppliers = nextProduct.supplier_name && !supplierResult.some((item) => item.name === nextProduct.supplier_name)
-        ? [...supplierResult, { id: nextProduct.supplier_name, name: nextProduct.supplier_name, is_active: true, created_at: new Date(0).toISOString() }]
+        ? [
+            ...supplierResult,
+            {
+              id: nextProduct.supplier_name,
+              name: nextProduct.supplier_name,
+              order_method: "link" as const,
+              sms_phone: null,
+              sms_template: null,
+              is_active: true,
+              created_at: new Date(0).toISOString()
+            }
+          ]
         : supplierResult;
       const nextUnits = nextProduct.unit_name && !unitResult.some((item) => item.name === nextProduct.unit_name)
         ? [...unitResult, { id: nextProduct.unit_name, name: nextProduct.unit_name, is_active: true, sort_order: unitResult.length + 1, created_at: new Date(0).toISOString() }]

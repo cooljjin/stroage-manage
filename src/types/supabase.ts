@@ -186,17 +186,26 @@ export type Database = {
         Row: {
           id: string;
           name: string;
+          order_method: "link" | "sms";
+          sms_phone: string | null;
+          sms_template: string | null;
           is_active: boolean;
           created_at: string;
         };
         Insert: {
           id?: string;
           name: string;
+          order_method?: "link" | "sms";
+          sms_phone?: string | null;
+          sms_template?: string | null;
           is_active?: boolean;
           created_at?: string;
         };
         Update: {
           name?: string;
+          order_method?: "link" | "sms";
+          sms_phone?: string | null;
+          sms_template?: string | null;
           is_active?: boolean;
         };
         Relationships: [];

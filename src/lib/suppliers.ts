@@ -19,6 +19,9 @@ export function fallbackSuppliers(): ProductSupplier[] {
   return DEFAULT_SUPPLIERS.map((name) => ({
     id: name,
     name,
+    order_method: "link",
+    sms_phone: null,
+    sms_template: null,
     is_active: true,
     created_at: new Date(0).toISOString()
   }));

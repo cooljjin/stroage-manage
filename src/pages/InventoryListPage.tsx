@@ -1,40 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Search, TriangleAlert } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
+import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
 import { VIEW_MODE_STORAGE_KEY } from "../lib/constants";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { normalizeInventoryItem } from "../lib/inventory";
+import { loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, CategoryFilter, InventoryItem, SortDirection, SortKey, ViewMode } from "../types/domain";
+import type { AppRoute, CategoryFilter, InventoryItem, ProductSupplier, SortDirection, SortKey, ViewMode } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
 };
 
-function ProductLinkButton({ url }: { url: string | null }) {
-  const hasUrl = Boolean(url);
-
-  return (
-    <span className="inline-flex justify-center" onClick={(event) => event.stopPropagation()}>
-      <button
-        type="button"
-        disabled={!hasUrl}
-        onClick={() => {
-          if (url) {
-            window.open(url, "_blank", "noopener,noreferrer");
-          }
-        }}
-        className="min-h-10 min-w-[54px] whitespace-nowrap rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
-      >
-        [링크]
-      </button>
-    </span>
-  );
-}
-
 export function InventoryListPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
+  const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState<CategoryFilter>("전체");
   const [search, setSearch] = useState("");
@@ -54,12 +37,14 @@ export function InventoryListPage({ navigate }: Props) {
 
   async function loadItems() {
     setLoading(true);
-    const [categoryResult, productResult] = await Promise.all([
+    const [categoryResult, supplierResult, productResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
+      loadSuppliers({ activeOnly: true }).catch(() => []),
       supabase.from("products").select("*, inventory(*)").eq("is_active", true).order("name", { ascending: true })
     ]);
     const { data, error: loadError } = productResult;
     setCategories(categoryResult.map((item) => item.name));
+    setSuppliers(supplierResult);
     if (loadError) {
       setError(loadError.message);
     } else {
@@ -83,6 +68,10 @@ export function InventoryListPage({ navigate }: Props) {
       return sortDirection === "asc" ? compare : -compare;
     });
   }, [category, items, search, sortDirection, sortKey]);
+
+  const suppliersByName = useMemo(() => {
+    return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
+  }, [suppliers]);
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -144,10 +133,10 @@ export function InventoryListPage({ navigate }: Props) {
             <thead className="sticky top-[73px] z-20 bg-slate-100 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
               {viewMode === "compact" ? (
                 <tr>
-                  <th className="w-[48%] px-3 py-3">상품명</th>
+                  <th className="w-[40%] px-3 py-3">상품명</th>
                   <th className="w-[16%] px-2 py-3 text-right">창고</th>
                   <th className="w-[16%] px-2 py-3 text-right">매장</th>
-                  <th className="w-[20%] px-2 py-3 text-center">링크</th>
+                  <th className="w-[28%] px-2 py-3 text-center">발주</th>
                 </tr>
               ) : (
                 <tr>
@@ -157,7 +146,7 @@ export function InventoryListPage({ navigate }: Props) {
                   <th className="hidden px-3 py-3 text-right sm:table-cell"><SortButton label="총재고" value="total_stock" /></th>
                   <th className="hidden px-3 py-3 text-right md:table-cell">최소</th>
                   <th className="hidden px-3 py-3 md:table-cell">상태</th>
-                  <th className="w-[72px] px-2 py-3 text-center">링크</th>
+                  <th className="w-[122px] px-2 py-3 text-center">발주</th>
                 </tr>
               )}
             </thead>
@@ -195,7 +184,12 @@ export function InventoryListPage({ navigate }: Props) {
                     </>
                   ) : null}
                   <td className="px-2 py-2 text-center">
-                    <ProductLinkButton url={item.product_url} />
+                    <ProductOrderAction
+                      item={item}
+                      supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
+                      quantity={orderQuantities[item.id] ?? ""}
+                      onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.id]: quantity }))}
+                    />
                   </td>
                 </tr>
               ))}

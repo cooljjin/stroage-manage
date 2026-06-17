@@ -10,6 +10,9 @@ export function SupplierManagementPage() {
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [name, setName] = useState("");
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [orderMethodDrafts, setOrderMethodDrafts] = useState<Record<string, "link" | "sms">>({});
+  const [smsPhoneDrafts, setSmsPhoneDrafts] = useState<Record<string, string>>({});
+  const [smsTemplateDrafts, setSmsTemplateDrafts] = useState<Record<string, string>>({});
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -26,6 +29,9 @@ export function SupplierManagementPage() {
       const nextSuppliers = await loadSuppliers();
       setSuppliers(nextSuppliers);
       setNameDrafts(Object.fromEntries(nextSuppliers.map((supplier) => [supplier.id, supplier.name])));
+      setOrderMethodDrafts(Object.fromEntries(nextSuppliers.map((supplier) => [supplier.id, supplier.order_method ?? "link"])));
+      setSmsPhoneDrafts(Object.fromEntries(nextSuppliers.map((supplier) => [supplier.id, supplier.sms_phone ?? ""])));
+      setSmsTemplateDrafts(Object.fromEntries(nextSuppliers.map((supplier) => [supplier.id, supplier.sms_template ?? ""])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "발주처를 불러오지 못했습니다.");
     }
@@ -51,18 +57,38 @@ export function SupplierManagementPage() {
 
   async function saveSupplierName(supplier: ProductSupplier) {
     const nextName = nameDrafts[supplier.id]?.trim();
+    const nextOrderMethod = orderMethodDrafts[supplier.id] ?? "link";
+    const nextSmsPhone = smsPhoneDrafts[supplier.id]?.trim() ?? "";
+    const nextSmsTemplate = smsTemplateDrafts[supplier.id]?.trim() ?? "";
     if (!nextName) {
       setError("발주처 이름은 비워둘 수 없습니다.");
       return;
     }
-    if (nextName === supplier.name) {
+    if (nextOrderMethod === "sms" && !nextSmsPhone) {
+      setError("문자 발주는 발주처 전화번호가 필요합니다.");
+      return;
+    }
+    if (
+      nextName === supplier.name &&
+      nextOrderMethod === supplier.order_method &&
+      nextSmsPhone === (supplier.sms_phone ?? "") &&
+      nextSmsTemplate === (supplier.sms_template ?? "")
+    ) {
       setEditingNameId(null);
       return;
     }
 
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase.from("suppliers").update({ name: nextName }).eq("id", supplier.id);
+    const { error: updateError } = await supabase
+      .from("suppliers")
+      .update({
+        name: nextName,
+        order_method: nextOrderMethod,
+        sms_phone: nextOrderMethod === "sms" ? nextSmsPhone : null,
+        sms_template: nextOrderMethod === "sms" ? nextSmsTemplate || null : null
+      })
+      .eq("id", supplier.id);
     if (updateError) {
       setError(updateError.message);
       return;
@@ -160,6 +186,9 @@ export function SupplierManagementPage() {
                             type="button"
                             onClick={() => {
                               setNameDrafts((value) => ({ ...value, [supplier.id]: supplier.name }));
+                              setOrderMethodDrafts((value) => ({ ...value, [supplier.id]: supplier.order_method }));
+                              setSmsPhoneDrafts((value) => ({ ...value, [supplier.id]: supplier.sms_phone ?? "" }));
+                              setSmsTemplateDrafts((value) => ({ ...value, [supplier.id]: supplier.sms_template ?? "" }));
                               setEditingNameId(null);
                             }}
                             className="rounded border border-slate-300 px-3 py-1 text-base font-bold dark:border-slate-700"
@@ -175,6 +204,9 @@ export function SupplierManagementPage() {
                           type="button"
                           onClick={() => {
                             setNameDrafts((value) => ({ ...value, [supplier.id]: supplier.name }));
+                            setOrderMethodDrafts((value) => ({ ...value, [supplier.id]: supplier.order_method }));
+                            setSmsPhoneDrafts((value) => ({ ...value, [supplier.id]: supplier.sms_phone ?? "" }));
+                            setSmsTemplateDrafts((value) => ({ ...value, [supplier.id]: supplier.sms_template ?? "" }));
                             setEditingNameId(supplier.id);
                           }}
                           className="shrink-0 rounded border border-slate-300 px-2 py-1 text-base font-bold dark:border-slate-700"
@@ -182,6 +214,52 @@ export function SupplierManagementPage() {
                           수정
                         </button>
                       </div>
+                    )}
+                    {editingName ? (
+                      <div className="mt-3 space-y-3">
+                        <label className="block">
+                          <span className="mb-1 block text-sm font-bold text-slate-600 dark:text-slate-300">발주 방식</span>
+                          <select
+                            className="field py-2"
+                            value={orderMethodDrafts[supplier.id] ?? "link"}
+                            onChange={(event) => setOrderMethodDrafts((value) => ({ ...value, [supplier.id]: event.target.value as "link" | "sms" }))}
+                          >
+                            <option value="link">링크 발주</option>
+                            <option value="sms">문자 발주</option>
+                          </select>
+                        </label>
+
+                        {(orderMethodDrafts[supplier.id] ?? "link") === "sms" ? (
+                          <>
+                            <label className="block">
+                              <span className="mb-1 block text-sm font-bold text-slate-600 dark:text-slate-300">문자 받을 번호</span>
+                              <input
+                                className="field py-2"
+                                inputMode="tel"
+                                value={smsPhoneDrafts[supplier.id] ?? ""}
+                                onChange={(event) => setSmsPhoneDrafts((value) => ({ ...value, [supplier.id]: event.target.value }))}
+                                placeholder="예: 01012345678"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="mb-1 block text-sm font-bold text-slate-600 dark:text-slate-300">문자 양식</span>
+                              <textarea
+                                className="field min-h-32 py-2"
+                                value={smsTemplateDrafts[supplier.id] ?? ""}
+                                onChange={(event) => setSmsTemplateDrafts((value) => ({ ...value, [supplier.id]: event.target.value }))}
+                                placeholder={"안녕하세요! 카페 낙입니다.\n{product}\n{quantity}{unit} 부탁드립니다.\n\n감사합니다."}
+                              />
+                              <span className="mt-1 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                상품명은 {"{product}"}, 발주량은 {"{quantity}"}, 단위는 {"{unit}"}로 넣을 수 있습니다.
+                              </span>
+                            </label>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : supplier.order_method === "sms" ? (
+                      <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">문자 발주 · {supplier.sms_phone ?? "번호 없음"}</p>
+                    ) : (
+                      <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">링크 발주</p>
                     )}
                   </div>
                   <span

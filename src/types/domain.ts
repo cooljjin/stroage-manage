@@ -66,6 +66,9 @@ export type ProductCategory = {
 export type ProductSupplier = {
   id: string;
   name: string;
+  order_method: "link" | "sms";
+  sms_phone: string | null;
+  sms_template: string | null;
   is_active: boolean;
   created_at: string;
 };
