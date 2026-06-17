@@ -119,13 +119,13 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-    if (route.name === "landing" || route.name === "login" || route.name === "signup-request") {
+    if (route.name === "landing" || (route.name === "login" && !route.authInviteToken) || route.name === "signup-request") {
       const homeRoute: AppRoute = { name: "home" };
       pendingScrollYRef.current = 0;
       setRoute(homeRoute);
       updateBrowserPath(homeRoute);
     }
-  }, [session, route.name]);
+  }, [session, route.authInviteToken, route.name]);
 
   useEffect(() => {
     const pendingScrollY = pendingScrollYRef.current;
@@ -177,13 +177,34 @@ export default function App() {
     navigate({ name: "landing" }, { replace: true });
   }
 
+  async function goToSignup(email = "", inviteToken = "") {
+    if (session) {
+      await supabase.auth.signOut();
+      setSession(null);
+      setProfile(null);
+    }
+    routeHistoryRef.current = [];
+    setCanGoBack(false);
+    navigate({ name: "login", authMode: "signup", authEmail: email, authInviteToken: inviteToken }, { replace: true });
+  }
+
   if (authLoading) {
     return <div className="grid min-h-dvh place-items-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">로딩 중...</div>;
   }
 
-  if (!session) {
+    if (!session) {
     if (route.name === "login") {
-      return <LoginPage />;
+      return (
+        <LoginPage
+          initialMode={route.authMode ?? "login"}
+          initialEmail={route.authEmail ?? ""}
+          inviteToken={route.authInviteToken}
+          onInviteAccepted={(nextProfile) => {
+            setProfile(nextProfile);
+            navigate({ name: "home" }, { replace: true });
+          }}
+        />
+      );
     }
 
     if (route.name === "signup-request") {
@@ -191,7 +212,14 @@ export default function App() {
     }
 
     if (route.name === "invite-accept" && route.inviteToken) {
-      return <InviteAcceptPage token={route.inviteToken} signedIn={false} onAccepted={setProfile} />;
+      return (
+        <InviteAcceptPage
+          token={route.inviteToken}
+          signedIn={false}
+          onAccepted={setProfile}
+          onSignup={(email) => navigate({ name: "login", authMode: "signup", authEmail: email, authInviteToken: route.inviteToken })}
+        />
+      );
     }
 
     return <LandingPage onLogin={() => navigate({ name: "login" })} onSignupRequest={() => navigate({ name: "signup-request" })} />;
@@ -202,7 +230,22 @@ export default function App() {
       <InviteAcceptPage
         token={route.inviteToken}
         signedIn={true}
+        onSignup={(email) => void goToSignup(email, route.inviteToken)}
         onAccepted={(nextProfile) => {
+          setProfile(nextProfile);
+          navigate({ name: "home" }, { replace: true });
+        }}
+      />
+    );
+  }
+
+  if (route.name === "login" && route.authInviteToken) {
+    return (
+      <LoginPage
+        initialMode={route.authMode ?? "signup"}
+        initialEmail={route.authEmail ?? ""}
+        inviteToken={route.authInviteToken}
+        onInviteAccepted={(nextProfile) => {
           setProfile(nextProfile);
           navigate({ name: "home" }, { replace: true });
         }}
@@ -235,7 +278,7 @@ export default function App() {
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name })} />
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-brand-700 dark:text-brand-100">매장 재고관리</p>
+              <p className="text-xs font-semibold text-brand-700 dark:text-brand-100">통합 매장 재고관리 솔루션</p>
               <p className="max-w-[220px] truncate text-sm text-slate-500 dark:text-slate-400">{session.user.email}</p>
             </div>
           </div>

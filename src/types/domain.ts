@@ -196,6 +196,9 @@ export type StoreClosureDate = {
 
 export type AppRoute = {
   name: RouteName;
+  authMode?: "login" | "signup";
+  authEmail?: string;
+  authInviteToken?: string;
   barcode?: string;
   productId?: string;
   storeId?: string;

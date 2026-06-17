@@ -2,15 +2,39 @@ import { FormEvent, useState } from "react";
 import { LockKeyhole } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { StatusMessage } from "../components/StatusMessage";
+import type { StaffProfile } from "../types/domain";
 
-export function LoginPage() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
-  const [email, setEmail] = useState("");
+type Props = {
+  initialMode?: "login" | "signup";
+  initialEmail?: string;
+  inviteToken?: string;
+  onInviteAccepted?: (profile: StaffProfile) => void;
+};
+
+export function LoginPage({ initialMode = "login", initialEmail = "", inviteToken, onInviteAccepted }: Props) {
+  const [mode, setMode] = useState<"login" | "signup">(initialMode);
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  async function acceptInviteAfterAuth() {
+    if (!inviteToken) return false;
+
+    setMessage("매장에 연결하는 중입니다.");
+    const { data: profileData, error: acceptError } = await supabase.rpc("accept_store_invite" as never, { invite_token: inviteToken } as never);
+    if (acceptError) {
+      setError(acceptError.message);
+      return true;
+    }
+    if (profileData && onInviteAccepted) {
+      onInviteAccepted(profileData as StaffProfile);
+      return true;
+    }
+    return false;
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -26,13 +50,25 @@ export function LoginPage() {
 
     if (mode === "login") {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInError) setError(signInError.message);
+      if (signInError) {
+        setError(signInError.message);
+      } else if (!(await acceptInviteAfterAuth())) {
+        setMessage("로그인되었습니다.");
+      }
     } else {
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin
+        }
+      });
       if (signUpError) {
         setError(signUpError.message);
       } else if (!data.session) {
-        setMessage("가입 확인 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");
+        setError("회원가입은 완료됐지만 자동 로그인이 되지 않았습니다. Supabase Email 설정에서 Confirm email이 꺼져 있는지 확인해 주세요.");
+      } else if (inviteToken && data.session) {
+        await acceptInviteAfterAuth();
       } else {
         setMessage("회원가입이 완료되었습니다.");
       }
@@ -49,8 +85,7 @@ export function LoginPage() {
             <LockKeyhole size={22} />
           </div>
           <div>
-            <h1 className="text-xl font-bold">매장 재고관리</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{mode === "login" ? "작업자 추적을 위해 로그인합니다." : "초대받은 이메일로 계정을 만듭니다."}</p>
+            <h1 className="text-xl font-bold">로그인</h1>
           </div>
         </div>
 
