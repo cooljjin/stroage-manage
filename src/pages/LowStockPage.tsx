@@ -28,8 +28,12 @@ export function LowStockPage({ navigate }: Props) {
   const [undoingFreshReceiving, setUndoingFreshReceiving] = useState(false);
   const [urgentModalOpen, setUrgentModalOpen] = useState(false);
   const [urgentProductId, setUrgentProductId] = useState("");
+  const [urgentSearch, setUrgentSearch] = useState("");
+  const [urgentDirectInput, setUrgentDirectInput] = useState(false);
+  const [urgentDirectName, setUrgentDirectName] = useState("");
   const [urgentQuantity, setUrgentQuantity] = useState("");
   const [savingUrgent, setSavingUrgent] = useState(false);
+  const [deletingUrgentIds, setDeletingUrgentIds] = useState<Set<string>>(new Set());
   const [freshModalOpen, setFreshModalOpen] = useState(false);
   const [freshSearch, setFreshSearch] = useState("");
   const [selectedFreshIds, setSelectedFreshIds] = useState<Set<string>>(new Set());
@@ -59,7 +63,7 @@ export function LowStockPage({ navigate }: Props) {
 
   const lowStockItems = useMemo(() => {
     return items
-      .filter((item) => item.is_low_stock || item.fresh_order_selected)
+      .filter((item) => item.is_low_stock || item.fresh_order_selected || item.urgent_order_requested)
       .sort((a, b) => {
         if (a.urgent_order_requested !== b.urgent_order_requested) {
           return a.urgent_order_requested ? -1 : 1;
@@ -78,6 +82,15 @@ export function LowStockPage({ navigate }: Props) {
       return !keyword || item.name.toLocaleLowerCase("ko").includes(keyword);
     });
   }, [freshSearch, items]);
+
+  const urgentSearchResults = useMemo(() => {
+    const keyword = urgentSearch.trim().toLocaleLowerCase("ko");
+    if (!keyword) return [];
+
+    return items
+      .filter((item) => item.name.toLocaleLowerCase("ko").includes(keyword) || (item.barcode ?? "").toLocaleLowerCase("ko").includes(keyword))
+      .slice(0, 8);
+  }, [items, urgentSearch]);
 
   const suppliersByName = useMemo(() => {
     return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
@@ -146,9 +159,34 @@ export function LowStockPage({ navigate }: Props) {
 
   function openUrgentModal() {
     setError("");
-    setUrgentProductId(lowStockItems[0]?.id ?? "");
+    setUrgentProductId("");
+    setUrgentSearch("");
+    setUrgentDirectInput(false);
+    setUrgentDirectName("");
     setUrgentQuantity("");
     setUrgentModalOpen(true);
+  }
+
+  async function deleteUrgentOrder(item: InventoryItem) {
+    setError("");
+    setDeletingUrgentIds((current) => new Set(current).add(item.id));
+    setItems((current) => current.map((product) => (product.id === item.id ? { ...product, urgent_order_requested: false, urgent_order_quantity: null } : product)));
+
+    const { error: updateError } = await supabase
+      .from("products")
+      .update({ urgent_order_requested: false, urgent_order_quantity: null })
+      .eq("id", item.id);
+
+    if (updateError) {
+      setItems((current) => current.map((product) => (product.id === item.id ? item : product)));
+      setError(updateError.message);
+    }
+
+    setDeletingUrgentIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
   }
 
   async function toggleOrderCompleted(item: InventoryItem, checked: boolean) {
@@ -250,8 +288,14 @@ export function LowStockPage({ navigate }: Props) {
   async function submitUrgentOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const quantity = Number(urgentQuantity);
-    if (!urgentProductId) {
-      setError("긴급발주할 품목을 선택해 주세요.");
+    const directName = urgentDirectName.trim();
+
+    if (urgentDirectInput && !directName) {
+      setError("직접 입력할 품목명을 적어 주세요.");
+      return;
+    }
+    if (!urgentDirectInput && !urgentProductId) {
+      setError("긴급발주할 품목을 검색해 선택해 주세요.");
       return;
     }
     if (!Number.isInteger(quantity) || quantity <= 0) {
@@ -261,6 +305,40 @@ export function LowStockPage({ navigate }: Props) {
 
     setSavingUrgent(true);
     setError("");
+
+    if (urgentDirectInput) {
+      const { data, error: insertError } = await supabase
+        .from("products")
+        .insert({
+          name: directName,
+          barcode: null,
+          category: "기타",
+          supplier_name: null,
+          storage_type: null,
+          unit_name: null,
+          product_url: null,
+          minimum_stock: 0,
+          urgent_order_requested: true,
+          urgent_order_quantity: quantity
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        setError(insertError.message);
+      } else {
+        const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id });
+        if (inventoryError) {
+          setError(inventoryError.message);
+        } else {
+          setItems((current) => [...current, normalizeInventoryItem({ ...(data as Parameters<typeof normalizeInventoryItem>[0]), inventory: null })]);
+          setUrgentModalOpen(false);
+        }
+      }
+      setSavingUrgent(false);
+      return;
+    }
+
     const { error: updateError } = await supabase
       .from("products")
       .update({ urgent_order_requested: true, urgent_order_quantity: quantity })
@@ -303,9 +381,8 @@ export function LowStockPage({ navigate }: Props) {
             </button>
             <button
               type="button"
-              disabled={lowStockItems.length === 0}
               onClick={openUrgentModal}
-              className="touch-button rounded-md bg-red-600 px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+              className="touch-button rounded-md bg-red-600 px-3 text-sm font-bold text-white"
             >
               긴급발주요청
             </button>
@@ -368,6 +445,16 @@ export function LowStockPage({ navigate }: Props) {
                         className="min-h-9 whitespace-nowrap rounded-md bg-emerald-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
                       >
                         입고 완료
+                      </button>
+                    ) : null}
+                    {item.urgent_order_requested ? (
+                      <button
+                        type="button"
+                        disabled={deletingUrgentIds.has(item.id)}
+                        onClick={() => void deleteUrgentOrder(item)}
+                        className="min-h-9 whitespace-nowrap rounded-md border border-red-200 px-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
+                      >
+                        삭제
                       </button>
                     ) : null}
                   </div>
@@ -434,6 +521,16 @@ export function LowStockPage({ navigate }: Props) {
                           className="mt-2 min-h-9 w-full rounded-md bg-emerald-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
                         >
                           입고 완료
+                        </button>
+                      ) : null}
+                      {item.urgent_order_requested ? (
+                        <button
+                          type="button"
+                          disabled={deletingUrgentIds.has(item.id)}
+                          onClick={() => void deleteUrgentOrder(item)}
+                          className="mt-2 min-h-9 w-full rounded-md border border-red-200 px-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
+                        >
+                          삭제
                         </button>
                       ) : null}
                     </td>
@@ -548,16 +645,95 @@ export function LowStockPage({ navigate }: Props) {
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">품목과 요청 수량을 입력합니다.</p>
                 </div>
 
-                <label className="mb-3 block">
+                <div className="mb-3">
                   <span className="mb-1 block text-sm font-bold">품목</span>
-                  <select className="field" value={urgentProductId} onChange={(event) => setUrgentProductId(event.target.value)}>
-                    {lowStockItems.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <div className="mb-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setUrgentDirectInput(false)}
+                      className={`touch-button rounded-md px-3 text-sm font-bold ${!urgentDirectInput ? "bg-red-600 text-white" : "border border-slate-300 dark:border-slate-700"}`}
+                    >
+                      검색
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUrgentDirectInput(true);
+                        setUrgentProductId("");
+                      }}
+                      className={`touch-button rounded-md px-3 text-sm font-bold ${urgentDirectInput ? "bg-red-600 text-white" : "border border-slate-300 dark:border-slate-700"}`}
+                    >
+                      직접입력
+                    </button>
+                  </div>
+
+                  {urgentDirectInput ? (
+                    <input
+                      className="field"
+                      value={urgentDirectName}
+                      onChange={(event) => setUrgentDirectName(event.target.value)}
+                      placeholder="품목명 직접 입력"
+                      autoFocus
+                    />
+                  ) : (
+                    <>
+                      <label className="relative block">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        <input
+                          className="field pl-10 pr-10"
+                          value={urgentSearch}
+                          onChange={(event) => {
+                            setUrgentSearch(event.target.value);
+                            setUrgentProductId("");
+                          }}
+                          placeholder="상품명 또는 바코드 검색"
+                          autoFocus
+                        />
+                        {urgentSearch ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUrgentSearch("");
+                              setUrgentProductId("");
+                            }}
+                            className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center text-slate-500"
+                            aria-label="검색어 지우기"
+                          >
+                            <X size={19} />
+                          </button>
+                        ) : null}
+                      </label>
+
+                      <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                        {urgentSearchResults.map((item) => {
+                          const selected = urgentProductId === item.id;
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                setUrgentProductId(item.id);
+                                setUrgentSearch(item.name);
+                              }}
+                              className={`w-full rounded-md border p-2 text-left text-sm ${
+                                selected
+                                  ? "border-red-500 bg-red-50 dark:bg-red-950"
+                                  : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                              }`}
+                            >
+                              <span className="block font-bold">{item.name}</span>
+                              <span className="text-xs text-slate-500 dark:text-slate-400">{item.barcode ?? "바코드 없음"}</span>
+                            </button>
+                          );
+                        })}
+                        {urgentSearch.trim() && urgentSearchResults.length === 0 ? (
+                          <StatusMessage>검색 결과가 없습니다. 직접입력을 사용해 주세요.</StatusMessage>
+                        ) : null}
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 <label className="mb-4 block">
                   <span className="mb-1 block text-sm font-bold">발주요청 수량</span>

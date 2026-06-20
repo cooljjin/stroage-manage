@@ -35,6 +35,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
   const [productUrl, setProductUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [mergeSearch, setMergeSearch] = useState("");
   const [merging, setMerging] = useState(false);
   const [message, setMessage] = useState("");
@@ -137,6 +138,27 @@ export function ProductEditPage({ productId, navigate }: Props) {
     } else {
       navigate({ name: "operation", productId });
     }
+  }
+
+  async function deleteProduct() {
+    if (!product) return;
+
+    const ok = window.confirm(`${product.name} 품목을 삭제할까요? 삭제하면 재고와 관련 로그도 함께 삭제됩니다.`);
+    if (!ok) return;
+
+    setDeleting(true);
+    setError("");
+    setMessage("");
+
+    const { error: deleteError } = await supabase.from("products").delete().eq("id", product.id);
+
+    setDeleting(false);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    navigate({ name: "inventory" });
   }
 
   const mergeCandidates = product
@@ -317,6 +339,17 @@ export function ProductEditPage({ productId, navigate }: Props) {
         ) : mergeSearch.trim() ? (
           <p className="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">병합할 품목이 없습니다.</p>
         ) : null}
+      </div>
+
+      <div className="mt-4 w-full max-w-2xl">
+        <button
+          type="button"
+          disabled={deleting}
+          onClick={() => void deleteProduct()}
+          className="touch-button w-full rounded-md bg-red-600 px-4 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+        >
+          {deleting ? "삭제 중..." : "품목 삭제"}
+        </button>
       </div>
     </section>
   );

@@ -170,19 +170,21 @@ export function MasterUsersPage() {
 
   async function deleteProfile(profile: StaffProfile) {
     const label = profile.email ?? profile.display_name;
-    if (!window.confirm(`${label} 사용자를 목록에서 삭제하시겠습니까?`)) {
+    if (!window.confirm(`${label} 사용자를 완전히 삭제하시겠습니까?\n삭제하면 다시 같은 이메일로 회원가입할 수 있습니다.`)) {
       return;
     }
 
     setError("");
     setMessage("");
 
-    const { error: deleteError } = await supabase.from("profiles").delete().eq("id", profile.id);
+    const { data, error: deleteError } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>("delete-auth-user", {
+      body: { userId: profile.id }
+    });
 
-    if (deleteError) {
-      setError(deleteError.message);
+    if (deleteError || data?.error) {
+      setError(data?.error ?? deleteError?.message ?? "사용자 삭제에 실패했습니다.");
     } else {
-      setMessage("사용자를 삭제했습니다.");
+      setMessage("사용자를 완전히 삭제했습니다.");
       await loadUsers();
     }
   }

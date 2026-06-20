@@ -105,12 +105,12 @@ export function LoginPage({ initialMode = "login", initialEmail = "", inviteToke
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-semibold">비밀번호</span>
-            <input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} autoComplete={mode === "login" ? "current-password" : "new-password"} />
+            <input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={4} autoComplete={mode === "login" ? "current-password" : "new-password"} />
           </label>
           {mode === "signup" ? (
             <label className="block">
               <span className="mb-1 block text-sm font-semibold">비밀번호 확인</span>
-              <input className="field" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={6} autoComplete="new-password" />
+              <input className="field" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={4} autoComplete="new-password" />
             </label>
           ) : null}
           {error ? <StatusMessage type="error">{error}</StatusMessage> : null}

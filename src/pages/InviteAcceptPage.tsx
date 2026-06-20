@@ -179,11 +179,11 @@ export function InviteAcceptPage({ token, signedIn, onAccepted, onSignup }: Prop
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold">비밀번호</span>
-                <input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} autoComplete="new-password" />
+                <input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={4} autoComplete="new-password" />
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold">비밀번호 확인</span>
-                <input className="field" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={6} autoComplete="new-password" />
+                <input className="field" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={4} autoComplete="new-password" />
               </label>
               <button className="primary-button w-full" type="submit" disabled={authLoading || inviteLoading || !email}>
                 {authLoading ? "가입 중..." : "회원가입"}
