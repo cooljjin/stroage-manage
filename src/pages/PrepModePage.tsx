@@ -103,7 +103,7 @@ export function PrepModePage({ navigate }: Props) {
   function selectItem(item: PrepModeItem) {
     if (orderEditing) return;
     setSelectedItemId(item.id);
-    setOperation(null);
+    setOperation("소진");
     setQuantity("");
     setMessage("");
     setError("");
@@ -296,7 +296,6 @@ export function PrepModePage({ navigate }: Props) {
                 pattern="[0-9]*[.]?[0-9]*"
                 value={quantity}
                 onChange={(event) => updateQuantityInput(event.target.value)}
-                autoFocus
               />
               <button type="button" onClick={() => addQuickAmount(1)} className="secondary-button inline-flex h-16 w-20 items-center justify-center px-2" aria-label="수량 증가">
                 <Plus size={28} />
