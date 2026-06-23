@@ -542,6 +542,7 @@ export type Database = {
       handover_notes: {
         Row: {
           id: string;
+          store_id: string;
           handover_date: string;
           content: string;
           created_by: string;
@@ -549,6 +550,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          store_id?: string;
           handover_date: string;
           content: string;
           created_by: string;
@@ -625,6 +627,12 @@ export type Database = {
       restore_latest_dashboard_receipt_deletion: {
         Args: Record<PropertyKey, never>;
         Returns: string;
+      };
+      delete_prep_item: {
+        Args: {
+          target_prep_item_id: string;
+        };
+        Returns: undefined;
       };
       save_prep_item: {
         Args: {

@@ -212,6 +212,7 @@ export type DashboardTodo = {
 
 export type HandoverNote = {
   id: string;
+  store_id: string;
   handover_date: string;
   content: string;
   created_by: string;

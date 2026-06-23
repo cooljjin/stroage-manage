@@ -32,6 +32,7 @@ function buildSchemaError(message: string) {
     message.includes("prep_items")
     || message.includes("prep_item_ingredients")
     || message.includes("prep_batches")
+    || message.includes("delete_prep_item")
     || message.includes("schema cache")
   ) {
     return `프랩품목 기능용 데이터베이스 업데이트가 필요합니다. (${message})`;
@@ -49,6 +50,7 @@ export function PrepItemManagementPage() {
   const [ingredientDrafts, setIngredientDrafts] = useState<IngredientDraft[]>([{ ...emptyIngredientDraft }]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -236,6 +238,36 @@ export function PrepItemManagementPage() {
     }
   }
 
+  async function deletePrepItem(item: PrepItemWithDetails) {
+    setError("");
+    setMessage("");
+
+    if (!window.confirm(`${item.name} 프랩 품목을 삭제할까요?\n현재 재고가 남아 있으면 삭제할 수 없습니다.`)) {
+      return;
+    }
+
+    setDeletingIds((current) => new Set(current).add(item.id));
+    const { error: deleteError } = await supabase.rpc("delete_prep_item", {
+      target_prep_item_id: item.id
+    });
+
+    if (deleteError) {
+      setError(buildSchemaError(deleteError.message));
+    } else {
+      if (editingId === item.id) {
+        resetForm();
+      }
+      setMessage("프랩 품목을 삭제했습니다.");
+      await refresh();
+    }
+
+    setDeletingIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+  }
+
   return (
     <section className="min-w-0">
       <PageTitle
@@ -255,7 +287,7 @@ export function PrepItemManagementPage() {
         <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr_0.8fr]">
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">프랩 품목명</span>
-            <input className="field" value={name} onChange={(event) => setName(event.target.value)} placeholder="불고기패티" required />
+            <input className="field" value={name} onChange={(event) => setName(event.target.value)} placeholder="품목명" required />
           </label>
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">유통기한</span>
@@ -432,6 +464,16 @@ export function PrepItemManagementPage() {
                     className="touch-button whitespace-nowrap rounded-md border border-slate-300 px-3 text-sm font-bold dark:border-slate-700"
                   >
                     {item.is_active ? "비활성" : "활성"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deletePrepItem(item)}
+                    disabled={deletingIds.has(item.id)}
+                    className="touch-button icon-button text-rose-600 disabled:opacity-35 dark:text-rose-300"
+                    aria-label="프랩 품목 삭제"
+                    title="삭제"
+                  >
+                    <Trash2 size={18} />
                   </button>
                 </div>
               </div>

@@ -8,6 +8,7 @@ import type { AppRoute, DashboardTodo, HandoverNote, InventoryLog, Product, Staf
 
 type Props = {
   navigate: (route: AppRoute) => void;
+  currentStoreId: string;
 };
 
 type ReceiptItem = {
@@ -61,7 +62,7 @@ function SectionHeader({
   );
 }
 
-export function HomePage({ navigate }: Props) {
+export function HomePage({ navigate, currentStoreId }: Props) {
   const todayValue = useMemo(() => getSeoulDateValue(), []);
   const [nextBusinessDate, setNextBusinessDate] = useState<string | null>(null);
   const [dashboardView, setDashboardView] = useState<DashboardView>("today");
@@ -140,7 +141,7 @@ export function HomePage({ navigate }: Props) {
     const [receiptResult, todoResult, handoverResult, profileResult, receiptDeletionResult] = await Promise.all([
       receiptQuery,
       supabase.from("dashboard_todos").select("*").eq("task_date", dashboardDate).order("created_at", { ascending: true }),
-      supabase.from("handover_notes").select("*").eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
+      supabase.from("handover_notes").select("*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
       supabase.from("profiles").select("*"),
       supabase
         .from("dashboard_receipt_deletions")
@@ -197,7 +198,7 @@ export function HomePage({ navigate }: Props) {
     }
     if (!receiptDeletionResult.error) setHasReceiptDeletion(Boolean(receiptDeletionResult.data));
     setLoading(false);
-  }, [dashboardView, todayValue]);
+  }, [currentStoreId, dashboardView, todayValue]);
 
   useEffect(() => {
     void loadDashboard();
@@ -342,6 +343,7 @@ export function HomePage({ navigate }: Props) {
     }
 
     const { error: insertError } = await supabase.from("handover_notes").insert({
+      store_id: currentStoreId,
       handover_date: selectedDate,
       content,
       created_by: userData.user.id
@@ -366,6 +368,7 @@ export function HomePage({ navigate }: Props) {
       .from("handover_notes")
       .delete()
       .eq("id", note.id)
+      .eq("store_id", currentStoreId)
       .eq("handover_date", nextBusinessDate);
 
     if (deleteError) {
@@ -385,6 +388,7 @@ export function HomePage({ navigate }: Props) {
     const { data, error: historyError } = await supabase
       .from("handover_notes")
       .select("*")
+      .eq("store_id", currentStoreId)
       .order("handover_date", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(100);

@@ -8,6 +8,7 @@ import { supabase } from "../lib/supabase";
 import type { AppRoute, InventoryLog, InventoryLogWithStaff, StaffProfile } from "../types/domain";
 
 type LogPeriod = "day" | "week" | "month";
+type LogKind = "all" | "basic" | "prep";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -53,20 +54,22 @@ export function LogsPage({ navigate }: Props) {
   const [baseDate, setBaseDate] = useState(() => formatDateInputValue(new Date()));
   const [productSearch, setProductSearch] = useState("");
   const [staffId, setStaffId] = useState("all");
+  const [logKind, setLogKind] = useState<LogKind>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const range = useMemo(() => getLogRange(period, baseDate), [baseDate, period]);
   const filteredLogs = useMemo(() => {
     const keyword = productSearch.trim().toLocaleLowerCase("ko");
-    if (!keyword) return logs;
 
     return logs.filter((log) => {
       const productName = log.products?.name ?? "삭제된 상품";
       const barcode = log.products?.barcode ?? "";
-      return productName.toLocaleLowerCase("ko").includes(keyword) || barcode.toLocaleLowerCase("ko").includes(keyword);
+      const keywordMatch = !keyword || productName.toLocaleLowerCase("ko").includes(keyword) || barcode.toLocaleLowerCase("ko").includes(keyword);
+      const kindMatch = logKind === "all" || (logKind === "prep" ? log.action.startsWith("프랩") : !log.action.startsWith("프랩"));
+      return keywordMatch && kindMatch;
     });
-  }, [logs, productSearch]);
+  }, [logKind, logs, productSearch]);
 
   async function loadProfiles() {
     const profileResult = await supabase.from("profiles").select("*").order("display_name", { ascending: true });
@@ -138,7 +141,7 @@ export function LogsPage({ navigate }: Props) {
           ))}
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[0.9fr_1.4fr_1fr_0.9fr]">
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">기준일</span>
             <input className="field" type="date" value={baseDate} onChange={(event) => setBaseDate(event.target.value)} />
@@ -164,6 +167,14 @@ export function LogsPage({ navigate }: Props) {
                   {profile.display_name}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">구분</span>
+            <select className="field" value={logKind} onChange={(event) => setLogKind(event.target.value as LogKind)}>
+              <option value="all">전체</option>
+              <option value="basic">기본</option>
+              <option value="prep">프랩</option>
             </select>
           </label>
         </div>
@@ -213,7 +224,7 @@ export function LogsPage({ navigate }: Props) {
           </table>
           {filteredLogs.length === 0 ? (
             <div className="p-4">
-              <StatusMessage>{productSearch.trim() ? "검색 조건에 맞는 작업 로그가 없습니다." : "작업 로그가 없습니다."}</StatusMessage>
+              <StatusMessage>{productSearch.trim() || logKind !== "all" ? "검색 조건에 맞는 작업 로그가 없습니다." : "작업 로그가 없습니다."}</StatusMessage>
             </div>
           ) : null}
         </div>

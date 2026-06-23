@@ -111,7 +111,7 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
             </button>
           ) : null}
           <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-          {role === "store_admin" ? (
+          {role !== "staff" ? (
             <button
               type="button"
               onClick={() => go("settings")}

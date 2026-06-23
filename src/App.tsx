@@ -33,7 +33,7 @@ import { supabase } from "./lib/supabase";
 import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 import type { ProfileRole } from "./types/domain";
 
-const NAV_ROUTES: RouteName[] = ["home", "scan", "inventory", "prep-mode", "low-stock", "logs"];
+const NAV_ROUTES: RouteName[] = ["home", "inventory", "scan", "low-stock", "logs"];
 
 type RouteHistoryEntry = {
   route: AppRoute;
@@ -320,7 +320,7 @@ export default function App() {
   return (
     <div className="min-h-dvh overflow-x-clip bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <OfflineBanner />
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name })} />
@@ -370,7 +370,7 @@ export default function App() {
             뒤로가기
           </button>
         ) : null}
-        {permittedRoute.name === "home" && <HomePage navigate={navigate} />}
+        {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "scan" && <ScanPage navigate={navigate} />}
         {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
         {permittedRoute.name === "product-edit" && <ProductEditPage productId={permittedRoute.productId ?? ""} navigate={navigate} />}
