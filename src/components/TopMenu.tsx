@@ -1,4 +1,4 @@
-import { ClipboardCheck, Menu, Package, Settings, Store, Tags, Truck, Users, X } from "lucide-react";
+import { ClipboardCheck, CookingPot, Menu, Package, Settings, Store, Tags, Truck, Users, X } from "lucide-react";
 import type { ProfileRole, RouteName } from "../types/domain";
 
 type Props = {
@@ -50,6 +50,14 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
           ) : null}
           <button
             type="button"
+            onClick={() => go("prep-mode")}
+            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+          >
+            <CookingPot size={19} />
+            프랩관리모드
+          </button>
+          <button
+            type="button"
             onClick={() => go("status-items")}
             className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
           >
@@ -58,6 +66,14 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
           </button>
           {role !== "staff" ? (
             <>
+              <button
+                type="button"
+                onClick={() => go("prep-items")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <CookingPot size={19} />
+                프랩품목 관리
+              </button>
               <button
                 type="button"
                 onClick={() => go("category-management")}

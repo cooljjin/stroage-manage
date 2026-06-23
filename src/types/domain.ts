@@ -4,7 +4,7 @@ export const DEFAULT_PRODUCT_UNITS = ["박스", "낱개", "줄", "팩"] as const
 export type Category = string;
 export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
-export type InventoryAction = "입고" | "출고" | "이동" | "조정";
+export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "프랩 제조" | "프랩 소진" | "프랩 폐기";
 export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
@@ -23,6 +23,8 @@ export type RouteName =
   | "low-stock"
   | "status-items"
   | "logs"
+  | "prep-items"
+  | "prep-mode"
   | "category-management"
   | "unit-management"
   | "supplier-management"
@@ -137,6 +139,40 @@ export type InventoryItem = Product & {
   is_low_stock: boolean;
 };
 
+export type PrepItem = {
+  id: string;
+  store_id: string;
+  product_id: string;
+  name: string;
+  shelf_life_days: number;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PrepItemIngredient = {
+  id: string;
+  store_id: string;
+  prep_item_id: string;
+  ingredient_product_id: string;
+  quantity_per_unit: number;
+  sort_order: number;
+  created_at: string;
+};
+
+export type PrepBatch = {
+  id: string;
+  store_id: string;
+  prep_item_id: string;
+  quantity_produced: number;
+  quantity_remaining: number;
+  manufactured_at: string;
+  expires_on: string;
+  created_by: string;
+  created_at: string;
+};
+
 export type InventoryLog = {
   id: string;
   product_id: string;
@@ -203,6 +239,7 @@ export type AppRoute = {
   authInviteToken?: string;
   barcode?: string;
   productId?: string;
+  prepItemId?: string;
   storeId?: string;
   inviteToken?: string;
 };

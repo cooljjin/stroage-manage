@@ -190,7 +190,7 @@ export function LogsPage({ navigate }: Props) {
                   <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(log.created_at)}</td>
                   <td className="truncate px-3 py-3 text-xs">{log.staff_name}</td>
                   <td className="px-3 py-3">
-                    {log.products ? (
+                    {log.products && !log.action.startsWith("프랩") ? (
                       <button
                         type="button"
                         onClick={() => navigate({ name: "operation", productId: log.product_id })}
@@ -198,6 +198,8 @@ export function LogsPage({ navigate }: Props) {
                       >
                         {log.products.name}
                       </button>
+                    ) : log.products ? (
+                      <span className="block truncate font-semibold">{log.products.name}</span>
                     ) : (
                       <span className="block truncate font-semibold">삭제된 상품</span>
                     )}

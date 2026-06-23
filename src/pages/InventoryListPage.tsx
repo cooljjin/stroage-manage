@@ -92,6 +92,8 @@ export function InventoryListPage({ navigate }: Props) {
     );
   }
 
+  const stickyHeaderCell = "sticky top-[73px] z-30 bg-slate-100 shadow-sm dark:bg-slate-900";
+
   return (
     <section>
       <PageTitle title="재고 현황" description="카테고리와 검색으로 빠르게 확인합니다." />
@@ -128,25 +130,25 @@ export function InventoryListPage({ navigate }: Props) {
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
 
       {!loading && !error ? (
-        <div className="panel overflow-visible">
+        <div className="panel relative overflow-visible before:sticky before:top-[73px] before:z-20 before:block before:h-4 before:bg-slate-50 before:content-[''] dark:before:bg-slate-950">
           <table className="w-full table-fixed text-left text-sm">
-            <thead className="sticky top-[73px] z-20 bg-slate-100 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+            <thead className="text-xs text-slate-600 dark:text-slate-300">
               {viewMode === "compact" ? (
                 <tr>
-                  <th className="w-[40%] px-3 py-3">상품명</th>
-                  <th className="w-[16%] px-2 py-3 text-right">창고</th>
-                  <th className="w-[16%] px-2 py-3 text-right">매장</th>
-                  <th className="w-[28%] px-2 py-3 text-center">발주</th>
+                  <th className={`${stickyHeaderCell} w-[38%] px-3 py-3`}>상품명</th>
+                  <th className={`${stickyHeaderCell} w-[13%] px-2 py-3 text-right`}>창고</th>
+                  <th className={`${stickyHeaderCell} w-[13%] px-2 py-3 text-right`}>매장</th>
+                  <th className={`${stickyHeaderCell} w-[36%] px-2 py-3 text-center`}>발주</th>
                 </tr>
               ) : (
                 <tr>
-                  <th className="px-3 py-3"><SortButton label="상품명" value="name" /></th>
-                  <th className="px-3 py-3 text-right"><SortButton label="창고" value="warehouse_qty" /></th>
-                  <th className="px-3 py-3 text-right"><SortButton label="매장" value="store_qty" /></th>
-                  <th className="hidden px-3 py-3 text-right sm:table-cell"><SortButton label="총재고" value="total_stock" /></th>
-                  <th className="hidden px-3 py-3 text-right md:table-cell">최소</th>
-                  <th className="hidden px-3 py-3 md:table-cell">상태</th>
-                  <th className="w-[122px] px-2 py-3 text-center">발주</th>
+                  <th className={`${stickyHeaderCell} px-3 py-3`}><SortButton label="상품명" value="name" /></th>
+                  <th className={`${stickyHeaderCell} px-3 py-3 text-right`}><SortButton label="창고" value="warehouse_qty" /></th>
+                  <th className={`${stickyHeaderCell} px-3 py-3 text-right`}><SortButton label="매장" value="store_qty" /></th>
+                  <th className={`${stickyHeaderCell} hidden px-3 py-3 text-right sm:table-cell`}><SortButton label="총재고" value="total_stock" /></th>
+                  <th className={`${stickyHeaderCell} hidden px-3 py-3 text-right md:table-cell`}>최소</th>
+                  <th className={`${stickyHeaderCell} hidden px-3 py-3 md:table-cell`}>상태</th>
+                  <th className={`${stickyHeaderCell} w-[122px] px-2 py-3 text-center`}>발주</th>
                 </tr>
               )}
             </thead>

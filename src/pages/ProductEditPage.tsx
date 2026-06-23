@@ -143,14 +143,14 @@ export function ProductEditPage({ productId, navigate }: Props) {
   async function deleteProduct() {
     if (!product) return;
 
-    const ok = window.confirm(`${product.name} 품목을 삭제할까요? 삭제하면 재고와 관련 로그도 함께 삭제됩니다.`);
+    const ok = window.confirm(`${product.name} 품목을 삭제할까요? 삭제한 품목은 재고 현황과 검색에서 보이지 않습니다.`);
     if (!ok) return;
 
     setDeleting(true);
     setError("");
     setMessage("");
 
-    const { error: deleteError } = await supabase.from("products").delete().eq("id", product.id);
+    const { error: deleteError } = await supabase.from("products").update({ is_active: false }).eq("id", product.id);
 
     setDeleting(false);
     if (deleteError) {

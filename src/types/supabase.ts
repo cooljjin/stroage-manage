@@ -344,6 +344,143 @@ export type Database = {
           }
         ];
       };
+      prep_items: {
+        Row: {
+          id: string;
+          store_id: string;
+          product_id: string;
+          name: string;
+          shelf_life_days: number;
+          sort_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          product_id: string;
+          name: string;
+          shelf_life_days?: number;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          shelf_life_days?: number;
+          sort_order?: number;
+          is_active?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "prep_items_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: true;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "prep_items_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      prep_item_ingredients: {
+        Row: {
+          id: string;
+          store_id: string;
+          prep_item_id: string;
+          ingredient_product_id: string;
+          quantity_per_unit: number;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          prep_item_id: string;
+          ingredient_product_id: string;
+          quantity_per_unit: number;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          quantity_per_unit?: number;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "prep_item_ingredients_prep_item_id_fkey";
+            columns: ["prep_item_id"];
+            isOneToOne: false;
+            referencedRelation: "prep_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "prep_item_ingredients_ingredient_product_id_fkey";
+            columns: ["ingredient_product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "prep_item_ingredients_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      prep_batches: {
+        Row: {
+          id: string;
+          store_id: string;
+          prep_item_id: string;
+          quantity_produced: number;
+          quantity_remaining: number;
+          manufactured_at: string;
+          expires_on: string;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          prep_item_id: string;
+          quantity_produced: number;
+          quantity_remaining: number;
+          manufactured_at?: string;
+          expires_on: string;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          quantity_remaining?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "prep_batches_prep_item_id_fkey";
+            columns: ["prep_item_id"];
+            isOneToOne: false;
+            referencedRelation: "prep_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "prep_batches_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       dashboard_receipt_deletions: {
         Row: {
           id: string;
@@ -488,6 +625,31 @@ export type Database = {
       restore_latest_dashboard_receipt_deletion: {
         Args: Record<PropertyKey, never>;
         Returns: string;
+      };
+      save_prep_item: {
+        Args: {
+          target_prep_item_id: string | null;
+          item_name: string;
+          item_shelf_life_days: number;
+          item_sort_order: number;
+          ingredient_rows: Json;
+          item_is_active?: boolean;
+        };
+        Returns: Database["public"]["Tables"]["prep_items"]["Row"];
+      };
+      record_prep_operation: {
+        Args: {
+          target_prep_item_id: string;
+          operation_type: string;
+          operation_quantity: number;
+        };
+        Returns: string;
+      };
+      reorder_prep_items: {
+        Args: {
+          ordered_prep_item_ids: string[];
+        };
+        Returns: undefined;
       };
     };
     Views: Record<string, never>;

@@ -1,3 +1,4 @@
+import { ExternalLink, MessageSquareText } from "lucide-react";
 import type { InventoryItem, ProductSupplier } from "../types/domain";
 
 type Props = {
@@ -30,6 +31,7 @@ export function ProductOrderAction({ item, supplier, quantity, onQuantityChange 
   const hasSmsPhone = Boolean(supplier?.sms_phone?.trim());
   const hasQuantity = Boolean(quantity.trim());
   const disabled = isSmsOrder ? !hasSmsPhone || !hasQuantity : !hasProductUrl;
+  const actionLabel = isSmsOrder ? `${item.name} 문자 발주` : `${item.name} 링크 열기`;
 
   function handleAction() {
     if (isSmsOrder) {
@@ -44,9 +46,9 @@ export function ProductOrderAction({ item, supplier, quantity, onQuantityChange 
   }
 
   return (
-    <span className="inline-flex items-center justify-center gap-1" onClick={(event) => event.stopPropagation()}>
+    <span className="mx-auto grid w-full min-w-0 max-w-[92px] grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-1" onClick={(event) => event.stopPropagation()}>
       <input
-        className="h-10 w-12 rounded-md border border-slate-300 bg-white px-1.5 text-center text-sm font-bold tabular-nums text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-1 text-center text-sm font-bold tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         inputMode="numeric"
         pattern="[0-9]*"
         value={quantity}
@@ -58,9 +60,11 @@ export function ProductOrderAction({ item, supplier, quantity, onQuantityChange 
         type="button"
         disabled={disabled}
         onClick={handleAction}
-        className="min-h-10 min-w-[54px] whitespace-nowrap rounded-md border border-slate-300 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
+        className="grid h-10 w-10 place-items-center rounded-md border border-slate-300 text-brand-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:opacity-45 dark:border-slate-700 dark:text-brand-200 dark:disabled:text-slate-600"
+        aria-label={actionLabel}
+        title={isSmsOrder ? "문자 발주" : "링크 열기"}
       >
-        {isSmsOrder ? "문자전송" : "[링크]"}
+        {isSmsOrder ? <MessageSquareText size={18} aria-hidden="true" /> : <ExternalLink size={18} aria-hidden="true" />}
       </button>
     </span>
   );

@@ -9,7 +9,7 @@ type Props = {
 export function BottomNav({ activeRoute, onNavigate }: Props) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-slate-800 dark:bg-slate-950">
-      <div className="mx-auto grid max-w-3xl grid-cols-5">
+      <div className="mx-auto grid max-w-3xl grid-cols-6">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = activeRoute === item.route;

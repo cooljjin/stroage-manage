@@ -17,6 +17,8 @@ import { InventoryListPage } from "./pages/InventoryListPage";
 import { LowStockPage } from "./pages/LowStockPage";
 import { StatusItemsPage } from "./pages/StatusItemsPage";
 import { LogsPage } from "./pages/LogsPage";
+import { PrepItemManagementPage } from "./pages/PrepItemManagementPage";
+import { PrepModePage } from "./pages/PrepModePage";
 import { CategoryManagementPage } from "./pages/CategoryManagementPage";
 import { ProductUnitManagementPage } from "./pages/ProductUnitManagementPage";
 import { SupplierManagementPage } from "./pages/SupplierManagementPage";
@@ -31,7 +33,7 @@ import { supabase } from "./lib/supabase";
 import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 import type { ProfileRole } from "./types/domain";
 
-const NAV_ROUTES: RouteName[] = ["home", "scan", "inventory", "low-stock", "logs"];
+const NAV_ROUTES: RouteName[] = ["home", "scan", "inventory", "prep-mode", "low-stock", "logs"];
 
 type RouteHistoryEntry = {
   route: AppRoute;
@@ -64,7 +66,7 @@ function canAccess(routeName: RouteName, profile: StaffProfile) {
   const masterRoutes: RouteName[] = ["master-stores", "master-store-detail", "master-users"];
   if (masterRoutes.includes(routeName)) return false;
 
-  const adminRoutes: RouteName[] = ["admin", "category-management", "unit-management", "supplier-management", "settings", "staff-management"];
+  const adminRoutes: RouteName[] = ["admin", "category-management", "unit-management", "supplier-management", "prep-items", "settings", "staff-management"];
   if (adminRoutes.includes(routeName)) return role === "store_admin";
 
   return true;
@@ -86,6 +88,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => initialRoute());
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -108,13 +111,51 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!session) {
       setProfile(null);
+      setProfileLoading(false);
       return;
     }
+    const currentSession = session;
 
-    ensureCurrentProfile(session).then(setProfile);
-  }, [session]);
+    async function loadProfile() {
+      setProfileLoading(true);
+      const existingProfile = await ensureCurrentProfile(currentSession);
+
+      if (cancelled) return;
+
+      if (existingProfile) {
+        setProfile(existingProfile);
+        setProfileLoading(false);
+        return;
+      }
+
+      const inviteToken = route.inviteToken ?? route.authInviteToken;
+      if (inviteToken) {
+        const { data, error } = await supabase.rpc("accept_store_invite" as never, { invite_token: inviteToken } as never);
+        if (!cancelled && !error && data) {
+          const homeRoute: AppRoute = { name: "home" };
+          setProfile(data as StaffProfile);
+          pendingScrollYRef.current = 0;
+          setRoute(homeRoute);
+          updateBrowserPath(homeRoute);
+          setProfileLoading(false);
+          return;
+        }
+      }
+
+      setProfile(null);
+      setProfileLoading(false);
+    }
+
+    void loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session, route.authInviteToken, route.inviteToken]);
 
   useEffect(() => {
     if (!session) return;
@@ -215,7 +256,10 @@ export default function App() {
         <InviteAcceptPage
           token={route.inviteToken}
           signedIn={false}
-          onAccepted={setProfile}
+          onAccepted={(nextProfile) => {
+            setProfile(nextProfile);
+            navigate({ name: "home" }, { replace: true });
+          }}
           onSignup={(email) => navigate({ name: "login", authMode: "signup", authEmail: email, authInviteToken: route.inviteToken })}
         />
       );
@@ -252,6 +296,10 @@ export default function App() {
     );
   }
 
+  if (profileLoading) {
+    return <div className="grid min-h-dvh place-items-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">매장 정보를 연결하는 중...</div>;
+  }
+
   if (!profile) {
     return (
       <div className="grid min-h-dvh place-items-center bg-slate-50 px-4 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
@@ -270,7 +318,7 @@ export default function App() {
   const profileRole = getProfileRole(profile);
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-dvh overflow-x-clip bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <OfflineBanner />
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
@@ -333,6 +381,8 @@ export default function App() {
         {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} />}
         {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} />}
         {permittedRoute.name === "logs" && <LogsPage navigate={navigate} />}
+        {permittedRoute.name === "prep-items" && <PrepItemManagementPage />}
+        {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
         {permittedRoute.name === "category-management" && <CategoryManagementPage />}
         {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
         {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}

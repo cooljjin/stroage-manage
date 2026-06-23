@@ -36,6 +36,15 @@ export function formatLogContent(log: {
   quantity: number | null;
   note: string | null;
 }): string {
+  if (log.action === "프랩 제조") {
+    const sign = log.destination_location ? "+" : "-";
+    return `${sign}${log.quantity ?? 0}`;
+  }
+
+  if (log.action === "프랩 소진" || log.action === "프랩 폐기") {
+    return `-${log.quantity ?? 0}`;
+  }
+
   if (log.action === "이동") {
     return `${log.source_location ?? "-"} → ${log.destination_location ?? "-"} ${log.quantity ?? 0}`;
   }
@@ -47,5 +56,8 @@ export function formatLogContent(log: {
 
   const sign = log.action === "입고" ? "+" : "-";
   const location = log.destination_location ?? log.source_location ?? "-";
+  if (location === "-") {
+    return `${sign}${log.quantity ?? 0}`;
+  }
   return `${location} ${sign}${log.quantity ?? 0}`;
 }
