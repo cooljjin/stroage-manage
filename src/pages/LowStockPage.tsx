@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { ScanLine, Search, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
@@ -17,6 +18,34 @@ type FreshReceivingUndoEntry = {
   freshOrderSelected: boolean;
   freshOrderSelectedAt: string | null;
 };
+
+const FRESH_SCANNER_ID = "fresh-product-scanner";
+const PRODUCT_BARCODE_FORMATS = [
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.ITF,
+  Html5QrcodeSupportedFormats.CODABAR
+];
+const DEFAULT_CAMERA_ZOOM = 2.5;
+
+type FocusMediaTrackConstraints = MediaTrackConstraints & {
+  advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
+};
+
+function getBarcodeCandidates(barcode: string): string[] {
+  const normalized = barcode.trim();
+  const candidates = new Set([normalized]);
+
+  if (/^\d{12}$/.test(normalized)) candidates.add(`0${normalized}`);
+  if (/^0\d{12}$/.test(normalized)) candidates.add(normalized.slice(1));
+
+  return [...candidates];
+}
 
 export function LowStockPage({ navigate }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -38,11 +67,24 @@ export function LowStockPage({ navigate }: Props) {
   const [freshSearch, setFreshSearch] = useState("");
   const [selectedFreshIds, setSelectedFreshIds] = useState<Set<string>>(new Set());
   const [savingFresh, setSavingFresh] = useState(false);
+  const [freshScannerActive, setFreshScannerActive] = useState(false);
+  const [freshScanMessage, setFreshScanMessage] = useState("");
+  const [pendingFreshBarcode, setPendingFreshBarcode] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const freshScannerRef = useRef<Html5Qrcode | null>(null);
+  const freshBarcodeHandlingRef = useRef(false);
 
   useEffect(() => {
     void loadItems();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (freshScannerRef.current?.isScanning) {
+        freshScannerRef.current.stop().catch(() => undefined);
+      }
+    };
   }, []);
 
   async function loadItems() {
@@ -96,11 +138,28 @@ export function LowStockPage({ navigate }: Props) {
     return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
   }, [suppliers]);
 
+  const stopFreshScanner = useCallback(async () => {
+    if (freshScannerRef.current?.isScanning) {
+      await freshScannerRef.current.stop().catch(() => undefined);
+    }
+    freshBarcodeHandlingRef.current = false;
+    setFreshScannerActive(false);
+  }, []);
+
   function openFreshModal() {
     setError("");
+    setFreshScanMessage("");
+    setPendingFreshBarcode("");
     setFreshSearch("");
     setSelectedFreshIds(new Set(items.filter((item) => item.supplier_name === "쿠팡 프레시" && item.fresh_order_selected).map((item) => item.id)));
     setFreshModalOpen(true);
+  }
+
+  async function closeFreshModal() {
+    await stopFreshScanner();
+    setFreshModalOpen(false);
+    setFreshScanMessage("");
+    setPendingFreshBarcode("");
   }
 
   function toggleFreshProduct(productId: string) {
@@ -113,6 +172,135 @@ export function LowStockPage({ navigate }: Props) {
       }
       return next;
     });
+  }
+
+  async function findProductByFreshBarcode(barcode: string) {
+    const barcodeCandidates = getBarcodeCandidates(barcode);
+    const { data, error: productError } = await supabase
+      .from("products")
+      .select("*")
+      .in("barcode", barcodeCandidates)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    if (productError) return { product: null, errorMessage: productError.message };
+    if (data) return { product: data as InventoryItem, errorMessage: "" };
+
+    const { data: barcodeData, error: barcodeError } = await supabase
+      .from("product_barcodes")
+      .select("product_id")
+      .in("barcode", barcodeCandidates)
+      .limit(1)
+      .maybeSingle();
+    if (barcodeError) return { product: null, errorMessage: barcodeError.message };
+    if (!barcodeData) return { product: null, errorMessage: "" };
+
+    const { data: aliasProduct, error: aliasError } = await supabase
+      .from("products")
+      .select("*")
+      .eq("id", barcodeData.product_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (aliasError) return { product: null, errorMessage: aliasError.message };
+    return { product: (aliasProduct as InventoryItem | null) ?? null, errorMessage: "" };
+  }
+
+  const handleFreshBarcode = useCallback(async (barcode: string) => {
+    if (freshBarcodeHandlingRef.current) return;
+    freshBarcodeHandlingRef.current = true;
+    setFreshScanMessage(`스캔됨: ${barcode}`);
+    await stopFreshScanner();
+
+    const { product, errorMessage } = await findProductByFreshBarcode(barcode);
+    if (errorMessage) {
+      setFreshScanMessage(errorMessage);
+      freshBarcodeHandlingRef.current = false;
+      return;
+    }
+
+    if (!product) {
+      setPendingFreshBarcode(barcode);
+      setFreshScanMessage("");
+      freshBarcodeHandlingRef.current = false;
+      return;
+    }
+
+    if (product.supplier_name !== "쿠팡 프레시") {
+      setFreshScanMessage("쿠팡프레시 제품이 아닙니다.");
+      freshBarcodeHandlingRef.current = false;
+      return;
+    }
+
+    setSelectedFreshIds((current) => new Set(current).add(product.id));
+    setFreshSearch(product.name);
+    setFreshScanMessage(`${product.name} 품목을 선택했습니다.`);
+    freshBarcodeHandlingRef.current = false;
+  }, [stopFreshScanner]);
+
+  const startFreshScanner = useCallback(async () => {
+    setFreshScanMessage("");
+    setPendingFreshBarcode("");
+
+    if (!("mediaDevices" in navigator)) {
+      setFreshScanMessage("이 기기에서는 카메라를 사용할 수 없습니다.");
+      return;
+    }
+    if (freshScannerRef.current?.isScanning) return;
+
+    const scanner = new Html5Qrcode(FRESH_SCANNER_ID, {
+      formatsToSupport: PRODUCT_BARCODE_FORMATS,
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      },
+      verbose: false
+    });
+    freshScannerRef.current = scanner;
+    freshBarcodeHandlingRef.current = false;
+    setFreshScannerActive(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+    try {
+      await scanner.start(
+        { facingMode: { ideal: "environment" } },
+        {
+          fps: 12,
+          qrbox: (viewfinderWidth, viewfinderHeight) => ({
+            width: Math.floor(Math.min(viewfinderWidth * 0.92, 520)),
+            height: Math.floor(Math.min(viewfinderHeight * 0.32, 150))
+          }),
+          aspectRatio: 4 / 3,
+          disableFlip: true,
+          videoConstraints: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1440 }
+          }
+        },
+        (decodedText) => void handleFreshBarcode(decodedText),
+        () => undefined
+      );
+
+      const focusConstraints: FocusMediaTrackConstraints = {
+        advanced: [{ focusMode: "continuous" }]
+      };
+      await scanner.applyVideoConstraints(focusConstraints).catch(() => undefined);
+
+      const zoomFeature = scanner.getRunningTrackCameraCapabilities().zoomFeature();
+      if (zoomFeature.isSupported()) {
+        const initialZoom = Math.min(zoomFeature.max(), Math.max(zoomFeature.min(), DEFAULT_CAMERA_ZOOM));
+        await zoomFeature.apply(initialZoom).catch(() => undefined);
+      }
+    } catch (scanError) {
+      setFreshScannerActive(false);
+      setFreshScanMessage(scanError instanceof Error ? scanError.message : "카메라 실행에 실패했습니다.");
+    }
+  }, [handleFreshBarcode]);
+
+  async function goToRegisterFreshBarcode() {
+    const barcode = pendingFreshBarcode;
+    if (!barcode) return;
+    await closeFreshModal();
+    navigate({ name: "register", barcode });
   }
 
   async function saveFreshProducts() {
@@ -151,7 +339,7 @@ export function LowStockPage({ navigate }: Props) {
             : item
         )
       );
-      setFreshModalOpen(false);
+      await closeFreshModal();
     }
 
     setSavingFresh(false);
@@ -569,26 +757,50 @@ export function LowStockPage({ navigate }: Props) {
                 </div>
 
                 <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-                  <label className="relative block">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input
-                      className="field pl-10 pr-10"
-                      value={freshSearch}
-                      onChange={(event) => setFreshSearch(event.target.value)}
-                      placeholder="품목 검색"
-                      autoFocus
-                    />
-                    {freshSearch ? (
-                      <button
-                        type="button"
-                        onClick={() => setFreshSearch("")}
-                        className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center text-slate-500"
-                        aria-label="검색어 지우기"
-                      >
-                        <X size={19} />
-                      </button>
-                    ) : null}
-                  </label>
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <label className="relative block min-w-0">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                      <input
+                        className="field pl-10 pr-10"
+                        value={freshSearch}
+                        onChange={(event) => setFreshSearch(event.target.value)}
+                        placeholder="품목 검색"
+                        autoFocus
+                      />
+                      {freshSearch ? (
+                        <button
+                          type="button"
+                          onClick={() => setFreshSearch("")}
+                          className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center text-slate-500"
+                          aria-label="검색어 지우기"
+                        >
+                          <X size={19} />
+                        </button>
+                      ) : null}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => (freshScannerActive ? void stopFreshScanner() : void startFreshScanner())}
+                      className={`touch-button icon-button ${freshScannerActive ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600 dark:text-white" : ""}`}
+                      aria-label={freshScannerActive ? "바코드 스캔 중지" : "바코드 스캔"}
+                      title={freshScannerActive ? "스캔 중지" : "바코드 스캔"}
+                    >
+                      {freshScannerActive ? <X size={20} /> : <ScanLine size={20} />}
+                    </button>
+                  </div>
+                  <div className={`mt-3 overflow-hidden rounded-md bg-slate-900 ${freshScannerActive ? "block" : "hidden"}`}>
+                    <div id={FRESH_SCANNER_ID} className="min-h-[240px]" />
+                  </div>
+                  {freshScannerActive ? (
+                    <p className="mt-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+                      바코드 전체가 화면 안에 들어오도록 맞춰 주세요.
+                    </p>
+                  ) : null}
+                  {freshScanMessage ? (
+                    <div className="mt-2">
+                      <StatusMessage type={freshScanMessage.includes("아닙니다") || freshScanMessage.includes("실패") ? "error" : "info"}>{freshScanMessage}</StatusMessage>
+                    </div>
+                  ) : null}
                   <p className="mt-2 text-right text-xs font-bold text-emerald-700 dark:text-emerald-300">
                     {selectedFreshIds.size}개 선택
                   </p>
@@ -626,11 +838,37 @@ export function LowStockPage({ navigate }: Props) {
                 <div className="border-t border-slate-200 p-3 dark:border-slate-800">
                   <button
                     type="button"
-                    onClick={() => setFreshModalOpen(false)}
+                    onClick={() => void closeFreshModal()}
                     disabled={savingFresh}
                     className="touch-button w-full rounded-md border border-slate-300 px-4 font-bold dark:border-slate-700"
                   >
                     닫기
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {pendingFreshBarcode ? (
+            <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 px-4">
+              <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900">
+                <h2 className="text-lg font-extrabold">신규 등록하시겠습니까?</h2>
+                <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">등록되지 않은 바코드입니다.</p>
+                <p className="mt-2 rounded-md bg-slate-100 px-3 py-2 text-sm font-bold tabular-nums dark:bg-slate-950">{pendingFreshBarcode}</p>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPendingFreshBarcode("")}
+                    className="touch-button rounded-md border border-slate-300 px-4 font-bold dark:border-slate-700"
+                  >
+                    아니요
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void goToRegisterFreshBarcode()}
+                    className="touch-button rounded-md bg-emerald-600 px-4 font-bold text-white"
+                  >
+                    예
                   </button>
                 </div>
               </div>
