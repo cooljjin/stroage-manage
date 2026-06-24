@@ -62,6 +62,8 @@ export function PrepModePage({ navigate }: Props) {
   }, []);
 
   useEffect(() => {
+    if (!selectedItem) return;
+
     const previousBodyOverflow = document.body.style.overflow;
     const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
     const previousDocumentOverflow = document.documentElement.style.overflow;
@@ -79,7 +81,7 @@ export function PrepModePage({ navigate }: Props) {
       document.documentElement.style.overflow = previousDocumentOverflow;
       document.documentElement.style.overscrollBehavior = previousDocumentOverscrollBehavior;
     };
-  }, []);
+  }, [selectedItem]);
 
   async function refresh() {
     setLoading(true);
@@ -202,7 +204,7 @@ export function PrepModePage({ navigate }: Props) {
   }
 
   return (
-    <section className="flex h-[calc(100dvh-9rem)] min-h-0 flex-col overflow-hidden overscroll-none">
+    <section className={`flex flex-col ${selectedItem ? "h-[calc(100dvh-9rem)] min-h-0 overflow-hidden overscroll-none" : "min-h-[calc(100dvh-9rem)]"}`}>
       <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-bold text-brand-700 dark:text-brand-100">주방 전용</p>
@@ -230,7 +232,7 @@ export function PrepModePage({ navigate }: Props) {
       {loading ? <StatusMessage>프랩 품목을 불러오는 중...</StatusMessage> : null}
 
       {!loading && !selectedItem ? (
-        <div className="grid min-h-0 flex-1 auto-rows-fr gap-3 overflow-hidden pb-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-4">
           {items.map((item, index) => (
             <div key={item.id} className="relative">
               <button
