@@ -22,7 +22,7 @@ const PRODUCT_BARCODE_FORMATS = [
   Html5QrcodeSupportedFormats.ITF,
   Html5QrcodeSupportedFormats.CODABAR
 ];
-const DEFAULT_CAMERA_ZOOM = 1.5;
+const DEFAULT_CAMERA_ZOOM = 2.5;
 
 type FocusMediaTrackConstraints = MediaTrackConstraints & {
   advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
@@ -60,7 +60,7 @@ export function ScanPage({ navigate }: Props) {
   const [results, setResults] = useState<Product[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(DEFAULT_CAMERA_ZOOM);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const barcodeHandlingRef = useRef(false);
@@ -118,7 +118,7 @@ export function ScanPage({ navigate }: Props) {
     scannerRef.current = scanner;
     barcodeHandlingRef.current = false;
     setZoomRange(null);
-    setZoom(1);
+    setZoom(DEFAULT_CAMERA_ZOOM);
     setScannerActive(true);
 
     try {
