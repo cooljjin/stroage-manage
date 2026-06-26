@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowUp, ChefHat, Minus, Plus, RefreshCw, Trash2, Utensils } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { QUICK_AMOUNTS } from "../lib/constants";
+import { formatInventoryQuantity } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, Inventory, PrepItem } from "../types/domain";
 
@@ -20,10 +21,6 @@ const OPERATIONS: Array<{ value: PrepOperation; label: string; icon: typeof Chef
   { value: "소진", label: "소진", icon: Utensils, className: "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-950" },
   { value: "폐기", label: "폐기", icon: Trash2, className: "bg-rose-600 text-white" }
 ];
-
-function formatQuantity(value: number) {
-  return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 2 });
-}
 
 function schemaError(message: string) {
   if (message.includes("prep_items") || message.includes("record_prep_operation") || message.includes("reorder_prep_items") || message.includes("schema cache")) {
@@ -195,7 +192,7 @@ export function PrepModePage({ navigate }: Props) {
     if (operationError) {
       setError(schemaError(operationError.message));
     } else {
-      const successMessage = `${selectedItem.name} ${operation} ${formatQuantity(quantityValue)}개를 저장했습니다.`;
+      const successMessage = `${selectedItem.name} ${operation} ${formatInventoryQuantity(quantityValue)}개를 저장했습니다.`;
       closeItem();
       await refresh();
       setMessage(successMessage);
@@ -241,7 +238,7 @@ export function PrepModePage({ navigate }: Props) {
                 className="min-h-36 w-full rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-brand-500 hover:bg-brand-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-500 dark:hover:bg-brand-950"
               >
                 <span className="block break-words text-2xl font-extrabold leading-tight">{item.name}</span>
-                <span className="mt-5 block text-3xl font-black tabular-nums text-brand-700 dark:text-brand-100">{formatQuantity(item.stock)}개</span>
+                <span className="mt-5 block text-3xl font-black tabular-nums text-brand-700 dark:text-brand-100">{formatInventoryQuantity(item.stock)}개</span>
               </button>
               {orderEditing ? (
                 <div className="absolute right-2 top-2 grid gap-1">
@@ -282,7 +279,7 @@ export function PrepModePage({ navigate }: Props) {
             </button>
             <div className="min-w-0">
               <h2 className="break-words text-3xl font-black leading-tight">{selectedItem.name}</h2>
-              <p className="mt-1 text-base font-bold text-slate-500 dark:text-slate-400">현재 수량 {formatQuantity(selectedItem.stock)}개</p>
+              <p className="mt-1 text-base font-bold text-slate-500 dark:text-slate-400">현재 수량 {formatInventoryQuantity(selectedItem.stock)}개</p>
             </div>
           </div>
 

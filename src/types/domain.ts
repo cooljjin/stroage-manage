@@ -4,7 +4,7 @@ export const DEFAULT_PRODUCT_UNITS = ["박스", "낱개", "줄", "팩"] as const
 export type Category = string;
 export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
-export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "프랩 제조" | "프랩 소진" | "프랩 폐기";
+export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "메모" | "프랩 제조" | "프랩 소진" | "프랩 폐기";
 export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
@@ -49,6 +49,7 @@ export type Product = {
   urgent_order_quantity: number | null;
   fresh_order_selected: boolean;
   fresh_order_selected_at: string | null;
+  receipt_check_only: boolean;
   status_enabled: boolean;
   stock_status: StockStatus | null;
   minimum_stock: number;

@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck,
 import { StatusMessage } from "../components/StatusMessage";
 import { getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
+import { formatInventoryQuantity } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, DashboardTodo, HandoverNote, InventoryLog, Product, StaffProfile } from "../types/domain";
 
@@ -171,10 +172,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         ((receiptResult.data ?? []) as unknown as InventoryLog[]).forEach((log) => {
           const current = grouped.get(log.product_id);
           const name = log.products?.name ?? "삭제된 상품";
+          const nextQuantity = log.quantity === null ? current?.quantity ?? null : (current?.quantity ?? 0) + log.quantity;
           grouped.set(log.product_id, {
             productId: log.product_id,
             name,
-            quantity: (current?.quantity ?? 0) + (log.quantity ?? 0),
+            quantity: nextQuantity,
             lastReceivedAt: current?.lastReceivedAt ?? log.created_at
           });
         });
@@ -213,8 +215,12 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   }
 
   async function deleteTodayReceipt(item: ReceiptItem) {
-    if (!isToday || item.quantity === null) return;
-    if (!window.confirm(`${item.name}의 오늘 입고 수량 ${item.quantity}개를 삭제할까요?\n재고에서도 해당 수량이 차감됩니다.`)) return;
+    if (!isToday) return;
+    const confirmMessage =
+      item.quantity === null
+        ? `${item.name}의 오늘 입고확인 기록을 삭제할까요?`
+        : `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개를 삭제할까요?\n재고에서도 해당 수량이 차감됩니다.`;
+    if (!window.confirm(confirmMessage)) return;
 
     setReceiptDeletingIds((current) => new Set(current).add(item.productId));
     setError("");
@@ -482,7 +488,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   {item.lastReceivedAt && isToday ? <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span> : null}
                   <ChevronRight className="shrink-0 text-slate-400" size={16} />
                 </button>
-                {item.quantity !== null ? <span className="shrink-0 text-xs font-bold text-brand-700 dark:text-brand-100">+{item.quantity}</span> : null}
+                {item.quantity !== null ? <span className="shrink-0 text-xs font-bold text-brand-700 dark:text-brand-100">+{formatInventoryQuantity(item.quantity)}</span> : null}
                 {isToday ? (
                   <button
                     type="button"

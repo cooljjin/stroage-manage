@@ -32,6 +32,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
   const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
   const [unitName, setUnitName] = useState("");
   const [minimumStock, setMinimumStock] = useState("");
+  const [receiptCheckOnly, setReceiptCheckOnly] = useState(false);
   const [productUrl, setProductUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,6 +93,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
       setStorageTypes(parseStorageTypes(nextProduct.storage_type));
       setUnitName(nextProduct.unit_name ?? "");
       setMinimumStock(String(nextProduct.minimum_stock));
+      setReceiptCheckOnly(nextProduct.receipt_check_only ?? false);
       setProductUrl(nextProduct.product_url ?? "");
     }
 
@@ -104,8 +106,10 @@ export function ProductEditPage({ productId, navigate }: Props) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!product) return;
+
     const nextName = name.trim();
-    const nextMinimumStock = Number(minimumStock || 0);
+    const nextMinimumStock = receiptCheckOnly ? 0 : Number(minimumStock || 0);
 
     if (!nextName) {
       setError("상품명은 비워둘 수 없습니다.");
@@ -128,6 +132,9 @@ export function ProductEditPage({ productId, navigate }: Props) {
         storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
         unit_name: unitName || null,
         minimum_stock: nextMinimumStock,
+        receipt_check_only: receiptCheckOnly,
+        status_enabled: receiptCheckOnly ? false : product.status_enabled,
+        stock_status: receiptCheckOnly ? null : product.stock_status,
         product_url: productUrl.trim() || null
       })
       .eq("id", productId);
@@ -285,12 +292,27 @@ export function ProductEditPage({ productId, navigate }: Props) {
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">최소 재고</span>
-            <input className="field" type="number" inputMode="numeric" min={0} step={1} value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} />
+            <input className="field" type="number" inputMode="numeric" min={0} step={1} value={receiptCheckOnly ? "0" : minimumStock} disabled={receiptCheckOnly} onChange={(event) => setMinimumStock(event.target.value)} />
           </label>
 
           <label className="block min-w-0 sm:col-span-2">
             <span className="mb-1 block text-sm font-semibold">링크</span>
             <input className="field" type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder="https://..." />
+          </label>
+
+          <label className="flex min-w-0 items-start gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={receiptCheckOnly}
+              onChange={(event) => setReceiptCheckOnly(event.target.checked)}
+              className="mt-1 h-5 w-5 shrink-0 accent-brand-600"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-bold">입고여부만 확인</span>
+              <span className="mt-1 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                재고 수량을 관리하지 않고 입고완료 기록만 홈과 작업 로그에 남깁니다.
+              </span>
+            </span>
           </label>
         </div>
 

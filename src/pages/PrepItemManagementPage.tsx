@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
+import { formatInventoryQuantity } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
 import type { Inventory, PrepItem, PrepItemIngredient, Product } from "../types/domain";
 import type { Json } from "../types/supabase";
@@ -22,10 +23,6 @@ const emptyIngredientDraft: IngredientDraft = {
   quantity: "",
   search: ""
 };
-
-function formatQuantity(value: number) {
-  return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 2 });
-}
 
 function buildSchemaError(message: string) {
   if (
@@ -139,6 +136,13 @@ export function PrepItemManagementPage() {
     setIngredientDrafts((current) => current.map((draft, draftIndex) => (draftIndex === index ? { ...draft, ...patch } : draft)));
   }
 
+  function updateIngredientQuantityInput(index: number, value: string) {
+    const nextValue = value.replace(",", ".");
+    if (/^\d*\.?\d{0,2}$/.test(nextValue)) {
+      updateIngredientDraft(index, { quantity: nextValue });
+    }
+  }
+
   function removeIngredientDraft(index: number) {
     setIngredientDrafts((current) => (current.length === 1 ? [{ ...emptyIngredientDraft }] : current.filter((_, draftIndex) => draftIndex !== index)));
   }
@@ -173,7 +177,7 @@ export function PrepItemManagementPage() {
       return;
     }
     if (ingredients.some((ingredient) => !Number.isFinite(ingredient.quantity_per_unit) || ingredient.quantity_per_unit <= 0)) {
-      setError("재료 사용량은 0보다 커야 합니다.");
+      setError("재료 사용량은 0보다 큰 숫자로 입력해 주세요.");
       return;
     }
 
@@ -372,11 +376,12 @@ export function PrepItemManagementPage() {
                     <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                       <input
                         className="field min-h-11 py-2"
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*[.]?[0-9]{0,2}"
                         value={draft.quantity}
-                        onChange={(event) => updateIngredientDraft(index, { quantity: event.target.value })}
+                        onChange={(event) => updateIngredientQuantityInput(index, event.target.value)}
+                        placeholder="예: 0.5"
                       />
                       <span className="min-w-8 text-xs font-bold text-slate-500 dark:text-slate-400">{selectedProduct?.unit_name ?? ""}</span>
                     </div>
@@ -419,14 +424,14 @@ export function PrepItemManagementPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                    현재 {formatQuantity(item.stock)}개 · 유통기한 {item.shelf_life_days}일 · 순서 {index + 1}
+                    현재 {formatInventoryQuantity(item.stock)}개 · 유통기한 {item.shelf_life_days}일 · 순서 {index + 1}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {item.ingredients.map((ingredient) => {
                       const product = productsById.get(ingredient.ingredient_product_id);
                       return (
                         <span key={ingredient.id} className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold dark:bg-slate-900">
-                          {product?.name ?? "삭제된 재료"} {formatQuantity(ingredient.quantity_per_unit)}
+                          {product?.name ?? "삭제된 재료"} {formatInventoryQuantity(ingredient.quantity_per_unit)}
                           {product?.unit_name ?? ""}
                         </span>
                       );

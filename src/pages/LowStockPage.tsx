@@ -4,7 +4,7 @@ import { ScanLine, Search, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
-import { normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import { loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
@@ -607,7 +607,7 @@ export function LowStockPage({ navigate }: Props) {
                 <div className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2 text-sm">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">총재고</p>
-                    <p className="font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</p>
+                    <p className="font-bold tabular-nums text-red-700 dark:text-red-200">{formatInventoryQuantity(item.total_stock)}</p>
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">최소</p>
@@ -690,7 +690,7 @@ export function LowStockPage({ navigate }: Props) {
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-2 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{item.total_stock}</td>
+                    <td className="px-2 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{formatInventoryQuantity(item.total_stock)}</td>
                     <td className="px-2 py-3 text-right tabular-nums">{item.minimum_stock}</td>
                     <td className="px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
                       <input

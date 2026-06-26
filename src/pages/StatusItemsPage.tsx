@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
-import { normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, InventoryItem, StockStatus } from "../types/domain";
 
@@ -115,7 +115,7 @@ export function StatusItemsPage({ navigate }: Props) {
                   ) : null}
                 </div>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  총재고 <strong className="tabular-nums">{item.total_stock}</strong>
+                  총재고 <strong className="tabular-nums">{formatInventoryQuantity(item.total_stock)}</strong>
                   <span className="mx-2 text-slate-300 dark:text-slate-700">·</span>
                   최소재고 <strong className="tabular-nums">{item.minimum_stock}</strong>
                 </p>

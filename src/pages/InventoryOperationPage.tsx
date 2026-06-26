@@ -1,11 +1,12 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowLeftRight, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Check, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
 import { formatDateTime } from "../lib/date";
-import { formatLogContent, normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
+import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, InventoryAction, InventoryItem, InventoryLog, Location, StockStatus } from "../types/domain";
+import type { AppRoute, InventoryItem, InventoryLog, Location, StockStatus } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -22,9 +23,18 @@ type InventoryHistoryPoint = {
   storeQty: number;
 };
 
+type StockOperationAction = (typeof ACTIONS)[number];
+
 function formatStatusUpdateError(message: string) {
   if (message.includes("status_enabled") || message.includes("stock_status") || message.includes("schema cache")) {
     return "상태 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 products 상태 컬럼 추가를 요청해 주세요.";
+  }
+  return message;
+}
+
+function formatMemoSaveError(message: string) {
+  if (message.includes("inventory_logs_action_check") || message.includes("schema cache")) {
+    return "메모 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 inventory_logs 액션 허용값 업데이트를 요청해 주세요.";
   }
   return message;
 }
@@ -34,15 +44,23 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [action, setAction] = useState<InventoryAction>("조정");
+  const [action, setAction] = useState<StockOperationAction>("조정");
   const [location, setLocation] = useState<Location>("창고");
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
   const [quantity, setQuantity] = useState("");
-  const [note, setNote] = useState("");
+  const [memoText, setMemoText] = useState("");
+  const [latestMemo, setLatestMemo] = useState<InventoryLog | null>(null);
+  const [memoHistory, setMemoHistory] = useState<InventoryLog[]>([]);
+  const [memoHistoryOpen, setMemoHistoryOpen] = useState(false);
+  const [memoHistoryLoading, setMemoHistoryLoading] = useState(false);
+  const [memoError, setMemoError] = useState("");
+  const [memoSuccess, setMemoSuccess] = useState("");
   const [editingMinimumStock, setEditingMinimumStock] = useState(false);
   const [minimumStockDraft, setMinimumStockDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [receiptSaving, setReceiptSaving] = useState(false);
+  const [memoSaving, setMemoSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [error, setError] = useState("");
@@ -83,11 +101,36 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setLoading(false);
   }, [productId]);
 
+  const loadLatestMemo = useCallback(async () => {
+    setMemoError("");
+    setLatestMemo(null);
+    const { data, error: latestMemoError } = await supabase
+      .from("inventory_logs")
+      .select("*")
+      .eq("product_id", productId)
+      .eq("action", "메모")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestMemoError) {
+      setMemoError(formatMemoSaveError(latestMemoError.message));
+    } else {
+      setLatestMemo((data as InventoryLog | null) ?? null);
+    }
+  }, [productId]);
+
   useEffect(() => {
     void loadProduct();
   }, [loadProduct]);
 
+  useEffect(() => {
+    void loadLatestMemo();
+  }, [loadLatestMemo]);
+
   const quantityValue = quantity.trim() === "" ? 0 : Number(quantity);
+  const memoIsEmpty = memoText.trim().length === 0;
   const quantityStepError = useMemo(() => {
     if (quantity.trim() === "") return "";
     if (!Number.isFinite(quantityValue) || quantityValue < 0) return "수량은 0 이상이어야 합니다.";
@@ -205,6 +248,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       .from("inventory_logs")
       .select("*")
       .eq("product_id", item.id)
+      .neq("action", "메모")
       .is("reverted_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -239,7 +283,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   async function restoreToHistoryPoint(point: InventoryHistoryPoint) {
     if (!item) return;
     const confirmed = window.confirm(
-      `${formatDateTime(point.log.created_at)} 작업 직후 상태로 복원하시겠습니까?\n창고 ${point.warehouseQty} / 매장 ${point.storeQty}\n선택 시점 이후 작업은 히스토리에서 취소 처리됩니다.`
+      `${formatDateTime(point.log.created_at)} 작업 직후 상태로 복원하시겠습니까?\n창고 ${formatInventoryQuantity(point.warehouseQty)} / 매장 ${formatInventoryQuantity(point.storeQty)}\n선택 시점 이후 작업은 히스토리에서 취소 처리됩니다.`
     );
     if (!confirmed) return;
 
@@ -262,10 +306,100 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setHistoryOpen(false);
       setSuccess(`${formatDateTime(point.log.created_at)} 시점으로 재고를 복원했습니다.`);
       setQuantity("");
-      setNote("");
       await loadProduct();
     }
     setRestoring(false);
+  }
+
+  async function openMemoHistory() {
+    if (!item) return;
+
+    setMemoHistoryOpen(true);
+    setMemoHistoryLoading(true);
+    setMemoError("");
+    const { data, error: memoHistoryError } = await supabase
+      .from("inventory_logs")
+      .select("*")
+      .eq("product_id", item.id)
+      .eq("action", "메모")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(100);
+
+    if (memoHistoryError) {
+      setMemoError(formatMemoSaveError(memoHistoryError.message));
+      setMemoHistory([]);
+    } else {
+      const nextMemoHistory = (data ?? []) as InventoryLog[];
+      setMemoHistory(nextMemoHistory);
+      setLatestMemo(nextMemoHistory[0] ?? null);
+    }
+    setMemoHistoryLoading(false);
+  }
+
+  async function handleMemoSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!item || memoIsEmpty) return;
+
+    setMemoSaving(true);
+    setMemoError("");
+    setMemoSuccess("");
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      setMemoError(userError?.message ?? "로그인이 필요합니다.");
+      setMemoSaving(false);
+      return;
+    }
+
+    const { data: savedMemo, error: logError } = await supabase
+      .from("inventory_logs")
+      .insert({
+        product_id: item.id,
+        user_id: userData.user.id,
+        action: "메모",
+        source_location: null,
+        destination_location: null,
+        previous_quantity: null,
+        new_quantity: null,
+        quantity: null,
+        note: memoText.trim(),
+        warehouse_qty_before: item.warehouse_qty,
+        store_qty_before: item.store_qty,
+        warehouse_qty_after: item.warehouse_qty,
+        store_qty_after: item.store_qty
+      })
+      .select("*")
+      .single();
+
+    if (logError) {
+      setMemoError(formatMemoSaveError(logError.message));
+    } else {
+      setMemoSuccess("메모를 저장했습니다.");
+      setMemoText("");
+      if (savedMemo) {
+        const nextMemo = savedMemo as InventoryLog;
+        setLatestMemo(nextMemo);
+        setMemoHistory((current) => [nextMemo, ...current]);
+      }
+    }
+    setMemoSaving(false);
+  }
+
+  async function completeReceiptCheckOnly() {
+    if (!item) return;
+
+    setReceiptSaving(true);
+    setError("");
+    setSuccess("");
+    const { errorMessage } = await recordReceiptCheckOnly(item.id);
+
+    if (errorMessage) {
+      setError(errorMessage);
+    } else {
+      setSuccess("입고완료를 기록했습니다.");
+    }
+    setReceiptSaving(false);
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -360,7 +494,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       previous_quantity: previousQuantity,
       new_quantity: newQuantity,
       quantity: quantityValue,
-      note: note.trim() || null,
+      note: null,
       warehouse_qty_before: item.warehouse_qty,
       store_qty_before: item.store_qty,
       warehouse_qty_after: nextWarehouseQty,
@@ -387,7 +521,6 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       }
       setSuccess("저장되었습니다.");
       setQuantity("");
-      setNote("");
       await loadProduct();
     }
     setSaving(false);
@@ -415,10 +548,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           <button
             className="touch-button icon-button text-rose-700 disabled:cursor-not-allowed disabled:opacity-45 dark:text-rose-300"
             type="button"
-            disabled={restoring || saving}
+            disabled={restoring || saving || item.receipt_check_only}
             onClick={() => void openHistory()}
             aria-label="되돌리기"
-            title={restoring ? "처리 중" : "되돌리기"}
+            title={item.receipt_check_only ? "입고여부만 확인 품목" : restoring ? "처리 중" : "되돌리기"}
           >
             <History size={19} />
           </button>
@@ -445,23 +578,44 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="panel p-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">창고</p>
-              <p className="text-xl font-bold">{item.warehouse_qty}</p>
-            </div>
-            <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">매장</p>
-              <p className="text-xl font-bold">{item.store_qty}</p>
-            </div>
+      {item.receipt_check_only ? (
+        <div className="panel p-4">
+          <div className="rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-900 dark:bg-sky-950/40">
+            <p className="text-sm font-extrabold text-sky-800 dark:text-sky-100">입고여부만 확인</p>
+            <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
+              이 품목은 재고 수량을 관리하지 않고 입고완료 기록만 남깁니다.
+            </p>
           </div>
-          <div className="mt-2 rounded-md border border-slate-200 p-2 text-sm dark:border-slate-800">
-            <div className="flex flex-wrap items-center gap-2">
-              <span>
-                총재고 <strong>{item.total_stock}</strong> · 최소재고 <strong>{item.minimum_stock}</strong>
-              </span>
+          {error ? <div className="mt-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
+          {success ? <div className="mt-3"><StatusMessage type="success">{success}</StatusMessage></div> : null}
+          <button
+            type="button"
+            disabled={receiptSaving}
+            onClick={() => void completeReceiptCheckOnly()}
+            className="primary-button mt-3 inline-flex w-full items-center justify-center gap-2"
+          >
+            <Check size={20} />
+            {receiptSaving ? "처리 중..." : "입고완료"}
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="panel p-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">창고</p>
+                <p className="text-xl font-bold">{formatInventoryQuantity(item.warehouse_qty)}</p>
+              </div>
+              <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">매장</p>
+                <p className="text-xl font-bold">{formatInventoryQuantity(item.store_qty)}</p>
+              </div>
+            </div>
+            <div className="mt-2 rounded-md border border-slate-200 p-2 text-sm dark:border-slate-800">
+              <div className="flex flex-wrap items-center gap-2">
+                <span>
+                  총재고 <strong>{formatInventoryQuantity(item.total_stock)}</strong> · 최소재고 <strong>{item.minimum_stock}</strong>
+                </span>
               {editingMinimumStock ? (
                 <span className="inline-flex items-center gap-1">
                   <input
@@ -602,13 +756,6 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             </div>
           </div>
 
-          {action === "조정" ? (
-            <label className="mt-4 block">
-              <span className="mb-1 block text-sm font-semibold">조정 사유</span>
-              <textarea className="field min-h-24" value={note} onChange={(event) => setNote(event.target.value)} placeholder="실사, 파손 발견, 기록 오류 수정" />
-            </label>
-          ) : null}
-
           {action === "이동" ? (
             <div className="mt-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
               <ArrowLeftRight size={18} />
@@ -618,6 +765,49 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
 
         </form>
       </div>
+      )}
+
+      <form onSubmit={handleMemoSubmit} className="panel mt-4 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <label htmlFor="inventory-memo" className="text-sm font-bold">
+            메모
+          </label>
+          <button
+            type="button"
+            onClick={() => void openMemoHistory()}
+            className="touch-button icon-button shrink-0"
+            aria-label="메모 히스토리"
+            title="메모 히스토리"
+          >
+            <History size={18} />
+          </button>
+        </div>
+        {latestMemo ? (
+          <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-extrabold text-brand-700 dark:text-brand-100">최근 메모</span>
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(latestMemo.created_at)}</span>
+            </div>
+            <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{latestMemo.note}</p>
+          </div>
+        ) : null}
+        <textarea
+          id="inventory-memo"
+          className="field min-h-28 resize-y"
+          value={memoText}
+          onChange={(event) => {
+            setMemoText(event.target.value);
+            setMemoError("");
+            setMemoSuccess("");
+          }}
+          placeholder="메모를 입력하세요"
+        />
+        {memoError ? <div className="mt-2"><StatusMessage type="error">{memoError}</StatusMessage></div> : null}
+        {memoSuccess ? <div className="mt-2"><StatusMessage type="success">{memoSuccess}</StatusMessage></div> : null}
+        <button className="primary-button mt-2 min-h-11 w-full py-2" type="submit" disabled={memoSaving || memoIsEmpty}>
+          {memoSaving ? "저장 중..." : "저장"}
+        </button>
+      </form>
 
       {historyOpen ? (
         <div className="fixed inset-0 z-50 flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="재고 작업 히스토리">
@@ -655,19 +845,50 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                           {index === 0 ? <span className="rounded bg-brand-100 px-2 py-1 text-[10px] font-extrabold text-brand-700 dark:bg-brand-950 dark:text-brand-100">현재 상태</span> : null}
                         </div>
                         <p className="mt-2 text-sm font-bold">{formatLogContent(point.log)}</p>
-                        {point.log.note ? <p className="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">{point.log.note}</p> : null}
                       </div>
                       {index > 0 ? <RotateCcw className="mt-1 shrink-0 text-brand-700 dark:text-brand-100" size={18} /> : null}
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-center">
                       <span className="rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-900">
-                        창고 <strong className="ml-1 text-sm">{point.warehouseQty}</strong>
+                        창고 <strong className="ml-1 text-sm">{formatInventoryQuantity(point.warehouseQty)}</strong>
                       </span>
                       <span className="rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-900">
-                        매장 <strong className="ml-1 text-sm">{point.storeQty}</strong>
+                        매장 <strong className="ml-1 text-sm">{formatInventoryQuantity(point.storeQty)}</strong>
                       </span>
                     </div>
                   </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {memoHistoryOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="메모 히스토리">
+          <div className="flex max-h-[86dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <History className="shrink-0 text-brand-700 dark:text-brand-100" size={20} />
+                  <h2 className="truncate font-extrabold">메모 히스토리</h2>
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{item.name} · 최근 메모 100개</p>
+              </div>
+              <button type="button" onClick={() => setMemoHistoryOpen(false)} className="touch-button icon-button shrink-0" aria-label="닫기">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {memoHistoryLoading ? <StatusMessage>메모 히스토리를 불러오는 중...</StatusMessage> : null}
+              {!memoHistoryLoading && memoHistory.length === 0 ? <StatusMessage>저장된 메모가 없습니다.</StatusMessage> : null}
+              <div className="space-y-2">
+                {memoHistory.map((memo) => (
+                  <div key={memo.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                    <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{memo.note}</p>
+                    <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(memo.created_at)}</p>
+                  </div>
                 ))}
               </div>
             </div>

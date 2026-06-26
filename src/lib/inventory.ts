@@ -4,10 +4,23 @@ type ProductWithInventory = Product & {
   inventory: Inventory[] | Inventory | null;
 };
 
+function toFiniteQuantity(value: number | string | null | undefined): number {
+  const numericValue = Number(value ?? 0);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+export function formatInventoryQuantity(value: number | string | null | undefined): string {
+  const numericValue = toFiniteQuantity(value);
+  return numericValue.toLocaleString("ko-KR", {
+    minimumFractionDigits: Number.isInteger(numericValue) ? 0 : 1,
+    maximumFractionDigits: 1
+  });
+}
+
 export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem {
   const inventory = Array.isArray(row.inventory) ? row.inventory[0] ?? null : row.inventory;
-  const warehouse_qty = inventory?.warehouse_qty ?? 0;
-  const store_qty = inventory?.store_qty ?? 0;
+  const warehouse_qty = toFiniteQuantity(inventory?.warehouse_qty);
+  const store_qty = toFiniteQuantity(inventory?.store_qty);
   const total_stock = warehouse_qty + store_qty;
 
   return {
@@ -17,13 +30,14 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
     urgent_order_quantity: row.urgent_order_quantity ?? null,
     fresh_order_selected: row.fresh_order_selected ?? false,
     fresh_order_selected_at: row.fresh_order_selected_at ?? null,
+    receipt_check_only: row.receipt_check_only ?? false,
     status_enabled: row.status_enabled ?? false,
     stock_status: row.stock_status ?? null,
     inventory,
     warehouse_qty,
     store_qty,
     total_stock,
-    is_low_stock: row.status_enabled ? row.stock_status === "발주 필요" : total_stock <= row.minimum_stock
+    is_low_stock: row.receipt_check_only ? false : row.status_enabled ? row.stock_status === "발주 필요" : total_stock <= row.minimum_stock
   };
 }
 
@@ -52,6 +66,14 @@ export function formatLogContent(log: {
   if (log.action === "조정") {
     const note = log.note ? ` (${log.note})` : "";
     return `${log.previous_quantity ?? 0} → ${log.new_quantity ?? 0}${note}`;
+  }
+
+  if (log.action === "입고" && log.quantity === null && log.note) {
+    return log.note;
+  }
+
+  if (log.action === "메모") {
+    return log.note ?? "메모";
   }
 
   const sign = log.action === "입고" ? "+" : "-";

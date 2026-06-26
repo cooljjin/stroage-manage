@@ -3,6 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
+import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, Product } from "../types/domain";
 
@@ -88,6 +89,13 @@ export function ScanPage({ navigate }: Props) {
     const { product, errorMessage } = await findProductByBarcode(barcode);
     if (errorMessage) {
       setMessage(errorMessage);
+      barcodeHandlingRef.current = false;
+      return;
+    }
+
+    if (product?.receipt_check_only) {
+      const { errorMessage } = await recordReceiptCheckOnly(product.id);
+      setMessage(errorMessage || `${product.name} 입고완료를 기록했습니다.`);
       barcodeHandlingRef.current = false;
       return;
     }
