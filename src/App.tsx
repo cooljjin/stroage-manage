@@ -371,16 +371,16 @@ export default function App() {
           </button>
         ) : null}
         {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "scan" && <ScanPage navigate={navigate} />}
+        {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
-        {permittedRoute.name === "product-edit" && <ProductEditPage productId={permittedRoute.productId ?? ""} navigate={navigate} />}
+        {permittedRoute.name === "product-edit" && <ProductEditPage productId={permittedRoute.productId ?? ""} navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "operation" && (
-          <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} />
+          <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
         )}
-        {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} />}
-        {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} />}
-        {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} />}
-        {permittedRoute.name === "logs" && <LogsPage navigate={navigate} />}
+        {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} currentStoreId={profile.store_id} />}
+        {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} />}
+        {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
+        {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "prep-items" && <PrepItemManagementPage />}
         {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
         {permittedRoute.name === "category-management" && <CategoryManagementPage />}

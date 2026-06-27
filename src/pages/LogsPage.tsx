@@ -12,6 +12,7 @@ type LogKind = "all" | "basic" | "prep";
 
 type Props = {
   navigate: (route: AppRoute) => void;
+  currentStoreId: string;
 };
 
 function formatDateInputValue(date: Date): string {
@@ -47,7 +48,7 @@ function getLogRange(period: LogPeriod, baseDateValue: string): { start: Date; e
   return { start, end, label: new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(start) };
 }
 
-export function LogsPage({ navigate }: Props) {
+export function LogsPage({ navigate, currentStoreId }: Props) {
   const [logs, setLogs] = useState<InventoryLogWithStaff[]>([]);
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
   const [period, setPeriod] = useState<LogPeriod>("day");
@@ -71,11 +72,11 @@ export function LogsPage({ navigate }: Props) {
     });
   }, [logKind, logs, productSearch]);
 
-  async function loadProfiles() {
-    const profileResult = await supabase.from("profiles").select("*").order("display_name", { ascending: true });
+  const loadProfiles = useCallback(async () => {
+    const profileResult = await supabase.from("profiles").select("*").eq("store_id", currentStoreId).order("display_name", { ascending: true });
 
     if (!profileResult.error) setProfiles((profileResult.data ?? []) as StaffProfile[]);
-  }
+  }, [currentStoreId]);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -84,6 +85,7 @@ export function LogsPage({ navigate }: Props) {
     let query = supabase
       .from("inventory_logs")
       .select("*, products(name, barcode)")
+      .eq("store_id", currentStoreId)
       .gte("created_at", range.start.toISOString())
       .lt("created_at", range.end.toISOString());
 
@@ -98,7 +100,7 @@ export function LogsPage({ navigate }: Props) {
     } else {
       const nextLogs = (data ?? []) as unknown as InventoryLog[];
       const userIds = Array.from(new Set(nextLogs.map((log) => log.user_id)));
-      const { data: profiles } = await supabase.from("profiles").select("*").in("id", userIds);
+      const { data: profiles } = await supabase.from("profiles").select("*").eq("store_id", currentStoreId).in("id", userIds);
       const profileMap = new Map((profiles ?? []).map((profile: StaffProfile) => [profile.id, profile.display_name]));
 
       setLogs(
@@ -109,7 +111,7 @@ export function LogsPage({ navigate }: Props) {
       );
     }
     setLoading(false);
-  }, [range.end, range.start, staffId]);
+  }, [currentStoreId, range.end, range.start, staffId]);
 
   useEffect(() => {
     void loadLogs();
@@ -117,7 +119,7 @@ export function LogsPage({ navigate }: Props) {
 
   useEffect(() => {
     void loadProfiles();
-  }, []);
+  }, [loadProfiles]);
 
   return (
     <section>

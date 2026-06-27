@@ -8,6 +8,7 @@ import type { AppRoute, InventoryItem, StockStatus } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
+  currentStoreId: string;
 };
 
 const STATUS_STYLES: Record<StockStatus, string> = {
@@ -24,7 +25,7 @@ const STATUS_SELECTED_STYLES: Record<StockStatus, string> = {
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
 
-export function StatusItemsPage({ navigate }: Props) {
+export function StatusItemsPage({ navigate, currentStoreId }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<StockStatus>("충분");
   const [loading, setLoading] = useState(true);
@@ -38,6 +39,7 @@ export function StatusItemsPage({ navigate }: Props) {
       const { data, error: loadError } = await supabase
         .from("products")
         .select("*, inventory(*)")
+        .eq("store_id", currentStoreId)
         .eq("is_active", true)
         .eq("status_enabled", true)
         .order("name", { ascending: true });
@@ -52,7 +54,7 @@ export function StatusItemsPage({ navigate }: Props) {
     }
 
     void loadItems();
-  }, []);
+  }, [currentStoreId]);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => item.stock_status === selectedStatus);

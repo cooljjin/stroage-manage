@@ -5,7 +5,6 @@ import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
-import { getCurrentStoreId } from "../lib/profiles";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
@@ -13,6 +12,7 @@ import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
+  currentStoreId: string;
 };
 
 type FreshReceivingUndoEntry = {
@@ -53,7 +53,7 @@ function isFreshSelectableItem(item: Pick<InventoryItem, "receipt_check_only">):
   return item.receipt_check_only;
 }
 
-export function LowStockPage({ navigate }: Props) {
+export function LowStockPage({ navigate, currentStoreId }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
@@ -82,10 +82,6 @@ export function LowStockPage({ navigate }: Props) {
   const freshBarcodeHandlingRef = useRef(false);
 
   useEffect(() => {
-    void loadItems();
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (freshScannerRef.current?.isScanning) {
         freshScannerRef.current.stop().catch(() => undefined);
@@ -93,11 +89,11 @@ export function LowStockPage({ navigate }: Props) {
     };
   }, []);
 
-  async function loadItems() {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     const [supplierResult, productResult] = await Promise.all([
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      supabase.from("products").select("*, inventory(*)").eq("is_active", true).order("name", { ascending: true })
+      supabase.from("products").select("*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true })
     ]);
     const { data, error: loadError } = productResult;
     setSuppliers(supplierResult);
@@ -107,7 +103,11 @@ export function LowStockPage({ navigate }: Props) {
       setItems((data ?? []).map((row) => normalizeInventoryItem(row as Parameters<typeof normalizeInventoryItem>[0])));
     }
     setLoading(false);
-  }
+  }, [currentStoreId]);
+
+  useEffect(() => {
+    void loadItems();
+  }, [loadItems]);
 
   const lowStockItems = useMemo(() => {
     return items
@@ -186,11 +186,12 @@ export function LowStockPage({ navigate }: Props) {
     });
   }
 
-  async function findProductByFreshBarcode(barcode: string) {
+  const findProductByFreshBarcode = useCallback(async (barcode: string) => {
     const barcodeCandidates = getBarcodeCandidates(barcode);
     const { data, error: productError } = await supabase
       .from("products")
       .select("*")
+      .eq("store_id", currentStoreId)
       .in("barcode", barcodeCandidates)
       .eq("is_active", true)
       .limit(1)
@@ -201,6 +202,7 @@ export function LowStockPage({ navigate }: Props) {
     const { data: barcodeData, error: barcodeError } = await supabase
       .from("product_barcodes")
       .select("product_id")
+      .eq("store_id", currentStoreId)
       .in("barcode", barcodeCandidates)
       .limit(1)
       .maybeSingle();
@@ -210,12 +212,13 @@ export function LowStockPage({ navigate }: Props) {
     const { data: aliasProduct, error: aliasError } = await supabase
       .from("products")
       .select("*")
+      .eq("store_id", currentStoreId)
       .eq("id", barcodeData.product_id)
       .eq("is_active", true)
       .maybeSingle();
     if (aliasError) return { product: null, errorMessage: aliasError.message };
     return { product: (aliasProduct as InventoryItem | null) ?? null, errorMessage: "" };
-  }
+  }, [currentStoreId]);
 
   const handleFreshBarcode = useCallback(async (barcode: string) => {
     if (freshBarcodeHandlingRef.current) return;
@@ -247,7 +250,7 @@ export function LowStockPage({ navigate }: Props) {
     setFreshSearch(product.name);
     setFreshScanMessage(`${product.name} 품목을 선택했습니다.`);
     freshBarcodeHandlingRef.current = false;
-  }, [stopFreshScanner]);
+  }, [findProductByFreshBarcode, stopFreshScanner]);
 
   const startFreshScanner = useCallback(async () => {
     setFreshScanMessage("");
@@ -331,6 +334,7 @@ export function LowStockPage({ navigate }: Props) {
             fresh_order_selected: selected,
             fresh_order_selected_at: selected ? new Date().toISOString() : null
           })
+          .eq("store_id", currentStoreId)
           .eq("id", item.id);
       })
     );
@@ -375,6 +379,7 @@ export function LowStockPage({ navigate }: Props) {
     const { error: updateError } = await supabase
       .from("products")
       .update({ urgent_order_requested: false, urgent_order_quantity: null })
+      .eq("store_id", currentStoreId)
       .eq("id", item.id);
 
     if (updateError) {
@@ -394,7 +399,7 @@ export function LowStockPage({ navigate }: Props) {
     setUpdatingOrderIds((current) => new Set(current).add(item.id));
     setItems((current) => current.map((product) => (product.id === item.id ? { ...product, order_completed: checked } : product)));
 
-    const { error: updateError } = await supabase.from("products").update({ order_completed: checked }).eq("id", item.id);
+    const { error: updateError } = await supabase.from("products").update({ order_completed: checked }).eq("store_id", currentStoreId).eq("id", item.id);
     if (updateError) {
       setItems((current) => current.map((product) => (product.id === item.id ? { ...product, order_completed: item.order_completed } : product)));
       setError(updateError.message);
@@ -412,7 +417,7 @@ export function LowStockPage({ navigate }: Props) {
     setCompletingFreshIds((current) => new Set(current).add(item.id));
 
     const updateErrorMessage = item.receipt_check_only
-      ? (await recordReceiptCheckOnly(item.id)).errorMessage
+      ? (await recordReceiptCheckOnly(item.id, currentStoreId)).errorMessage
       : (
           await supabase
             .from("products")
@@ -420,6 +425,7 @@ export function LowStockPage({ navigate }: Props) {
               fresh_order_selected: false,
               fresh_order_selected_at: null
             })
+            .eq("store_id", currentStoreId)
             .eq("id", item.id)
         ).error?.message ?? "";
 
@@ -467,6 +473,7 @@ export function LowStockPage({ navigate }: Props) {
         fresh_order_selected: previous.freshOrderSelected,
         fresh_order_selected_at: previous.freshOrderSelectedAt
       })
+      .eq("store_id", currentStoreId)
       .eq("id", previous.productId);
 
     if (updateError) {
@@ -511,17 +518,10 @@ export function LowStockPage({ navigate }: Props) {
     setError("");
 
     if (urgentDirectInput) {
-      const { storeId, errorMessage: storeErrorMessage } = await getCurrentStoreId();
-      if (!storeId) {
-        setError(storeErrorMessage);
-        setSavingUrgent(false);
-        return;
-      }
-
       const { data, error: insertError } = await supabase
         .from("products")
         .insert({
-          store_id: storeId,
+          store_id: currentStoreId,
           name: directName,
           barcode: null,
           category: "기타",
@@ -539,7 +539,7 @@ export function LowStockPage({ navigate }: Props) {
       if (insertError) {
         setError(insertError.message);
       } else {
-        const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id, store_id: storeId });
+        const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id, store_id: currentStoreId });
         if (inventoryError) {
           setError(inventoryError.message);
         } else {
@@ -554,6 +554,7 @@ export function LowStockPage({ navigate }: Props) {
     const { error: updateError } = await supabase
       .from("products")
       .update({ urgent_order_requested: true, urgent_order_quantity: quantity })
+      .eq("store_id", currentStoreId)
       .eq("id", urgentProductId);
 
     if (updateError) {

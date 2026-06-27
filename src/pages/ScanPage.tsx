@@ -9,6 +9,7 @@ import type { AppRoute, Product } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
+  currentStoreId: string;
 };
 
 const SCANNER_ID = "barcode-scanner";
@@ -39,22 +40,22 @@ function getBarcodeCandidates(barcode: string): string[] {
   return [...candidates];
 }
 
-async function findProductByBarcode(barcode: string): Promise<{ product: Product | null; errorMessage: string }> {
+async function findProductByBarcode(barcode: string, currentStoreId: string): Promise<{ product: Product | null; errorMessage: string }> {
   const barcodeCandidates = getBarcodeCandidates(barcode);
-  const { data, error } = await supabase.from("products").select("*").in("barcode", barcodeCandidates).eq("is_active", true).limit(1).maybeSingle();
+  const { data, error } = await supabase.from("products").select("*").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).eq("is_active", true).limit(1).maybeSingle();
   if (error) return { product: null, errorMessage: error.message };
   if (data) return { product: data as Product, errorMessage: "" };
 
-  const { data: barcodeData, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").in("barcode", barcodeCandidates).limit(1).maybeSingle();
+  const { data: barcodeData, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).limit(1).maybeSingle();
   if (barcodeError) return { product: null, errorMessage: barcodeError.message };
   if (!barcodeData) return { product: null, errorMessage: "" };
 
-  const { data: aliasProduct, error: aliasError } = await supabase.from("products").select("*").eq("id", barcodeData.product_id).eq("is_active", true).maybeSingle();
+  const { data: aliasProduct, error: aliasError } = await supabase.from("products").select("*").eq("store_id", currentStoreId).eq("id", barcodeData.product_id).eq("is_active", true).maybeSingle();
   if (aliasError) return { product: null, errorMessage: aliasError.message };
   return { product: (aliasProduct as Product | null) ?? null, errorMessage: "" };
 }
 
-export function ScanPage({ navigate }: Props) {
+export function ScanPage({ navigate, currentStoreId }: Props) {
   const [scannerActive, setScannerActive] = useState(false);
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,7 +87,7 @@ export function ScanPage({ navigate }: Props) {
     }
     setScannerActive(false);
 
-    const { product, errorMessage } = await findProductByBarcode(barcode);
+    const { product, errorMessage } = await findProductByBarcode(barcode, currentStoreId);
     if (errorMessage) {
       setMessage(errorMessage);
       barcodeHandlingRef.current = false;
@@ -94,7 +95,7 @@ export function ScanPage({ navigate }: Props) {
     }
 
     if (product?.receipt_check_only) {
-      const { errorMessage } = await recordReceiptCheckOnly(product.id);
+      const { errorMessage } = await recordReceiptCheckOnly(product.id, currentStoreId);
       setMessage(errorMessage || `${product.name} 입고완료를 기록했습니다.`);
       barcodeHandlingRef.current = false;
       return;
@@ -105,7 +106,7 @@ export function ScanPage({ navigate }: Props) {
     } else {
       navigate({ name: "register", barcode });
     }
-  }, [navigate]);
+  }, [currentStoreId, navigate]);
 
   const startScanner = useCallback(async () => {
     setMessage("");
@@ -239,6 +240,7 @@ export function ScanPage({ navigate }: Props) {
     const { data, error } = await supabase
       .from("products")
       .select("*")
+      .eq("store_id", currentStoreId)
       .or(`name.ilike.%${keyword}%,barcode.ilike.%${keyword}%`)
       .eq("is_active", true)
       .order("name", { ascending: true })
@@ -251,13 +253,13 @@ export function ScanPage({ navigate }: Props) {
       const productsById = new Map<string, Product>();
       ((data ?? []) as Product[]).forEach((product) => productsById.set(product.id, product));
 
-      const { data: barcodeRows, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").ilike("barcode", `%${keyword}%`).limit(20);
+      const { data: barcodeRows, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").eq("store_id", currentStoreId).ilike("barcode", `%${keyword}%`).limit(20);
       if (barcodeError) {
         setMessage(barcodeError.message);
       } else {
         const missingProductIds = [...new Set((barcodeRows ?? []).map((row) => row.product_id).filter((id) => !productsById.has(id)))];
         if (missingProductIds.length > 0) {
-          const { data: aliasProducts, error: aliasProductsError } = await supabase.from("products").select("*").in("id", missingProductIds).eq("is_active", true);
+          const { data: aliasProducts, error: aliasProductsError } = await supabase.from("products").select("*").eq("store_id", currentStoreId).in("id", missingProductIds).eq("is_active", true);
           if (aliasProductsError) {
             setMessage(aliasProductsError.message);
           } else {

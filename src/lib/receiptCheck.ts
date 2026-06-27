@@ -9,7 +9,7 @@ export function formatReceiptCheckError(message: string) {
   return message;
 }
 
-export async function recordReceiptCheckOnly(productId: string): Promise<{ errorMessage: string }> {
+export async function recordReceiptCheckOnly(productId: string, storeId: string): Promise<{ errorMessage: string }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
     return { errorMessage: userError?.message ?? "로그인이 필요합니다." };
@@ -17,7 +17,7 @@ export async function recordReceiptCheckOnly(productId: string): Promise<{ error
 
   const { data: inventory, error: inventoryError } = await supabase
     .from("inventory")
-    .upsert({ product_id: productId }, { onConflict: "product_id" })
+    .upsert({ product_id: productId, store_id: storeId }, { onConflict: "product_id" })
     .select()
     .single();
 
@@ -28,6 +28,7 @@ export async function recordReceiptCheckOnly(productId: string): Promise<{ error
   const warehouseQty = Number(inventory?.warehouse_qty ?? 0);
   const storeQty = Number(inventory?.store_qty ?? 0);
   const { error: logError } = await supabase.from("inventory_logs").insert({
+    store_id: storeId,
     product_id: productId,
     user_id: userData.user.id,
     action: "입고",
@@ -53,6 +54,7 @@ export async function recordReceiptCheckOnly(productId: string): Promise<{ error
       fresh_order_selected: false,
       fresh_order_selected_at: null
     })
+    .eq("store_id", storeId)
     .eq("id", productId)
     .eq("fresh_order_selected", true);
 

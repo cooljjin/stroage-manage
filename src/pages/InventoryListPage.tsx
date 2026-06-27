@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Search, TriangleAlert } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
@@ -13,9 +13,10 @@ import type { AppRoute, CategoryFilter, InventoryItem, ProductSupplier, SortDire
 
 type Props = {
   navigate: (route: AppRoute) => void;
+  currentStoreId: string;
 };
 
-export function InventoryListPage({ navigate }: Props) {
+export function InventoryListPage({ navigate, currentStoreId }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
@@ -34,16 +35,12 @@ export function InventoryListPage({ navigate }: Props) {
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
   }, [viewMode]);
 
-  useEffect(() => {
-    void loadItems();
-  }, []);
-
-  async function loadItems() {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     const [categoryResult, supplierResult, productResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      supabase.from("products").select("*, inventory(*)").eq("is_active", true).order("name", { ascending: true })
+      supabase.from("products").select("*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true })
     ]);
     const { data, error: loadError } = productResult;
     setCategories(categoryResult.map((item) => item.name));
@@ -54,7 +51,11 @@ export function InventoryListPage({ navigate }: Props) {
       setItems((data ?? []).map((row) => normalizeInventoryItem(row as Parameters<typeof normalizeInventoryItem>[0])));
     }
     setLoading(false);
-  }
+  }, [currentStoreId]);
+
+  useEffect(() => {
+    void loadItems();
+  }, [loadItems]);
 
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -99,7 +100,7 @@ export function InventoryListPage({ navigate }: Props) {
     setError("");
     setMessage("");
     setReceiptCompletingIds((current) => new Set(current).add(item.id));
-    const { errorMessage } = await recordReceiptCheckOnly(item.id);
+    const { errorMessage } = await recordReceiptCheckOnly(item.id, currentStoreId);
 
     if (errorMessage) {
       setError(errorMessage);

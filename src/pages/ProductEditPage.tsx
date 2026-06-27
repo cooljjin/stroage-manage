@@ -10,6 +10,7 @@ import type { AppRoute, Product, ProductCategory, ProductSupplier, ProductUnit, 
 type Props = {
   productId: string;
   navigate: (route: AppRoute) => void;
+  currentStoreId: string;
 };
 
 const STORAGE_TYPES: StorageType[] = ["냉장", "냉동", "상온"];
@@ -19,7 +20,7 @@ function parseStorageTypes(value: string | null): StorageType[] {
   return STORAGE_TYPES.filter((type) => value.split(",").map((item) => item.trim()).includes(type));
 }
 
-export function ProductEditPage({ productId, navigate }: Props) {
+export function ProductEditPage({ productId, navigate, currentStoreId }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
@@ -51,8 +52,8 @@ export function ProductEditPage({ productId, navigate }: Props) {
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => fallbackSuppliers()),
       loadProductUnits({ activeOnly: true }).catch(() => fallbackProductUnits()),
-      supabase.from("products").select("*").eq("id", productId).single(),
-      supabase.from("products").select("*").order("name", { ascending: true })
+      supabase.from("products").select("*").eq("store_id", currentStoreId).eq("id", productId).single(),
+      supabase.from("products").select("*").eq("store_id", currentStoreId).order("name", { ascending: true })
     ]);
 
     const { data, error: loadError } = productResult;
@@ -98,7 +99,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
     }
 
     setLoading(false);
-  }, [productId]);
+  }, [currentStoreId, productId]);
 
   useEffect(() => {
     void loadProduct();
@@ -137,6 +138,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
         stock_status: receiptCheckOnly ? null : product.stock_status,
         product_url: productUrl.trim() || null
       })
+      .eq("store_id", currentStoreId)
       .eq("id", productId);
 
     setSaving(false);
@@ -157,7 +159,7 @@ export function ProductEditPage({ productId, navigate }: Props) {
     setError("");
     setMessage("");
 
-    const { error: deleteError } = await supabase.from("products").update({ is_active: false }).eq("id", product.id);
+    const { error: deleteError } = await supabase.from("products").update({ is_active: false }).eq("store_id", currentStoreId).eq("id", product.id);
 
     setDeleting(false);
     if (deleteError) {

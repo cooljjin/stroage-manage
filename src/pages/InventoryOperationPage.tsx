@@ -13,6 +13,7 @@ type Props = {
   navigate: (route: AppRoute) => void;
   canGoBack?: boolean;
   onBack?: () => void;
+  currentStoreId: string;
 };
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
@@ -39,7 +40,7 @@ function formatMemoSaveError(message: string) {
   return message;
 }
 
-export function InventoryOperationPage({ productId, navigate, canGoBack = false, onBack }: Props) {
+export function InventoryOperationPage({ productId, navigate, canGoBack = false, onBack, currentStoreId }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -70,7 +71,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const loadProduct = useCallback(async () => {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").eq("id", productId).single();
+    const { data, error: loadError } = await supabase.from("products").select("*, inventory(*)").eq("store_id", currentStoreId).eq("id", productId).single();
 
     if (loadError) {
       setError(loadError.message);
@@ -80,7 +81,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       if (!nextItem.inventory) {
         const { data: inventoryData, error: inventoryError } = await supabase
           .from("inventory")
-          .upsert({ product_id: productId }, { onConflict: "product_id" })
+          .upsert({ product_id: productId, store_id: currentStoreId }, { onConflict: "product_id" })
           .select()
           .single();
 
@@ -100,7 +101,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       }
     }
     setLoading(false);
-  }, [productId]);
+  }, [currentStoreId, productId]);
 
   const loadMemoStaffNames = useCallback(async (memos: InventoryLog[]) => {
     const missingUserIds = Array.from(
@@ -129,6 +130,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { data, error: latestMemoError } = await supabase
       .from("inventory_logs")
       .select("*")
+      .eq("store_id", currentStoreId)
       .eq("product_id", productId)
       .eq("action", "메모")
       .order("created_at", { ascending: false })
@@ -143,7 +145,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setLatestMemo(nextMemo);
       if (nextMemo) await loadMemoStaffNames([nextMemo]);
     }
-  }, [loadMemoStaffNames, productId]);
+  }, [currentStoreId, loadMemoStaffNames, productId]);
 
   useEffect(() => {
     void loadProduct();
@@ -203,6 +205,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { error: updateError } = await supabase
       .from("products")
       .update({ status_enabled: nextStatusEnabled, stock_status: stockStatus })
+      .eq("store_id", currentStoreId)
       .eq("id", item.id);
 
     if (updateError) {
@@ -229,7 +232,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setError("");
     setSuccess("");
     const nextMinimumStock = Math.max(0, Number(minimumStockDraft || 0));
-    const { error: updateError } = await supabase.from("products").update({ minimum_stock: nextMinimumStock }).eq("id", item.id);
+    const { error: updateError } = await supabase.from("products").update({ minimum_stock: nextMinimumStock }).eq("store_id", currentStoreId).eq("id", item.id);
 
     if (updateError) {
       setError(updateError.message);
@@ -271,6 +274,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { data, error: historyError } = await supabase
       .from("inventory_logs")
       .select("*")
+      .eq("store_id", currentStoreId)
       .eq("product_id", item.id)
       .neq("action", "메모")
       .is("reverted_at", null)
@@ -344,6 +348,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { data, error: memoHistoryError } = await supabase
       .from("inventory_logs")
       .select("*")
+      .eq("store_id", currentStoreId)
       .eq("product_id", item.id)
       .eq("action", "메모")
       .order("created_at", { ascending: false })
@@ -384,6 +389,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { data: savedMemo, error: logError } = await supabase
       .from("inventory_logs")
       .insert({
+        store_id: currentStoreId,
         product_id: item.id,
         user_id: userData.user.id,
         action: "메모",
@@ -422,7 +428,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setReceiptSaving(true);
     setError("");
     setSuccess("");
-    const { errorMessage } = await recordReceiptCheckOnly(item.id);
+    const { errorMessage } = await recordReceiptCheckOnly(item.id, currentStoreId);
 
     if (errorMessage) {
       setError(errorMessage);
@@ -507,6 +513,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { error: updateError } = await supabase
       .from("inventory")
       .update({ warehouse_qty: nextWarehouseQty, store_qty: nextStoreQty })
+      .eq("store_id", currentStoreId)
       .eq("id", currentInventory.id);
 
     if (updateError) {
@@ -516,6 +523,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     }
 
     const { error: logError } = await supabase.from("inventory_logs").insert({
+      store_id: currentStoreId,
       product_id: item.id,
       user_id: userData.user.id,
       action,
@@ -541,6 +549,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             fresh_order_selected: false,
             fresh_order_selected_at: null
           })
+          .eq("store_id", currentStoreId)
           .eq("id", item.id);
 
         if (freshCompleteError) {
