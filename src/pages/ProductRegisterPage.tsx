@@ -66,12 +66,67 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
       return;
     }
 
+    const nextBarcode = barcodeValue.trim() || null;
+    if (nextBarcode) {
+      const { data: existingProduct, error: existingError } = await supabase
+        .from("products")
+        .select("id, name, is_active")
+        .eq("store_id", storeId)
+        .eq("barcode", nextBarcode)
+        .maybeSingle();
+
+      if (existingError) {
+        setError(existingError.message);
+        setSaving(false);
+        return;
+      }
+
+      if (existingProduct?.is_active) {
+        navigate({ name: "operation", productId: existingProduct.id });
+        setSaving(false);
+        return;
+      }
+
+      if (existingProduct) {
+        const { data: restoredProduct, error: restoreError } = await supabase
+          .from("products")
+          .update({
+            name: name.trim(),
+            category,
+            supplier_name: supplierName || null,
+            storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+            unit_name: unitName || null,
+            product_url: productUrl.trim() || null,
+            minimum_stock: Math.max(0, Number(minimumStock || 0)),
+            is_active: true
+          })
+          .eq("store_id", storeId)
+          .eq("id", existingProduct.id)
+          .select()
+          .single();
+
+        if (restoreError) {
+          setError(restoreError.message);
+        } else {
+          const { error: inventoryError } = await supabase.from("inventory").upsert({ product_id: restoredProduct.id, store_id: storeId }, { onConflict: "product_id" });
+          if (inventoryError) {
+            setError(inventoryError.message);
+          } else {
+            navigate({ name: "operation", productId: restoredProduct.id });
+          }
+        }
+
+        setSaving(false);
+        return;
+      }
+    }
+
     const { data, error: insertError } = await supabase
       .from("products")
       .insert({
         store_id: storeId,
         name: name.trim(),
-        barcode: barcodeValue.trim() || null,
+        barcode: nextBarcode,
         category,
         supplier_name: supplierName || null,
         storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
@@ -83,9 +138,9 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
       .single();
 
     if (insertError) {
-      setError(insertError.message);
+      setError(insertError.code === "23505" ? "이미 같은 바코드로 등록된 품목이 있습니다." : insertError.message);
     } else {
-      const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id, store_id: storeId });
+      const { error: inventoryError } = await supabase.from("inventory").upsert({ product_id: data.id, store_id: storeId }, { onConflict: "product_id" });
       if (inventoryError) {
         setError(inventoryError.message);
       } else {

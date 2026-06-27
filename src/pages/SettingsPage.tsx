@@ -6,6 +6,8 @@ import { getSeoulDateValue, WEEKDAYS } from "../lib/businessCalendar";
 import { supabase } from "../lib/supabase";
 import type { StoreClosureDate, WeeklyStoreClosure } from "../types/domain";
 
+const APP_VERSION = "1.0";
+
 function closureDateLabel(value: string) {
   return new Intl.DateTimeFormat("ko-KR", {
     year: "numeric",
@@ -245,6 +247,10 @@ export function SettingsPage() {
 
           <div className="rounded-md border border-dashed border-slate-300 px-4 py-5 text-center text-xs font-semibold text-slate-400 dark:border-slate-700">
             새로운 환경설정 기능이 이곳에 추가됩니다.
+          </div>
+
+          <div className="pb-2 text-center text-xs font-semibold text-slate-400 dark:text-slate-500">
+            버전 {APP_VERSION}
           </div>
         </div>
       ) : null}
