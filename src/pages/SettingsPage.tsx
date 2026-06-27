@@ -6,7 +6,7 @@ import { getSeoulDateValue, WEEKDAYS } from "../lib/businessCalendar";
 import { supabase } from "../lib/supabase";
 import type { StoreClosureDate, WeeklyStoreClosure } from "../types/domain";
 
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.0.1";
 
 function closureDateLabel(value: string) {
   return new Intl.DateTimeFormat("ko-KR", {
