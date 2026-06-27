@@ -3,6 +3,7 @@ import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
+import { getCurrentStoreId } from "../lib/profiles";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
 import type { AppRoute, ProductCategory, ProductSupplier, ProductUnit, StorageType } from "../types/domain";
 import { supabase } from "../lib/supabase";
@@ -58,9 +59,17 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
     setSaving(true);
     setError("");
 
+    const { storeId, errorMessage: storeErrorMessage } = await getCurrentStoreId();
+    if (!storeId) {
+      setError(storeErrorMessage);
+      setSaving(false);
+      return;
+    }
+
     const { data, error: insertError } = await supabase
       .from("products")
       .insert({
+        store_id: storeId,
         name: name.trim(),
         barcode: barcodeValue.trim() || null,
         category,
@@ -76,7 +85,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
     if (insertError) {
       setError(insertError.message);
     } else {
-      const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id });
+      const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id, store_id: storeId });
       if (inventoryError) {
         setError(inventoryError.message);
       } else {

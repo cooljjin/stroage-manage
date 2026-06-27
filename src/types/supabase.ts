@@ -68,6 +68,7 @@ export type Database = {
       products: {
         Row: {
           id: string;
+          store_id: string;
           barcode: string | null;
           name: string;
           category: Category;
@@ -89,6 +90,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          store_id?: string;
           barcode?: string | null;
           name: string;
           category: Category;
@@ -109,6 +111,7 @@ export type Database = {
           created_at?: string;
         };
         Update: {
+          store_id?: string;
           barcode?: string | null;
           name?: string;
           category?: Category;
@@ -238,17 +241,20 @@ export type Database = {
       product_barcodes: {
         Row: {
           id: string;
+          store_id: string;
           product_id: string;
           barcode: string;
           created_at: string;
         };
         Insert: {
           id?: string;
+          store_id?: string;
           product_id: string;
           barcode: string;
           created_at?: string;
         };
         Update: {
+          store_id?: string;
           product_id?: string;
           barcode?: string;
         };
@@ -265,6 +271,7 @@ export type Database = {
       inventory: {
         Row: {
           id: string;
+          store_id: string;
           product_id: string;
           warehouse_qty: number;
           store_qty: number;
@@ -272,12 +279,14 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          store_id?: string;
           product_id: string;
           warehouse_qty?: number;
           store_qty?: number;
           updated_at?: string;
         };
         Update: {
+          store_id?: string;
           warehouse_qty?: number;
           store_qty?: number;
           updated_at?: string;
@@ -295,6 +304,7 @@ export type Database = {
       inventory_logs: {
         Row: {
           id: string;
+          store_id: string;
           product_id: string;
           user_id: string;
           action: InventoryAction;
@@ -315,6 +325,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          store_id?: string;
           product_id: string;
           user_id: string;
           action: InventoryAction;
@@ -334,6 +345,7 @@ export type Database = {
           created_at?: string;
         };
         Update: {
+          store_id?: string;
           reverted_at?: string | null;
           reverted_by?: string | null;
         };

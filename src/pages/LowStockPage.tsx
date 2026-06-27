@@ -5,6 +5,8 @@ import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
+import { getCurrentStoreId } from "../lib/profiles";
+import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
@@ -45,6 +47,10 @@ function getBarcodeCandidates(barcode: string): string[] {
   if (/^0\d{12}$/.test(normalized)) candidates.add(normalized.slice(1));
 
   return [...candidates];
+}
+
+function isFreshSelectableItem(item: Pick<InventoryItem, "receipt_check_only">): boolean {
+  return item.receipt_check_only;
 }
 
 export function LowStockPage({ navigate }: Props) {
@@ -105,7 +111,7 @@ export function LowStockPage({ navigate }: Props) {
 
   const lowStockItems = useMemo(() => {
     return items
-      .filter((item) => item.is_low_stock || item.fresh_order_selected || item.urgent_order_requested)
+      .filter((item) => item.fresh_order_selected || item.urgent_order_requested || (!item.receipt_check_only && item.is_low_stock))
       .sort((a, b) => {
         if (a.urgent_order_requested !== b.urgent_order_requested) {
           return a.urgent_order_requested ? -1 : 1;
@@ -120,7 +126,7 @@ export function LowStockPage({ navigate }: Props) {
   const freshProducts = useMemo(() => {
     const keyword = freshSearch.trim().toLocaleLowerCase("ko");
     return items.filter((item) => {
-      if (item.supplier_name !== "쿠팡 프레시") return false;
+      if (!isFreshSelectableItem(item)) return false;
       return !keyword || item.name.toLocaleLowerCase("ko").includes(keyword);
     });
   }, [freshSearch, items]);
@@ -151,7 +157,13 @@ export function LowStockPage({ navigate }: Props) {
     setFreshScanMessage("");
     setPendingFreshBarcode("");
     setFreshSearch("");
-    setSelectedFreshIds(new Set(items.filter((item) => item.supplier_name === "쿠팡 프레시" && item.fresh_order_selected).map((item) => item.id)));
+    setSelectedFreshIds(
+      new Set(
+        items
+          .filter((item) => isFreshSelectableItem(item) && item.fresh_order_selected)
+          .map((item) => item.id)
+      )
+    );
     setFreshModalOpen(true);
   }
 
@@ -225,8 +237,8 @@ export function LowStockPage({ navigate }: Props) {
       return;
     }
 
-    if (product.supplier_name !== "쿠팡 프레시") {
-      setFreshScanMessage("쿠팡프레시 제품이 아닙니다.");
+    if (!isFreshSelectableItem(product)) {
+      setFreshScanMessage("신선 식품 목록 대상이 아닙니다.");
       freshBarcodeHandlingRef.current = false;
       return;
     }
@@ -307,7 +319,7 @@ export function LowStockPage({ navigate }: Props) {
     setSavingFresh(true);
     setError("");
 
-    const freshItems = items.filter((item) => item.supplier_name === "쿠팡 프레시");
+    const freshItems = items.filter((item) => isFreshSelectableItem(item));
     const changedItems = freshItems.filter((item) => item.fresh_order_selected !== selectedFreshIds.has(item.id));
 
     const results = await Promise.all(
@@ -330,7 +342,7 @@ export function LowStockPage({ navigate }: Props) {
     } else {
       setItems((current) =>
         current.map((item) =>
-          item.supplier_name === "쿠팡 프레시"
+          isFreshSelectableItem(item)
             ? {
                 ...item,
                 fresh_order_selected: selectedFreshIds.has(item.id),
@@ -399,16 +411,20 @@ export function LowStockPage({ navigate }: Props) {
     setError("");
     setCompletingFreshIds((current) => new Set(current).add(item.id));
 
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({
-        fresh_order_selected: false,
-        fresh_order_selected_at: null
-      })
-      .eq("id", item.id);
+    const updateErrorMessage = item.receipt_check_only
+      ? (await recordReceiptCheckOnly(item.id)).errorMessage
+      : (
+          await supabase
+            .from("products")
+            .update({
+              fresh_order_selected: false,
+              fresh_order_selected_at: null
+            })
+            .eq("id", item.id)
+        ).error?.message ?? "";
 
-    if (updateError) {
-      setError(updateError.message);
+    if (updateErrorMessage) {
+      setError(updateErrorMessage);
     } else {
       setFreshReceivingUndoStack((current) => [
         ...current,
@@ -495,9 +511,17 @@ export function LowStockPage({ navigate }: Props) {
     setError("");
 
     if (urgentDirectInput) {
+      const { storeId, errorMessage: storeErrorMessage } = await getCurrentStoreId();
+      if (!storeId) {
+        setError(storeErrorMessage);
+        setSavingUrgent(false);
+        return;
+      }
+
       const { data, error: insertError } = await supabase
         .from("products")
         .insert({
+          store_id: storeId,
           name: directName,
           barcode: null,
           category: "기타",
@@ -515,7 +539,7 @@ export function LowStockPage({ navigate }: Props) {
       if (insertError) {
         setError(insertError.message);
       } else {
-        const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id });
+        const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id, store_id: storeId });
         if (inventoryError) {
           setError(inventoryError.message);
         } else {
@@ -557,7 +581,7 @@ export function LowStockPage({ navigate }: Props) {
               onClick={openFreshModal}
               className="touch-button rounded-md bg-emerald-600 px-3 text-sm font-bold text-white"
             >
-              프레시상품
+              신선 식품
             </button>
             <button
               type="button"
@@ -607,11 +631,13 @@ export function LowStockPage({ navigate }: Props) {
                 <div className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2 text-sm">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">총재고</p>
-                    <p className="font-bold tabular-nums text-red-700 dark:text-red-200">{formatInventoryQuantity(item.total_stock)}</p>
+                    <p className="font-bold tabular-nums text-red-700 dark:text-red-200">
+                      {item.receipt_check_only ? "-" : formatInventoryQuantity(item.total_stock)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">최소</p>
-                    <p className="tabular-nums">{item.minimum_stock}</p>
+                    <p className="tabular-nums">{item.receipt_check_only ? "-" : item.minimum_stock}</p>
                   </div>
                   <div className="flex min-w-[72px] flex-col items-center gap-2" onClick={(event) => event.stopPropagation()}>
                     <label className="flex flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300">
@@ -690,8 +716,10 @@ export function LowStockPage({ navigate }: Props) {
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-2 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">{formatInventoryQuantity(item.total_stock)}</td>
-                    <td className="px-2 py-3 text-right tabular-nums">{item.minimum_stock}</td>
+                    <td className="px-2 py-3 text-right font-bold tabular-nums text-red-700 dark:text-red-200">
+                      {item.receipt_check_only ? "-" : formatInventoryQuantity(item.total_stock)}
+                    </td>
+                    <td className="px-2 py-3 text-right tabular-nums">{item.receipt_check_only ? "-" : item.minimum_stock}</td>
                     <td className="px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
                       <input
                         type="checkbox"
@@ -743,8 +771,8 @@ export function LowStockPage({ navigate }: Props) {
               <div className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
                 <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
                   <div>
-                    <h2 className="text-lg font-bold">프레시상품</h2>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">쿠팡 프레시 발주처의 상품을 선택합니다.</p>
+                    <h2 className="text-lg font-bold">신선 식품</h2>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">입고여부만 확인 상품을 선택합니다.</p>
                   </div>
                   <button
                     type="button"

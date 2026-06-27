@@ -43,5 +43,18 @@ export async function recordReceiptCheckOnly(productId: string): Promise<{ error
     store_qty_after: storeQty
   });
 
-  return { errorMessage: logError ? formatReceiptCheckError(logError.message) : "" };
+  if (logError) {
+    return { errorMessage: formatReceiptCheckError(logError.message) };
+  }
+
+  const { error: freshOrderError } = await supabase
+    .from("products")
+    .update({
+      fresh_order_selected: false,
+      fresh_order_selected_at: null
+    })
+    .eq("id", productId)
+    .eq("fresh_order_selected", true);
+
+  return { errorMessage: freshOrderError ? formatReceiptCheckError(freshOrderError.message) : "" };
 }

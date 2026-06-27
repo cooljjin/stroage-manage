@@ -6,7 +6,7 @@ import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, InventoryItem, InventoryLog, Location, StockStatus } from "../types/domain";
+import type { AppRoute, InventoryItem, InventoryLog, Location, StaffProfile, StockStatus } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -51,6 +51,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [memoText, setMemoText] = useState("");
   const [latestMemo, setLatestMemo] = useState<InventoryLog | null>(null);
   const [memoHistory, setMemoHistory] = useState<InventoryLog[]>([]);
+  const [memoStaffNames, setMemoStaffNames] = useState<Map<string, string>>(new Map());
   const [memoHistoryOpen, setMemoHistoryOpen] = useState(false);
   const [memoHistoryLoading, setMemoHistoryLoading] = useState(false);
   const [memoError, setMemoError] = useState("");
@@ -101,6 +102,27 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setLoading(false);
   }, [productId]);
 
+  const loadMemoStaffNames = useCallback(async (memos: InventoryLog[]) => {
+    const missingUserIds = Array.from(
+      new Set(
+        memos
+          .map((memo) => memo.user_id)
+          .filter((userId) => !memoStaffNames.has(userId))
+      )
+    );
+    if (missingUserIds.length === 0) return;
+
+    const { data } = await supabase.from("profiles").select("*").in("id", missingUserIds);
+    const profiles = (data ?? []) as StaffProfile[];
+    setMemoStaffNames((current) => {
+      const next = new Map(current);
+      missingUserIds.forEach((userId) => {
+        next.set(userId, profiles.find((profile) => profile.id === userId)?.display_name ?? userId.slice(0, 8));
+      });
+      return next;
+    });
+  }, [memoStaffNames]);
+
   const loadLatestMemo = useCallback(async () => {
     setMemoError("");
     setLatestMemo(null);
@@ -117,9 +139,11 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     if (latestMemoError) {
       setMemoError(formatMemoSaveError(latestMemoError.message));
     } else {
-      setLatestMemo((data as InventoryLog | null) ?? null);
+      const nextMemo = (data as InventoryLog | null) ?? null;
+      setLatestMemo(nextMemo);
+      if (nextMemo) await loadMemoStaffNames([nextMemo]);
     }
-  }, [productId]);
+  }, [loadMemoStaffNames, productId]);
 
   useEffect(() => {
     void loadProduct();
@@ -333,8 +357,13 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       const nextMemoHistory = (data ?? []) as InventoryLog[];
       setMemoHistory(nextMemoHistory);
       setLatestMemo(nextMemoHistory[0] ?? null);
+      await loadMemoStaffNames(nextMemoHistory);
     }
     setMemoHistoryLoading(false);
+  }
+
+  function getMemoStaffName(memo: InventoryLog): string {
+    return memoStaffNames.get(memo.user_id) ?? memo.user_id.slice(0, 8);
   }
 
   async function handleMemoSubmit(event: FormEvent) {
@@ -381,6 +410,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
         const nextMemo = savedMemo as InventoryLog;
         setLatestMemo(nextMemo);
         setMemoHistory((current) => [nextMemo, ...current]);
+        await loadMemoStaffNames([nextMemo]);
       }
     }
     setMemoSaving(false);
@@ -786,7 +816,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-extrabold text-brand-700 dark:text-brand-100">최근 메모</span>
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(latestMemo.created_at)}</span>
+              <span className="text-right text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <span className="block">{formatDateTime(latestMemo.created_at)}</span>
+                <span className="block">{getMemoStaffName(latestMemo)}</span>
+              </span>
             </div>
             <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{latestMemo.note}</p>
           </div>
@@ -887,7 +920,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                 {memoHistory.map((memo) => (
                   <div key={memo.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{memo.note}</p>
-                    <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(memo.created_at)}</p>
+                    <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      <span className="block">{formatDateTime(memo.created_at)}</span>
+                      <span className="block">{getMemoStaffName(memo)}</span>
+                    </p>
                   </div>
                 ))}
               </div>

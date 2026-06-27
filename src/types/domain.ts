@@ -37,6 +37,7 @@ export type RouteName =
 
 export type Product = {
   id: string;
+  store_id: string;
   barcode: string | null;
   name: string;
   category: Category;
@@ -85,6 +86,7 @@ export type ProductUnit = {
 
 export type ProductBarcode = {
   id: string;
+  store_id: string;
   product_id: string;
   barcode: string;
   created_at: string;
@@ -126,6 +128,7 @@ export type StoreInvite = {
 
 export type Inventory = {
   id: string;
+  store_id: string;
   product_id: string;
   warehouse_qty: number;
   store_qty: number;
@@ -176,6 +179,7 @@ export type PrepBatch = {
 
 export type InventoryLog = {
   id: string;
+  store_id: string;
   product_id: string;
   user_id: string;
   action: InventoryAction;
