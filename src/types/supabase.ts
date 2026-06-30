@@ -1,4 +1,4 @@
-import type { Category, InventoryAction, Location, StockStatus } from "./domain";
+import type { Category, InventoryAction, Location, StockStatus, UnitWeightUnit } from "./domain";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -75,6 +75,9 @@ export type Database = {
           supplier_name: string | null;
           storage_type: string | null;
           unit_name: string | null;
+          unit_weight_enabled: boolean;
+          unit_weight: number | null;
+          unit_weight_unit: UnitWeightUnit | null;
           product_url: string | null;
           order_completed: boolean;
           urgent_order_requested: boolean;
@@ -97,6 +100,9 @@ export type Database = {
           supplier_name?: string | null;
           storage_type?: string | null;
           unit_name?: string | null;
+          unit_weight_enabled?: boolean;
+          unit_weight?: number | null;
+          unit_weight_unit?: UnitWeightUnit | null;
           product_url?: string | null;
           order_completed?: boolean;
           urgent_order_requested?: boolean;
@@ -118,6 +124,9 @@ export type Database = {
           supplier_name?: string | null;
           storage_type?: string | null;
           unit_name?: string | null;
+          unit_weight_enabled?: boolean;
+          unit_weight?: number | null;
+          unit_weight_unit?: UnitWeightUnit | null;
           product_url?: string | null;
           order_completed?: boolean;
           urgent_order_requested?: boolean;

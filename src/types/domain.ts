@@ -8,6 +8,7 @@ export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "메�
 export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
+export type UnitWeightUnit = "g" | "kg";
 export type ProfileRole = "master" | "store_admin" | "staff";
 export type RouteName =
   | "landing"
@@ -44,6 +45,9 @@ export type Product = {
   supplier_name: string | null;
   storage_type: string | null;
   unit_name: string | null;
+  unit_weight_enabled: boolean;
+  unit_weight: number | null;
+  unit_weight_unit: UnitWeightUnit | null;
   product_url: string | null;
   order_completed: boolean;
   urgent_order_requested: boolean;

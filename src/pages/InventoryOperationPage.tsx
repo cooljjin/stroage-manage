@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowLeftRight, Check, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
-import { formatDateTime } from "../lib/date";
+import { formatDateTime, formatFullDateTime } from "../lib/date";
 import { formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { supabase } from "../lib/supabase";
@@ -25,6 +25,10 @@ type InventoryHistoryPoint = {
 };
 
 type StockOperationAction = (typeof ACTIONS)[number];
+
+function formatLastInventoryCheckAt(value: string | null | undefined): string {
+  return value ? formatFullDateTime(value) : "-";
+}
 
 function formatStatusUpdateError(message: string) {
   if (message.includes("status_enabled") || message.includes("stock_status") || message.includes("schema cache")) {
@@ -51,6 +55,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [quantity, setQuantity] = useState("");
   const [memoText, setMemoText] = useState("");
   const [latestMemo, setLatestMemo] = useState<InventoryLog | null>(null);
+  const [lastInventoryCheckAt, setLastInventoryCheckAt] = useState<string | null>(null);
   const [memoHistory, setMemoHistory] = useState<InventoryLog[]>([]);
   const [memoStaffNames, setMemoStaffNames] = useState<Map<string, string>>(new Map());
   const [memoHistoryOpen, setMemoHistoryOpen] = useState(false);
@@ -124,6 +129,21 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     });
   }, [memoStaffNames]);
 
+  const loadLatestInventoryCheck = useCallback(async () => {
+    const { data, error: latestCheckError } = await supabase
+      .from("inventory_logs")
+      .select("created_at")
+      .eq("store_id", currentStoreId)
+      .eq("product_id", productId)
+      .neq("action", "메모")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    setLastInventoryCheckAt(latestCheckError ? null : data?.created_at ?? null);
+  }, [currentStoreId, productId]);
+
   const loadLatestMemo = useCallback(async () => {
     setMemoError("");
     setLatestMemo(null);
@@ -154,6 +174,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   useEffect(() => {
     void loadLatestMemo();
   }, [loadLatestMemo]);
+
+  useEffect(() => {
+    void loadLatestInventoryCheck();
+  }, [loadLatestInventoryCheck]);
 
   const quantityValue = quantity.trim() === "" ? 0 : Number(quantity);
   const memoIsEmpty = memoText.trim().length === 0;
@@ -335,6 +359,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setSuccess(`${formatDateTime(point.log.created_at)} 시점으로 재고를 복원했습니다.`);
       setQuantity("");
       await loadProduct();
+      await loadLatestInventoryCheck();
     }
     setRestoring(false);
   }
@@ -434,6 +459,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setError(errorMessage);
     } else {
       setSuccess("입고완료를 기록했습니다.");
+      await loadLatestInventoryCheck();
     }
     setReceiptSaving(false);
   }
@@ -561,6 +587,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setSuccess("저장되었습니다.");
       setQuantity("");
       await loadProduct();
+      await loadLatestInventoryCheck();
     }
     setSaving(false);
   }
@@ -602,18 +629,23 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           <p className="break-words text-2xl font-bold leading-tight text-slate-950 dark:text-slate-100">{item.name}</p>
           <p className="mt-0.5 text-sm font-semibold text-slate-500 dark:text-slate-400">{item.barcode ?? "바코드 없음"}</p>
         </div>
-        <div className="flex max-w-[46%] shrink-0 flex-wrap justify-end gap-1.5 text-xs sm:max-w-none sm:text-sm">
-          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
-            <strong className="text-slate-950 dark:text-slate-100">{item.storage_type ?? "미지정"}</strong>
-          </span>
-          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
-            <strong className="text-slate-950 dark:text-slate-100">{item.supplier_name ?? "미지정"}</strong>
-          </span>
-          {item.unit_name ? (
+        <div className="flex max-w-[56%] shrink-0 flex-col items-end gap-1.5 text-xs sm:max-w-none sm:text-sm">
+          <div className="flex flex-wrap justify-end gap-1.5">
             <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
-              <strong className="text-slate-950 dark:text-slate-100">{item.unit_name}</strong>
+              <strong className="text-slate-950 dark:text-slate-100">{item.storage_type ?? "미지정"}</strong>
             </span>
-          ) : null}
+            <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
+              <strong className="text-slate-950 dark:text-slate-100">{item.supplier_name ?? "미지정"}</strong>
+            </span>
+            {item.unit_name ? (
+              <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
+                <strong className="text-slate-950 dark:text-slate-100">{item.unit_name}</strong>
+              </span>
+            ) : null}
+          </div>
+          <p className="break-keep text-right text-[11px] font-semibold leading-snug text-slate-500 dark:text-slate-400 sm:text-xs">
+            마지막 확인일자 : {formatLastInventoryCheckAt(lastInventoryCheckAt)}
+          </p>
         </div>
       </div>
 

@@ -34,12 +34,35 @@ alter table public.products add column if not exists fresh_order_selected_at tim
 alter table public.products add column if not exists receipt_check_only boolean not null default false;
 alter table public.products add column if not exists status_enabled boolean not null default false;
 alter table public.products add column if not exists stock_status text;
+alter table public.products add column if not exists unit_weight_enabled boolean not null default false;
+alter table public.products add column if not exists unit_weight numeric(12, 3);
+alter table public.products add column if not exists unit_weight_unit text;
 alter table public.products drop constraint if exists products_urgent_order_quantity_check;
 alter table public.products add constraint products_urgent_order_quantity_check
 check (urgent_order_quantity is null or urgent_order_quantity > 0);
 alter table public.products drop constraint if exists products_stock_status_check;
 alter table public.products add constraint products_stock_status_check
 check (stock_status in ('충분', '절반 이하', '발주 필요') or stock_status is null);
+update public.products
+set unit_weight = null,
+    unit_weight_unit = null
+where unit_weight_enabled = false;
+update public.products
+set unit_weight_unit = 'g'
+where unit_weight_enabled = true
+  and unit_weight is not null
+  and unit_weight_unit is null;
+alter table public.products drop constraint if exists products_unit_weight_check;
+alter table public.products add constraint products_unit_weight_check
+check (
+  (unit_weight_enabled = false and unit_weight is null and unit_weight_unit is null)
+  or (
+    unit_weight_enabled = true
+    and unit_weight is not null
+    and unit_weight > 0
+    and unit_weight_unit in ('g', 'kg')
+  )
+);
 alter table public.products drop constraint if exists products_storage_type_check;
 
 create table if not exists public.categories (

@@ -15,6 +15,14 @@ function roleOf(profile: StaffProfile): ProfileRole {
   return profile.role ?? (profile.is_admin ? "store_admin" : "staff");
 }
 
+function formatDeleteUserError(message: string | undefined) {
+  if (!message) return "사용자 삭제에 실패했습니다.";
+  if (message.includes("Failed to send a request")) {
+    return "사용자 삭제용 Edge Function이 배포되지 않았거나 접근할 수 없습니다. delete-auth-user 함수를 배포해 주세요.";
+  }
+  return message;
+}
+
 export function MasterUsersPage() {
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
@@ -182,7 +190,7 @@ export function MasterUsersPage() {
     });
 
     if (deleteError || data?.error) {
-      setError(data?.error ?? deleteError?.message ?? "사용자 삭제에 실패했습니다.");
+      setError(formatDeleteUserError(data?.error ?? deleteError?.message));
     } else {
       setMessage("사용자를 완전히 삭제했습니다.");
       await loadUsers();

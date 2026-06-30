@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Copy, Save } from "lucide-react";
+import { Copy, Save, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { supabase } from "../lib/supabase";
@@ -13,6 +13,14 @@ const ROLE_LABEL: Record<ProfileRole, string> = {
 
 function getProfileRole(profile: StaffProfile): ProfileRole {
   return profile.role ?? (profile.is_admin ? "store_admin" : "staff");
+}
+
+function formatDeleteUserError(message: string | undefined) {
+  if (!message) return "직원 삭제에 실패했습니다.";
+  if (message.includes("Failed to send a request")) {
+    return "직원 삭제용 Edge Function이 배포되지 않았거나 접근할 수 없습니다. delete-auth-user 함수를 배포해 주세요.";
+  }
+  return message;
 }
 
 export function StaffManagementPage() {
@@ -98,6 +106,32 @@ export function StaffManagementPage() {
     setMessage("초대 링크를 복사했습니다.");
   }
 
+  async function deleteProfile(profile: StaffProfile) {
+    if (getProfileRole(profile) !== "staff") {
+      setError("관리자는 직원 계정만 삭제할 수 있습니다.");
+      return;
+    }
+
+    const label = profile.email ?? profile.display_name;
+    if (!window.confirm(`${label} 직원을 완전히 삭제할까요?\n삭제하면 다시 같은 이메일로 회원가입할 수 있습니다.`)) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    const { data, error: deleteError } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>("delete-auth-user", {
+      body: { userId: profile.id }
+    });
+
+    if (deleteError || data?.error) {
+      setError(formatDeleteUserError(data?.error ?? deleteError?.message));
+    } else {
+      setMessage("직원을 완전히 삭제했습니다.");
+      await loadProfiles();
+    }
+  }
+
   return (
     <section>
       <PageTitle title="직원 관리" description="직원 이름을 관리하고 초대 링크를 생성합니다." />
@@ -141,7 +175,7 @@ export function StaffManagementPage() {
                 <th className="px-3 py-3">계정</th>
                 <th className="px-3 py-3">직원 이름</th>
                 <th className="w-20 px-3 py-3">권한</th>
-                <th className="w-16 px-3 py-3 text-right">저장</th>
+                <th className="w-24 px-3 py-3 text-right">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -163,16 +197,29 @@ export function StaffManagementPage() {
                       {ROLE_LABEL[getProfileRole(profile)]}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => saveName(profile)}
-                      className="touch-button inline-flex items-center justify-center rounded-md border border-slate-300 px-2 dark:border-slate-700"
-                      aria-label="직원 이름 저장"
-                      title="저장"
-                    >
-                      <Save size={18} />
-                    </button>
+                  <td className="px-3 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => saveName(profile)}
+                        className="touch-button inline-flex items-center justify-center rounded-md border border-slate-300 px-2 dark:border-slate-700"
+                        aria-label="직원 이름 저장"
+                        title="저장"
+                      >
+                        <Save size={18} />
+                      </button>
+                      {getProfileRole(profile) === "staff" ? (
+                        <button
+                          type="button"
+                          onClick={() => deleteProfile(profile)}
+                          className="touch-button inline-flex items-center justify-center rounded-md border border-red-200 px-2 text-red-600 dark:border-red-900 dark:text-red-300"
+                          aria-label="직원 삭제"
+                          title="삭제"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

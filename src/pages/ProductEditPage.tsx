@@ -5,7 +5,7 @@ import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType } from "../types/domain";
+import type { AppRoute, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -20,6 +20,13 @@ function parseStorageTypes(value: string | null): StorageType[] {
   return STORAGE_TYPES.filter((type) => value.split(",").map((item) => item.trim()).includes(type));
 }
 
+function formatProductUpdateError(message: string) {
+  if (message.includes("unit_weight_enabled") || message.includes("unit_weight") || message.includes("schema cache")) {
+    return "단위당 무게 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 products 단위당 무게 컬럼 추가를 요청해 주세요.";
+  }
+  return message;
+}
+
 export function ProductEditPage({ productId, navigate, currentStoreId }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -32,6 +39,9 @@ export function ProductEditPage({ productId, navigate, currentStoreId }: Props) 
   const [supplierName, setSupplierName] = useState("");
   const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
   const [unitName, setUnitName] = useState("");
+  const [unitWeightEnabled, setUnitWeightEnabled] = useState(false);
+  const [unitWeight, setUnitWeight] = useState("");
+  const [unitWeightUnit, setUnitWeightUnit] = useState<UnitWeightUnit>("g");
   const [minimumStock, setMinimumStock] = useState("");
   const [receiptCheckOnly, setReceiptCheckOnly] = useState(false);
   const [productUrl, setProductUrl] = useState("");
@@ -93,6 +103,9 @@ export function ProductEditPage({ productId, navigate, currentStoreId }: Props) 
       setSupplierName(nextProduct.supplier_name ?? "");
       setStorageTypes(parseStorageTypes(nextProduct.storage_type));
       setUnitName(nextProduct.unit_name ?? "");
+      setUnitWeightEnabled(nextProduct.unit_weight_enabled ?? false);
+      setUnitWeight(nextProduct.unit_weight !== null && nextProduct.unit_weight !== undefined ? String(nextProduct.unit_weight) : "");
+      setUnitWeightUnit(nextProduct.unit_weight_unit ?? "g");
       setMinimumStock(String(nextProduct.minimum_stock));
       setReceiptCheckOnly(nextProduct.receipt_check_only ?? false);
       setProductUrl(nextProduct.product_url ?? "");
@@ -111,6 +124,8 @@ export function ProductEditPage({ productId, navigate, currentStoreId }: Props) 
 
     const nextName = name.trim();
     const nextMinimumStock = receiptCheckOnly ? 0 : Number(minimumStock || 0);
+    const parsedUnitWeight = Number(unitWeight || 0);
+    const nextUnitWeight = unitWeightEnabled ? parsedUnitWeight : null;
 
     if (!nextName) {
       setError("상품명은 비워둘 수 없습니다.");
@@ -118,6 +133,10 @@ export function ProductEditPage({ productId, navigate, currentStoreId }: Props) 
     }
     if (!Number.isInteger(nextMinimumStock) || nextMinimumStock < 0) {
       setError("최소재고는 0 이상 정수로 입력해 주세요.");
+      return;
+    }
+    if (unitWeightEnabled && (!Number.isFinite(parsedUnitWeight) || parsedUnitWeight <= 0)) {
+      setError("단위당 무게는 0보다 큰 숫자로 입력해 주세요.");
       return;
     }
 
@@ -132,6 +151,9 @@ export function ProductEditPage({ productId, navigate, currentStoreId }: Props) 
         supplier_name: supplierName || null,
         storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
         unit_name: unitName || null,
+        unit_weight_enabled: unitWeightEnabled,
+        unit_weight: unitWeightEnabled ? nextUnitWeight : null,
+        unit_weight_unit: unitWeightEnabled ? unitWeightUnit : null,
         minimum_stock: nextMinimumStock,
         receipt_check_only: receiptCheckOnly,
         status_enabled: receiptCheckOnly ? false : product.status_enabled,
@@ -143,7 +165,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId }: Props) 
 
     setSaving(false);
     if (updateError) {
-      setError(updateError.message);
+      setError(formatProductUpdateError(updateError.message));
     } else {
       navigate({ name: "operation", productId });
     }
@@ -301,6 +323,51 @@ export function ProductEditPage({ productId, navigate, currentStoreId }: Props) 
             <span className="mb-1 block text-sm font-semibold">링크</span>
             <input className="field" type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder="https://..." />
           </label>
+
+          <div className="min-w-0 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:col-span-2">
+            <label className="flex min-w-0 items-center gap-3">
+              <input
+                type="checkbox"
+                checked={unitWeightEnabled}
+                onChange={(event) => setUnitWeightEnabled(event.target.checked)}
+                className="h-5 w-5 shrink-0 accent-brand-600"
+              />
+              <span className="min-w-0 text-sm font-bold">단위당 무게 사용</span>
+            </label>
+            <p className="mt-1 pl-8 text-xs font-semibold text-slate-500 dark:text-slate-400">자동재고파악을 위해 입력하는 정보입니다</p>
+            <div className="mt-2 min-w-0">
+              <span className="mb-1 block text-sm font-semibold">단위당 무게</span>
+              <div className="grid grid-cols-[minmax(0,1fr)_112px] gap-2">
+                <input
+                  className="field"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={unitWeight}
+                  disabled={!unitWeightEnabled}
+                  onChange={(event) => setUnitWeight(event.target.value)}
+                  aria-label="단위당 무게"
+                />
+                <div className="grid grid-cols-2 gap-1">
+                  {(["g", "kg"] as UnitWeightUnit[]).map((weightUnit) => (
+                    <button
+                      key={weightUnit}
+                      type="button"
+                      disabled={!unitWeightEnabled}
+                      onClick={() => setUnitWeightUnit(weightUnit)}
+                      className={`touch-button rounded-md px-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-45 ${
+                        unitWeightUnit === weightUnit ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                      }`}
+                      aria-pressed={unitWeightUnit === weightUnit}
+                    >
+                      {weightUnit}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <label className="flex min-w-0 items-start gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:col-span-2">
             <input
