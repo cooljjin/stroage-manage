@@ -27,7 +27,7 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
       </button>
 
       {open ? (
-        <div className="absolute left-0 top-12 z-50 w-56 rounded-md border border-slate-200 bg-white p-2 shadow-soft dark:border-slate-800 dark:bg-slate-950">
+        <div className="absolute left-0 top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950">
           {role === "master" ? (
             <>
               <button
@@ -48,6 +48,7 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
               </button>
             </>
           ) : null}
+          {role === "master" ? <div className="my-1 border-t border-slate-100 dark:border-slate-800" /> : null}
           <button
             type="button"
             onClick={() => go("prep-mode")}
@@ -56,6 +57,17 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
             <CookingPot size={19} />
             프랩관리모드
           </button>
+          {role !== "staff" ? (
+            <button
+              type="button"
+              onClick={() => go("prep-items")}
+              className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+            >
+              <CookingPot size={19} />
+              프랩품목 관리
+            </button>
+          ) : null}
+          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
           <button
             type="button"
             onClick={() => go("group-order")}
@@ -74,24 +86,18 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
               메뉴 레시피 등록
             </button>
           ) : null}
+          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
           <button
             type="button"
             onClick={() => go("status-items")}
             className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
           >
             <ClipboardCheck size={19} />
-            최소재고 품목
+            개별관리 품목
           </button>
+          {role !== "staff" ? <div className="my-1 border-t border-slate-100 dark:border-slate-800" /> : null}
           {role !== "staff" ? (
             <>
-              <button
-                type="button"
-                onClick={() => go("prep-items")}
-                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-              >
-                <CookingPot size={19} />
-                프랩품목 관리
-              </button>
               <button
                 type="button"
                 onClick={() => go("category-management")}
@@ -128,7 +134,7 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
               직원 관리
             </button>
           ) : null}
-          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+          {role !== "staff" ? <div className="my-1 border-t border-slate-100 dark:border-slate-800" /> : null}
           {role !== "staff" ? (
             <button
               type="button"

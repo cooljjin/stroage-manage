@@ -263,6 +263,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const calendarGridRef = useRef<HTMLDivElement | null>(null);
+  const eventFormRef = useRef<HTMLFormElement | null>(null);
   const draggingRangeRef = useRef(false);
   const rangeDragMovedRef = useRef(false);
   const pendingTouchRangeRef = useRef<PendingTouchRange | null>(null);
@@ -282,6 +283,16 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     nextMap.forEach((items) => items.sort((a, b) => a.requested_time.localeCompare(b.requested_time)));
     return nextMap;
   }, [events]);
+  const eventItemsByEventId = useMemo(() => {
+    const nextMap = new Map<string, GroupOrderEventItem[]>();
+    eventItems.forEach((item) => {
+      const nextItems = nextMap.get(item.event_id) ?? [];
+      nextItems.push(item);
+      nextMap.set(item.event_id, nextItems);
+    });
+    nextMap.forEach((items) => items.sort((left, right) => left.created_at.localeCompare(right.created_at)));
+    return nextMap;
+  }, [eventItems]);
   const selectedDateEvents = eventsByDate.get(selectedDate) ?? [];
   const calendarDates = useMemo(() => getCalendarDates(calendarMonth), [calendarMonth]);
   const selectedRange = normalizeDateRange(rangeStartDate, rangeEndDate);
@@ -567,7 +578,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setMessage("");
   }
 
-  function editEvent(event: GroupOrderEvent) {
+  function editEvent(event: GroupOrderEvent, scrollToForm = false) {
     setSelectedDate(event.order_date);
     setRangeStartDate(event.order_date);
     setRangeEndDate(event.order_date);
@@ -580,6 +591,12 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setResults(null);
     setError("");
     setMessage("");
+
+    if (scrollToForm) {
+      window.setTimeout(() => {
+        eventFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    }
   }
 
   function continueWithEvent(event: GroupOrderEvent) {
@@ -1395,7 +1412,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                               {result.product.name}
                             </div>
                             {result.missingSetup ? <div className="mt-1 text-xs font-bold text-amber-600 dark:text-amber-300">단위당 무게/부피 필요</div> : null}
-                            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                            <div className="mt-3 grid grid-cols-[repeat(3,minmax(0,1fr))_5.75rem] gap-2 text-center">
                               <div className="min-w-0">
                                 <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400">현재재고</div>
                                 <div className="mt-1 break-words font-bold tabular-nums">{formatOrderUnitAmount(result.product.total_stock, result.product)}</div>
@@ -1410,6 +1427,17 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                                   {result.orderUnits === null ? "설정 필요" : result.orderUnits > 0 ? formatOrderUnitAmount(result.orderUnits, result.product) : "없음"}
                                 </div>
                               </div>
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400">발주하기</div>
+                                <div className="mt-1">
+                                  <ProductOrderAction
+                                    item={result.product}
+                                    supplier={result.product.supplier_name ? suppliersByName.get(result.product.supplier_name) ?? null : null}
+                                    quantity={orderActionQuantities[result.product.id] ?? ""}
+                                    onQuantityChange={(quantity) => setOrderActionQuantities((current) => ({ ...current, [result.product.id]: quantity }))}
+                                  />
+                                </div>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1418,10 +1446,11 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                       <table className="hidden w-full table-fixed text-left text-sm sm:table">
                         <thead className="text-xs text-slate-600 dark:text-slate-300">
                           <tr>
-                            <th className="w-[34%] px-3 py-2">품목</th>
-                            <th className="w-[22%] px-3 py-2 text-right">현재재고</th>
-                            <th className="w-[22%] px-3 py-2 text-right">필요</th>
-                            <th className="w-[22%] px-3 py-2 text-right">발주</th>
+                            <th className="w-[28%] px-3 py-2">품목</th>
+                            <th className="w-[18%] px-3 py-2 text-right">현재재고</th>
+                            <th className="w-[18%] px-3 py-2 text-right">필요</th>
+                            <th className="w-[18%] px-3 py-2 text-right">발주</th>
+                            <th className="w-[18%] px-3 py-2 text-center">발주하기</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1436,6 +1465,14 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                               <td className="px-3 py-3 text-right font-extrabold tabular-nums">
                                 {result.orderUnits === null ? "설정 필요" : result.orderUnits > 0 ? formatOrderUnitAmount(result.orderUnits, result.product) : "없음"}
                               </td>
+                              <td className="px-2 py-2 text-center">
+                                <ProductOrderAction
+                                  item={result.product}
+                                  supplier={result.product.supplier_name ? suppliersByName.get(result.product.supplier_name) ?? null : null}
+                                  quantity={orderActionQuantities[result.product.id] ?? ""}
+                                  onQuantityChange={(quantity) => setOrderActionQuantities((current) => ({ ...current, [result.product.id]: quantity }))}
+                                />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1448,7 +1485,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
               </div>
 
               <div className="space-y-4">
-                <form onSubmit={saveGroupOrderEvent} className="panel overflow-hidden p-4">
+                <form ref={eventFormRef} onSubmit={saveGroupOrderEvent} className="panel scroll-mt-20 overflow-hidden p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <h2 className="text-base font-extrabold">{formatDateLabel(selectedDate)}</h2>
                     {selectedEvent ? (
@@ -1501,28 +1538,61 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                 </form>
 
                 <div className="space-y-2">
-                  {selectedDateEvents.map((event) => (
-                    <div key={event.id} className="panel p-3">
-                      <div className="flex min-w-0 items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="break-words text-sm font-extrabold">{event.organization_name}</p>
-                          <p className="mt-1 flex items-center gap-1 text-xs font-bold text-slate-500 dark:text-slate-400">
-                            <Clock size={14} />
-                            {formatTimeLabel(event.requested_time)}
-                          </p>
-                          {event.note ? <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">{event.note}</p> : null}
-                        </div>
-                        <div className="flex shrink-0 gap-1">
-                          <button type="button" onClick={() => editEvent(event)} className="touch-button icon-button" aria-label="일정 수정" title="수정">
-                            <Pencil size={17} />
-                          </button>
-                          <button type="button" onClick={() => continueWithEvent(event)} className="touch-button rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 dark:text-brand-100">
-                            주문 입력
-                          </button>
+                  {selectedDateEvents.map((event) => {
+                    const savedOrderItems = eventItemsByEventId.get(event.id) ?? [];
+
+                    return (
+                      <div
+                        key={event.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => editEvent(event, true)}
+                        onKeyDown={(keyboardEvent) => {
+                          if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+                            keyboardEvent.preventDefault();
+                            editEvent(event, true);
+                          }
+                        }}
+                        className="panel cursor-pointer p-3 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-600/25 dark:hover:bg-slate-900"
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-extrabold">{event.organization_name}</p>
+                            <p className="mt-1 flex items-center gap-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+                              <Clock size={14} />
+                              {formatTimeLabel(event.requested_time)}
+                            </p>
+                            {savedOrderItems.length > 0 ? (
+                              <div className="mt-2 space-y-1 rounded-md bg-slate-50 px-2 py-2 text-xs font-bold text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                {savedOrderItems.map((item) => {
+                                  const menu = menusById.get(item.menu_id);
+                                  return (
+                                    <div key={item.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                                      <span className="min-w-0 break-words leading-snug">{menu?.name ?? "삭제된 메뉴"}</span>
+                                      <span className="shrink-0 tabular-nums">{formatAmountInput(Number(item.quantity))}개</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                            {event.note ? <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">{event.note}</p> : null}
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <button
+                              type="button"
+                              onClick={(clickEvent) => {
+                                clickEvent.stopPropagation();
+                                continueWithEvent(event);
+                              }}
+                              className="touch-button rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 dark:text-brand-100"
+                            >
+                              주문 입력
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {selectedDateEvents.length === 0 ? <StatusMessage>선택한 날짜의 단체주문 일정이 없습니다.</StatusMessage> : null}
                 </div>
