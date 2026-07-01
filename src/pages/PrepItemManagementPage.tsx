@@ -357,7 +357,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     setSaving(true);
     setError("");
     setMessage("");
-    const { error: saveError } = await supabase.rpc("save_prep_item", {
+    const { data: savedItem, error: saveError } = await supabase.rpc("save_prep_item", {
       target_prep_item_id: editingId,
       item_name: nextName,
       item_shelf_life_days: nextShelfLifeDays,
@@ -369,6 +369,24 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     if (saveError) {
       setError(buildSchemaError(saveError.message));
     } else {
+      const savedPrepItemId = ((savedItem as PrepItem | null)?.id ?? editingId) || null;
+      if (savedPrepItemId) {
+        const unitUpdateErrors = await Promise.all(
+          ingredients.map((ingredient) =>
+            supabase
+              .from("prep_item_ingredients")
+              .update({ ingredient_unit: ingredient.ingredient_unit })
+              .eq("prep_item_id", savedPrepItemId)
+              .eq("sort_order", ingredient.sort_order)
+          )
+        );
+        const firstUnitUpdateError = unitUpdateErrors.find((result) => result.error)?.error;
+        if (firstUnitUpdateError) {
+          setError(buildSchemaError(firstUnitUpdateError.message));
+          setSaving(false);
+          return;
+        }
+      }
       const successMessage = editingId ? "프랩 품목을 수정했습니다." : "프랩 품목을 추가했습니다.";
       resetForm();
       await refresh();
@@ -479,14 +497,6 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2 className="text-sm font-extrabold">사용 재료</h2>
-            <button
-              type="button"
-              onClick={() => setIngredientDrafts((current) => [...current, { ...emptyIngredientDraft }])}
-              className="touch-button inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-bold dark:border-slate-700"
-            >
-              <Plus size={18} />
-              재료 추가
-            </button>
           </div>
 
           <div className="space-y-2">
@@ -635,6 +645,15 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
 
         {error ? <div className="mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
         {message ? <div className="mt-4"><StatusMessage type="success">{message}</StatusMessage></div> : null}
+
+        <button
+          type="button"
+          onClick={() => setIngredientDrafts((current) => [...current, { ...emptyIngredientDraft }])}
+          className="secondary-button mt-5 inline-flex w-full items-center justify-center gap-2"
+        >
+          <Plus size={18} />
+          재료 추가
+        </button>
 
         <button type="submit" disabled={saving || !name.trim()} className="primary-button mt-5 w-full">
           {saving ? "저장 중..." : editingId ? "프랩 품목 수정" : "프랩 품목 등록"}

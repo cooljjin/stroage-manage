@@ -1,4 +1,4 @@
-import type { Category, InventoryAction, Location, StockStatus, UnitWeightUnit } from "./domain";
+import type { Category, InventoryAction, Location, RecipeUsageUnit, StockStatus, UnitWeightUnit } from "./domain";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -282,6 +282,175 @@ export type Database = {
             columns: ["product_id"];
             isOneToOne: false;
             referencedRelation: "products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      group_order_menus: {
+        Row: {
+          id: string;
+          store_id: string;
+          name: string;
+          sort_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          name: string;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          sort_order?: number;
+          is_active?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "group_order_menus_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      group_order_recipe_ingredients: {
+        Row: {
+          id: string;
+          store_id: string;
+          menu_id: string;
+          product_id: string;
+          quantity_per_item: number;
+          quantity_unit: RecipeUsageUnit;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          menu_id: string;
+          product_id: string;
+          quantity_per_item: number;
+          quantity_unit: RecipeUsageUnit;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          product_id?: string;
+          quantity_per_item?: number;
+          quantity_unit?: RecipeUsageUnit;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "group_order_recipe_ingredients_menu_id_fkey";
+            columns: ["menu_id"];
+            isOneToOne: false;
+            referencedRelation: "group_order_menus";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_order_recipe_ingredients_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_order_recipe_ingredients_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      group_order_events: {
+        Row: {
+          id: string;
+          store_id: string;
+          order_date: string;
+          organization_name: string;
+          requested_time: string;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          order_date: string;
+          organization_name: string;
+          requested_time: string;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          order_date?: string;
+          organization_name?: string;
+          requested_time?: string;
+          note?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "group_order_events_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      group_order_event_items: {
+        Row: {
+          id: string;
+          store_id: string;
+          event_id: string;
+          menu_id: string;
+          quantity: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          event_id: string;
+          menu_id: string;
+          quantity: number;
+          created_at?: string;
+        };
+        Update: {
+          menu_id?: string;
+          quantity?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "group_order_event_items_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "group_order_events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_order_event_items_menu_id_fkey";
+            columns: ["menu_id"];
+            isOneToOne: false;
+            referencedRelation: "group_order_menus";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_order_event_items_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
             referencedColumns: ["id"];
           }
         ];

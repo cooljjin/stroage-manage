@@ -17,6 +17,7 @@ import { InventoryListPage } from "./pages/InventoryListPage";
 import { LowStockPage } from "./pages/LowStockPage";
 import { StatusItemsPage } from "./pages/StatusItemsPage";
 import { LogsPage } from "./pages/LogsPage";
+import { GroupOrderCalculatorPage } from "./pages/GroupOrderCalculatorPage";
 import { PrepItemManagementPage } from "./pages/PrepItemManagementPage";
 import { PrepModePage } from "./pages/PrepModePage";
 import { CategoryManagementPage } from "./pages/CategoryManagementPage";
@@ -66,7 +67,7 @@ function canAccess(routeName: RouteName, profile: StaffProfile) {
   const masterRoutes: RouteName[] = ["master-stores", "master-store-detail", "master-users"];
   if (masterRoutes.includes(routeName)) return false;
 
-  const adminRoutes: RouteName[] = ["admin", "category-management", "unit-management", "supplier-management", "prep-items", "settings", "staff-management"];
+  const adminRoutes: RouteName[] = ["admin", "category-management", "unit-management", "supplier-management", "prep-items", "group-order-recipes", "settings", "staff-management"];
   if (adminRoutes.includes(routeName)) return role === "store_admin";
 
   return true;
@@ -383,6 +384,7 @@ export default function App() {
             currentStoreId={profile.store_id}
             returnTo={permittedRoute.returnTo}
             prepDraft={permittedRoute.prepDraft}
+            groupOrderDraft={permittedRoute.groupOrderDraft}
           />
         )}
         {permittedRoute.name === "operation" && (
@@ -392,6 +394,24 @@ export default function App() {
         {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
+        {permittedRoute.name === "group-order" && (
+          <GroupOrderCalculatorPage
+            mode="calculator"
+            navigate={navigate}
+            currentStoreId={profile.store_id}
+            currentRole={profileRole}
+            restoreDraft={permittedRoute.groupOrderDraft}
+          />
+        )}
+        {permittedRoute.name === "group-order-recipes" && (
+          <GroupOrderCalculatorPage
+            mode="recipes"
+            navigate={navigate}
+            currentStoreId={profile.store_id}
+            currentRole={profileRole}
+            restoreDraft={permittedRoute.groupOrderDraft}
+          />
+        )}
         {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
         {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
         {permittedRoute.name === "category-management" && <CategoryManagementPage />}

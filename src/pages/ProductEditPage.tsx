@@ -5,14 +5,15 @@ import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
 import { supabase } from "../lib/supabase";
-import type { AppRoute, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
+import type { AppRoute, GroupOrderRouteDraft, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
 
 type Props = {
   productId: string;
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
-  returnTo?: "prep-items";
+  returnTo?: "prep-items" | "group-order" | "group-order-recipes";
   prepDraft?: PrepItemRouteDraft;
+  groupOrderDraft?: GroupOrderRouteDraft;
 };
 
 const STORAGE_TYPES: StorageType[] = ["냉장", "냉동", "상온"];
@@ -52,7 +53,7 @@ function formatProductUpdateError(message: string) {
   return message;
 }
 
-export function ProductEditPage({ productId, navigate, currentStoreId, returnTo, prepDraft }: Props) {
+export function ProductEditPage({ productId, navigate, currentStoreId, returnTo, prepDraft, groupOrderDraft }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
@@ -164,6 +165,12 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
   function getExitRoute(): AppRoute {
     if (returnTo === "prep-items") {
       return { name: "prep-items", prepDraft };
+    }
+    if (returnTo === "group-order") {
+      return { name: "group-order", groupOrderDraft };
+    }
+    if (returnTo === "group-order-recipes") {
+      return { name: "group-order-recipes", groupOrderDraft };
     }
     return { name: "operation", productId };
   }

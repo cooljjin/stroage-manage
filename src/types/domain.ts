@@ -9,6 +9,7 @@ export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
 export type UnitWeightUnit = "g" | "kg" | "ml" | "L";
+export type RecipeUsageUnit = "g" | "kg" | "ml" | "L" | "개";
 export type ProfileRole = "master" | "store_admin" | "staff";
 export type RouteName =
   | "landing"
@@ -24,6 +25,8 @@ export type RouteName =
   | "low-stock"
   | "status-items"
   | "logs"
+  | "group-order"
+  | "group-order-recipes"
   | "prep-items"
   | "prep-mode"
   | "category-management"
@@ -174,6 +177,47 @@ export type PrepItemIngredient = {
   created_at: string;
 };
 
+export type GroupOrderMenu = {
+  id: string;
+  store_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GroupOrderRecipeIngredient = {
+  id: string;
+  store_id: string;
+  menu_id: string;
+  product_id: string;
+  quantity_per_item: number;
+  quantity_unit: RecipeUsageUnit;
+  sort_order: number;
+  created_at: string;
+};
+
+export type GroupOrderEvent = {
+  id: string;
+  store_id: string;
+  order_date: string;
+  organization_name: string;
+  requested_time: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GroupOrderEventItem = {
+  id: string;
+  store_id: string;
+  event_id: string;
+  menu_id: string;
+  quantity: number;
+  created_at: string;
+};
+
 export type PrepItemRouteDraft = {
   editingId: string | null;
   name: string;
@@ -185,6 +229,23 @@ export type PrepItemRouteDraft = {
     quantity: string;
     quantityUnit: "g" | "kg" | "ml" | "L" | "개";
     search: string;
+  }[];
+};
+
+export type GroupOrderRouteDraft = {
+  editingId: string | null;
+  recipeName: string;
+  sortOrder: string;
+  ingredientDrafts: {
+    productId: string;
+    quantity: string;
+    quantityUnit: RecipeUsageUnit;
+    search: string;
+  }[];
+  orderDrafts: {
+    menuId: string;
+    quantity: string;
+    menuSearch: string;
   }[];
 };
 
@@ -269,8 +330,9 @@ export type AppRoute = {
   barcode?: string;
   productId?: string;
   prepItemId?: string;
-  returnTo?: "prep-items";
+  returnTo?: "prep-items" | "group-order" | "group-order-recipes";
   prepDraft?: PrepItemRouteDraft;
+  groupOrderDraft?: GroupOrderRouteDraft;
   storeId?: string;
   inviteToken?: string;
 };
