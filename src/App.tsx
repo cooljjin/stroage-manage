@@ -187,9 +187,12 @@ export default function App() {
     return NAV_ROUTES.includes(route.name) ? route.name : "home";
   }, [route.name]);
 
-  function navigate(next: AppRoute, options: { replace?: boolean; scrollY?: number } = {}) {
+  function navigate(next: AppRoute, options: { replace?: boolean; resetHistory?: boolean; scrollY?: number } = {}) {
     setMenuOpen(false);
-    if (!options.replace && routeKey(route) !== routeKey(next)) {
+    if (options.resetHistory) {
+      routeHistoryRef.current = [];
+      setCanGoBack(false);
+    } else if (!options.replace && routeKey(route) !== routeKey(next)) {
       routeHistoryRef.current.push({ route, scrollY: window.scrollY });
       setCanGoBack(true);
     }
@@ -323,7 +326,7 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name })} />
+            <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
             <div className="min-w-0">
               <p className="text-xs font-semibold text-brand-700 dark:text-brand-100">통합 매장 재고관리 솔루션</p>
               <p className="max-w-[220px] truncate text-sm text-slate-500 dark:text-slate-400">{session.user.email}</p>
@@ -333,7 +336,7 @@ export default function App() {
             {profileRole !== "staff" ? (
               <button
                 type="button"
-                onClick={() => navigate({ name: profileRole === "master" ? "master-stores" : "staff-management" })}
+                onClick={() => navigate({ name: profileRole === "master" ? "master-stores" : "staff-management" }, { resetHistory: true })}
                 className="touch-button inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-brand-600 px-2 text-sm font-bold text-brand-700 dark:text-brand-100 sm:px-3"
               >
                 <Shield size={18} />
@@ -373,7 +376,15 @@ export default function App() {
         {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
-        {permittedRoute.name === "product-edit" && <ProductEditPage productId={permittedRoute.productId ?? ""} navigate={navigate} currentStoreId={profile.store_id} />}
+        {permittedRoute.name === "product-edit" && (
+          <ProductEditPage
+            productId={permittedRoute.productId ?? ""}
+            navigate={navigate}
+            currentStoreId={profile.store_id}
+            returnTo={permittedRoute.returnTo}
+            prepDraft={permittedRoute.prepDraft}
+          />
+        )}
         {permittedRoute.name === "operation" && (
           <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
         )}
@@ -381,7 +392,7 @@ export default function App() {
         {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
         {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "prep-items" && <PrepItemManagementPage />}
+        {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
         {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
         {permittedRoute.name === "category-management" && <CategoryManagementPage />}
         {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
@@ -393,7 +404,7 @@ export default function App() {
         {permittedRoute.name === "admin" && <AdminPage />}
       </main>
 
-      <BottomNav activeRoute={activeRoute} onNavigate={(name) => navigate({ name })} />
+      <BottomNav activeRoute={activeRoute} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
     </div>
   );
 }

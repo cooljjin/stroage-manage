@@ -13,7 +13,7 @@ export function formatInventoryQuantity(value: number | string | null | undefine
   const numericValue = toFiniteQuantity(value);
   return numericValue.toLocaleString("ko-KR", {
     minimumFractionDigits: Number.isInteger(numericValue) ? 0 : 1,
-    maximumFractionDigits: 1
+    maximumFractionDigits: 4
   });
 }
 

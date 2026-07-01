@@ -8,7 +8,7 @@ export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "메�
 export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
-export type UnitWeightUnit = "g" | "kg";
+export type UnitWeightUnit = "g" | "kg" | "ml" | "L";
 export type ProfileRole = "master" | "store_admin" | "staff";
 export type RouteName =
   | "landing"
@@ -48,6 +48,9 @@ export type Product = {
   unit_weight_enabled: boolean;
   unit_weight: number | null;
   unit_weight_unit: UnitWeightUnit | null;
+  processing_required: boolean;
+  processed_unit_weight: number | null;
+  processed_unit_weight_unit: UnitWeightUnit | null;
   product_url: string | null;
   order_completed: boolean;
   urgent_order_requested: boolean;
@@ -163,10 +166,26 @@ export type PrepItemIngredient = {
   id: string;
   store_id: string;
   prep_item_id: string;
-  ingredient_product_id: string;
+  ingredient_product_id: string | null;
+  ingredient_name: string | null;
+  ingredient_unit: "g" | "kg" | "ml" | "L" | "개" | null;
   quantity_per_unit: number;
   sort_order: number;
   created_at: string;
+};
+
+export type PrepItemRouteDraft = {
+  editingId: string | null;
+  name: string;
+  shelfLifeDays: string;
+  sortOrder: string;
+  ingredientDrafts: {
+    productId: string;
+    customName: string;
+    quantity: string;
+    quantityUnit: "g" | "kg" | "ml" | "L" | "개";
+    search: string;
+  }[];
 };
 
 export type PrepBatch = {
@@ -201,7 +220,7 @@ export type InventoryLog = {
   reverted_by: string | null;
   restored_to_log_id: string | null;
   created_at: string;
-  products: Pick<Product, "name" | "barcode"> | null;
+  products: Pick<Product, "name" | "barcode" | "receipt_check_only"> | null;
 };
 
 export type InventoryLogWithStaff = InventoryLog & {
@@ -250,6 +269,8 @@ export type AppRoute = {
   barcode?: string;
   productId?: string;
   prepItemId?: string;
+  returnTo?: "prep-items";
+  prepDraft?: PrepItemRouteDraft;
   storeId?: string;
   inviteToken?: string;
 };

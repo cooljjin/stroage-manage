@@ -10,5 +10,5 @@ export function StatusMessage({ type = "info", children }: Props) {
     success: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
   };
 
-  return <div className={`rounded-md border px-3 py-2 text-sm font-medium ${classes[type]}`}>{children}</div>;
+  return <div className={`whitespace-pre-wrap rounded-md border px-3 py-2 text-sm font-medium ${classes[type]}`}>{children}</div>;
 }

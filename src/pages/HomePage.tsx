@@ -17,6 +17,7 @@ type ReceiptItem = {
   name: string;
   quantity: number | null;
   lastReceivedAt: string | null;
+  receiptCheckOnly: boolean;
 };
 
 type DashboardView = "today" | "tomorrow";
@@ -126,7 +127,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       dashboardView === "today"
         ? supabase
             .from("inventory_logs")
-            .select("*, products(name, barcode)")
+            .select("*, products(name, barcode, receipt_check_only)")
             .eq("action", "입고")
             .is("reverted_at", null)
             .gte("created_at", range.start)
@@ -177,7 +178,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             productId: log.product_id,
             name,
             quantity: nextQuantity,
-            lastReceivedAt: current?.lastReceivedAt ?? log.created_at
+            lastReceivedAt: current?.lastReceivedAt ?? log.created_at,
+            receiptCheckOnly: current?.receiptCheckOnly ?? log.products?.receipt_check_only ?? false
           });
         });
         setReceipts(Array.from(grouped.values()));
@@ -187,7 +189,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             productId: product.id,
             name: product.name,
             quantity: null,
-            lastReceivedAt: product.fresh_order_selected_at
+            lastReceivedAt: product.fresh_order_selected_at,
+            receiptCheckOnly: product.receipt_check_only
           }))
         );
       }
@@ -219,7 +222,9 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     const confirmMessage =
       item.quantity === null
         ? `${item.name}의 오늘 입고확인 기록을 삭제할까요?`
-        : `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개를 삭제할까요?\n재고에서도 해당 수량이 차감됩니다.`;
+        : item.receiptCheckOnly
+          ? `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개 기록을 삭제할까요?`
+          : `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개를 삭제할까요?\n재고에서도 해당 수량이 차감됩니다.`;
     if (!window.confirm(confirmMessage)) return;
 
     setReceiptDeletingIds((current) => new Set(current).add(item.productId));

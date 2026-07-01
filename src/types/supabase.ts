@@ -78,6 +78,9 @@ export type Database = {
           unit_weight_enabled: boolean;
           unit_weight: number | null;
           unit_weight_unit: UnitWeightUnit | null;
+          processing_required: boolean;
+          processed_unit_weight: number | null;
+          processed_unit_weight_unit: UnitWeightUnit | null;
           product_url: string | null;
           order_completed: boolean;
           urgent_order_requested: boolean;
@@ -103,6 +106,9 @@ export type Database = {
           unit_weight_enabled?: boolean;
           unit_weight?: number | null;
           unit_weight_unit?: UnitWeightUnit | null;
+          processing_required?: boolean;
+          processed_unit_weight?: number | null;
+          processed_unit_weight_unit?: UnitWeightUnit | null;
           product_url?: string | null;
           order_completed?: boolean;
           urgent_order_requested?: boolean;
@@ -127,6 +133,9 @@ export type Database = {
           unit_weight_enabled?: boolean;
           unit_weight?: number | null;
           unit_weight_unit?: UnitWeightUnit | null;
+          processing_required?: boolean;
+          processed_unit_weight?: number | null;
+          processed_unit_weight_unit?: UnitWeightUnit | null;
           product_url?: string | null;
           order_completed?: boolean;
           urgent_order_requested?: boolean;
@@ -420,7 +429,9 @@ export type Database = {
           id: string;
           store_id: string;
           prep_item_id: string;
-          ingredient_product_id: string;
+          ingredient_product_id: string | null;
+          ingredient_name: string | null;
+          ingredient_unit: "g" | "kg" | "ml" | "L" | "개" | null;
           quantity_per_unit: number;
           sort_order: number;
           created_at: string;
@@ -429,12 +440,17 @@ export type Database = {
           id?: string;
           store_id?: string;
           prep_item_id: string;
-          ingredient_product_id: string;
+          ingredient_product_id?: string | null;
+          ingredient_name?: string | null;
+          ingredient_unit?: "g" | "kg" | "ml" | "L" | "개" | null;
           quantity_per_unit: number;
           sort_order?: number;
           created_at?: string;
         };
         Update: {
+          ingredient_product_id?: string | null;
+          ingredient_name?: string | null;
+          ingredient_unit?: "g" | "kg" | "ml" | "L" | "개" | null;
           quantity_per_unit?: number;
           sort_order?: number;
         };
@@ -675,7 +691,10 @@ export type Database = {
           operation_type: string;
           operation_quantity: number;
         };
-        Returns: string;
+        Returns: {
+          log_id: string | null;
+          warning_message: string | null;
+        };
       };
       reorder_prep_items: {
         Args: {

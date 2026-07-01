@@ -53,6 +53,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [location, setLocation] = useState<Location>("창고");
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
   const [quantity, setQuantity] = useState("");
+  const [receiptQuantity, setReceiptQuantity] = useState("1");
   const [memoText, setMemoText] = useState("");
   const [latestMemo, setLatestMemo] = useState<InventoryLog | null>(null);
   const [lastInventoryCheckAt, setLastInventoryCheckAt] = useState<string | null>(null);
@@ -180,6 +181,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   }, [loadLatestInventoryCheck]);
 
   const quantityValue = quantity.trim() === "" ? 0 : Number(quantity);
+  const receiptQuantityValue = receiptQuantity.trim() === "" ? 0 : Number(receiptQuantity);
   const memoIsEmpty = memoText.trim().length === 0;
   const quantityStepError = useMemo(() => {
     if (quantity.trim() === "") return "";
@@ -199,6 +201,12 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     return sourceQty - quantityValue < 0 ? `${sourceLabel} 재고는 음수가 될 수 없습니다.` : "";
   }, [action, item, location, moveDirection, quantityValue]);
 
+  const receiptQuantityError = useMemo(() => {
+    if (receiptQuantity.trim() === "") return "입고 개수를 입력해 주세요.";
+    if (!Number.isFinite(receiptQuantityValue) || receiptQuantityValue <= 0) return "입고 개수는 0보다 커야 합니다.";
+    return "";
+  }, [receiptQuantity, receiptQuantityValue]);
+
   function quantityNumberOrZero(value: string) {
     const numericValue = Number(value || 0);
     return Number.isFinite(numericValue) ? numericValue : 0;
@@ -216,6 +224,13 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const nextValue = value.replace(",", ".");
     if (/^\d*\.?\d*$/.test(nextValue)) {
       setQuantity(nextValue);
+    }
+  }
+
+  function updateReceiptQuantityInput(value: string) {
+    const nextValue = value.replace(",", ".");
+    if (/^\d*\.?\d*$/.test(nextValue)) {
+      setReceiptQuantity(nextValue);
     }
   }
 
@@ -448,17 +463,18 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   }
 
   async function completeReceiptCheckOnly() {
-    if (!item) return;
+    if (!item || receiptQuantityError) return;
 
     setReceiptSaving(true);
     setError("");
     setSuccess("");
-    const { errorMessage } = await recordReceiptCheckOnly(item.id, currentStoreId);
+    const { errorMessage } = await recordReceiptCheckOnly(item.id, currentStoreId, receiptQuantityValue);
 
     if (errorMessage) {
       setError(errorMessage);
     } else {
-      setSuccess("입고완료를 기록했습니다.");
+      setSuccess(`입고완료 ${formatInventoryQuantity(receiptQuantityValue)}개를 기록했습니다.`);
+      setReceiptQuantity("1");
       await loadLatestInventoryCheck();
     }
     setReceiptSaving(false);
@@ -627,7 +643,6 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       <div className="-mt-2 mb-2 flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="break-words text-2xl font-bold leading-tight text-slate-950 dark:text-slate-100">{item.name}</p>
-          <p className="mt-0.5 text-sm font-semibold text-slate-500 dark:text-slate-400">{item.barcode ?? "바코드 없음"}</p>
         </div>
         <div className="flex max-w-[56%] shrink-0 flex-col items-end gap-1.5 text-xs sm:max-w-none sm:text-sm">
           <div className="flex flex-wrap justify-end gap-1.5">
@@ -654,14 +669,56 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           <div className="rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-900 dark:bg-sky-950/40">
             <p className="text-sm font-extrabold text-sky-800 dark:text-sky-100">입고여부만 확인</p>
             <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
-              이 품목은 재고 수량을 관리하지 않고 입고완료 기록만 남깁니다.
+              이 품목은 재고 수량을 관리하지 않고 입고된 개수만 기록합니다.
             </p>
           </div>
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm font-bold">입고 개수</span>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setReceiptQuantity((value) => String(Math.max(1, quantityNumberOrZero(value) - 1)))}
+                className="secondary-button inline-flex min-h-11 w-12 items-center justify-center px-2 py-1.5"
+                aria-label="입고 개수 감소"
+              >
+                <Minus size={18} />
+              </button>
+              <input
+                className="field py-1.5 text-center text-lg font-bold"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.]?[0-9]*"
+                value={receiptQuantity}
+                onChange={(event) => updateReceiptQuantityInput(event.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setReceiptQuantity((value) => String(quantityNumberOrZero(value) + 1))}
+                className="secondary-button inline-flex min-h-11 w-12 items-center justify-center px-2 py-1.5"
+                aria-label="입고 개수 증가"
+              >
+                <Plus size={18} />
+              </button>
+            </div>
+          </label>
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
+            {QUICK_AMOUNTS.map((amount) => (
+              <button
+                key={amount}
+                type="button"
+                onClick={() => setReceiptQuantity((value) => String(quantityNumberOrZero(value) + amount))}
+                className="secondary-button min-h-10 px-3 py-1.5 text-sm"
+              >
+                +{amount}
+              </button>
+            ))}
+          </div>
+          {receiptQuantityError ? <div className="mt-3"><StatusMessage type="error">{receiptQuantityError}</StatusMessage></div> : null}
           {error ? <div className="mt-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
           {success ? <div className="mt-3"><StatusMessage type="success">{success}</StatusMessage></div> : null}
           <button
             type="button"
-            disabled={receiptSaving}
+            disabled={receiptSaving || Boolean(receiptQuantityError)}
             onClick={() => void completeReceiptCheckOnly()}
             className="primary-button mt-3 inline-flex w-full items-center justify-center gap-2"
           >

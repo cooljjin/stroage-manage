@@ -37,6 +37,9 @@ alter table public.products add column if not exists stock_status text;
 alter table public.products add column if not exists unit_weight_enabled boolean not null default false;
 alter table public.products add column if not exists unit_weight numeric(12, 3);
 alter table public.products add column if not exists unit_weight_unit text;
+alter table public.products add column if not exists processing_required boolean not null default false;
+alter table public.products add column if not exists processed_unit_weight numeric(12, 3);
+alter table public.products add column if not exists processed_unit_weight_unit text;
 alter table public.products drop constraint if exists products_urgent_order_quantity_check;
 alter table public.products add constraint products_urgent_order_quantity_check
 check (urgent_order_quantity is null or urgent_order_quantity > 0);
@@ -52,6 +55,20 @@ set unit_weight_unit = 'g'
 where unit_weight_enabled = true
   and unit_weight is not null
   and unit_weight_unit is null;
+update public.products
+set processing_required = false,
+    processed_unit_weight = null,
+    processed_unit_weight_unit = null
+where unit_weight_enabled = false;
+update public.products
+set processed_unit_weight = null,
+    processed_unit_weight_unit = null
+where processing_required = false;
+update public.products
+set processed_unit_weight_unit = 'g'
+where processing_required = true
+  and processed_unit_weight is not null
+  and processed_unit_weight_unit is null;
 alter table public.products drop constraint if exists products_unit_weight_check;
 alter table public.products add constraint products_unit_weight_check
 check (
@@ -60,7 +77,19 @@ check (
     unit_weight_enabled = true
     and unit_weight is not null
     and unit_weight > 0
-    and unit_weight_unit in ('g', 'kg')
+    and unit_weight_unit in ('g', 'kg', 'ml', 'L')
+  )
+);
+alter table public.products drop constraint if exists products_processed_unit_weight_check;
+alter table public.products add constraint products_processed_unit_weight_check
+check (
+  (processing_required = false and processed_unit_weight is null and processed_unit_weight_unit is null)
+  or (
+    unit_weight_enabled = true
+    and processing_required = true
+    and processed_unit_weight is not null
+    and processed_unit_weight > 0
+    and processed_unit_weight_unit in ('g', 'kg', 'ml', 'L')
   )
 );
 alter table public.products drop constraint if exists products_storage_type_check;
@@ -138,8 +167,8 @@ end;
 create table if not exists public.inventory (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null unique references public.products(id) on delete cascade,
-  warehouse_qty numeric(12, 2) not null default 0 check (warehouse_qty >= 0),
-  store_qty numeric(12, 2) not null default 0 check (store_qty >= 0),
+  warehouse_qty numeric(12, 4) not null default 0 check (warehouse_qty >= 0),
+  store_qty numeric(12, 4) not null default 0 check (store_qty >= 0),
   updated_at timestamptz not null default now()
 );
 
@@ -150,9 +179,9 @@ create table if not exists public.inventory_logs (
   action text not null check (action in ('입고', '출고', '이동', '조정')),
   source_location text check (source_location in ('창고', '매장') or source_location is null),
   destination_location text check (destination_location in ('창고', '매장') or destination_location is null),
-  previous_quantity numeric(12, 2),
-  new_quantity numeric(12, 2),
-  quantity numeric(12, 2) check (quantity is null or quantity >= 0),
+  previous_quantity numeric(12, 4),
+  new_quantity numeric(12, 4),
+  quantity numeric(12, 4) check (quantity is null or quantity >= 0),
   note text,
   created_at timestamptz not null default now()
 );

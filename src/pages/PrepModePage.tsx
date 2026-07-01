@@ -16,6 +16,11 @@ type PrepModeItem = PrepItem & {
 
 type PrepOperation = "제조" | "소진" | "폐기";
 
+type PrepOperationResult = {
+  log_id?: string | null;
+  warning_message?: string | null;
+};
+
 const OPERATIONS: Array<{ value: PrepOperation; label: string; icon: typeof ChefHat; className: string }> = [
   { value: "제조", label: "제조", icon: ChefHat, className: "bg-brand-600 text-white" },
   { value: "소진", label: "소진", icon: Utensils, className: "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-950" },
@@ -183,7 +188,7 @@ export function PrepModePage({ navigate }: Props) {
     setSaving(true);
     setError("");
     setMessage("");
-    const { error: operationError } = await supabase.rpc("record_prep_operation", {
+    const { data: operationResult, error: operationError } = await supabase.rpc("record_prep_operation", {
       target_prep_item_id: selectedItem.id,
       operation_type: operation,
       operation_quantity: quantityValue
@@ -192,10 +197,18 @@ export function PrepModePage({ navigate }: Props) {
     if (operationError) {
       setError(schemaError(operationError.message));
     } else {
+      const warningMessage = (
+        operationResult &&
+        typeof operationResult === "object" &&
+        !Array.isArray(operationResult) &&
+        "warning_message" in operationResult
+      )
+        ? String((operationResult as PrepOperationResult).warning_message ?? "").trim()
+        : "";
       const successMessage = `${selectedItem.name} ${operation} ${formatInventoryQuantity(quantityValue)}개를 저장했습니다.`;
       closeItem();
       await refresh();
-      setMessage(successMessage);
+      setMessage(warningMessage ? `${successMessage}\n${warningMessage}` : successMessage);
     }
     setSaving(false);
   }

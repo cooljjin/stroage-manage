@@ -19,7 +19,7 @@ create table if not exists public.prep_item_ingredients (
   store_id uuid not null references public.stores(id) on delete restrict,
   prep_item_id uuid not null references public.prep_items(id) on delete cascade,
   ingredient_product_id uuid not null references public.products(id) on delete restrict,
-  quantity_per_unit numeric(12, 2) not null check (quantity_per_unit > 0),
+  quantity_per_unit numeric(12, 4) not null check (quantity_per_unit > 0),
   sort_order integer not null default 1000,
   created_at timestamptz not null default now(),
   unique (prep_item_id, ingredient_product_id)
@@ -133,7 +133,7 @@ declare
   ingredient jsonb;
   ingredient_index integer := 0;
   v_ingredient_product_id uuid;
-  v_ingredient_quantity numeric(12, 2);
+  v_ingredient_quantity numeric(12, 4);
   v_ingredient_sort_order integer;
 begin
   if auth.uid() is null then
@@ -240,7 +240,7 @@ begin
   loop
     ingredient_index := ingredient_index + 1;
     v_ingredient_product_id := nullif(ingredient ->> 'product_id', '')::uuid;
-    v_ingredient_quantity := nullif(ingredient ->> 'quantity_per_unit', '')::numeric(12, 2);
+    v_ingredient_quantity := nullif(ingredient ->> 'quantity_per_unit', '')::numeric(12, 4);
     v_ingredient_sort_order := coalesce(nullif(ingredient ->> 'sort_order', '')::integer, ingredient_index);
 
     if v_ingredient_product_id is null then
@@ -309,14 +309,14 @@ declare
   action_label text;
   inserted_log_id uuid;
   recipe_count integer;
-  required_quantity numeric(12, 2);
-  remaining_quantity numeric(12, 2);
-  consumed_from_batch numeric(12, 2);
-  ingredient_total_before numeric(12, 2);
-  ingredient_store_consumed numeric(12, 2);
-  ingredient_warehouse_consumed numeric(12, 2);
-  ingredient_next_store_qty numeric(12, 2);
-  ingredient_next_warehouse_qty numeric(12, 2);
+  required_quantity numeric(12, 4);
+  remaining_quantity numeric(12, 4);
+  consumed_from_batch numeric(12, 4);
+  ingredient_total_before numeric(12, 4);
+  ingredient_store_consumed numeric(12, 4);
+  ingredient_warehouse_consumed numeric(12, 4);
+  ingredient_next_store_qty numeric(12, 4);
+  ingredient_next_warehouse_qty numeric(12, 4);
 begin
   if auth.uid() is null then
     raise exception '로그인이 필요합니다.';

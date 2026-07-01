@@ -9,7 +9,7 @@ export function formatReceiptCheckError(message: string) {
   return message;
 }
 
-export async function recordReceiptCheckOnly(productId: string, storeId: string): Promise<{ errorMessage: string }> {
+export async function recordReceiptCheckOnly(productId: string, storeId: string, quantity?: number | null): Promise<{ errorMessage: string }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
     return { errorMessage: userError?.message ?? "로그인이 필요합니다." };
@@ -36,7 +36,7 @@ export async function recordReceiptCheckOnly(productId: string, storeId: string)
     destination_location: null,
     previous_quantity: null,
     new_quantity: null,
-    quantity: null,
+    quantity: quantity ?? null,
     note: RECEIPT_CHECK_NOTE,
     warehouse_qty_before: warehouseQty,
     store_qty_before: storeQty,

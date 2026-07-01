@@ -1,13 +1,15 @@
 alter table public.inventory_logs drop constraint if exists inventory_logs_action_check;
 alter table public.inventory_logs add constraint inventory_logs_action_check
-check (action in ('입고', '출고', '이동', '조정', '프랩 제조', '프랩 소진', '프랩 폐기'));
+check (action in ('입고', '출고', '이동', '조정', '메모', '프랩 제조', '프랩 소진', '프랩 폐기'));
+
+drop function if exists public.record_prep_operation(uuid, text, numeric);
 
 create or replace function public.record_prep_operation(
   target_prep_item_id uuid,
   operation_type text,
   operation_quantity numeric
 )
-returns uuid
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
@@ -23,14 +25,17 @@ declare
   action_label text;
   inserted_log_id uuid;
   recipe_count integer;
-  required_quantity numeric(12, 2);
-  remaining_quantity numeric(12, 2);
-  consumed_from_batch numeric(12, 2);
-  ingredient_total_before numeric(12, 2);
-  ingredient_store_consumed numeric(12, 2);
-  ingredient_warehouse_consumed numeric(12, 2);
-  ingredient_next_store_qty numeric(12, 2);
-  ingredient_next_warehouse_qty numeric(12, 2);
+  required_quantity numeric(12, 4);
+  consumable_quantity numeric(12, 4);
+  remaining_quantity numeric(12, 4);
+  consumed_from_batch numeric(12, 4);
+  ingredient_total_before numeric(12, 4);
+  ingredient_store_consumed numeric(12, 4);
+  ingredient_warehouse_consumed numeric(12, 4);
+  ingredient_next_store_qty numeric(12, 4);
+  ingredient_next_warehouse_qty numeric(12, 4);
+  repaired_prep_product_id uuid;
+  shortage_messages text[] := array[]::text[];
 begin
   if auth.uid() is null then
     raise exception '로그인이 필요합니다.';
@@ -57,6 +62,38 @@ begin
 
   if not public.can_access_store(prep_item.store_id) then
     raise exception '프랩 품목 접근 권한이 없습니다.';
+  end if;
+
+  perform 1
+  from public.products
+  where id = prep_item.product_id
+    and store_id = prep_item.store_id;
+
+  if not found then
+    insert into public.products (
+      store_id,
+      name,
+      category,
+      unit_name,
+      minimum_stock,
+      is_active
+    )
+    values (
+      prep_item.store_id,
+      prep_item.name,
+      '기타',
+      '개',
+      0,
+      false
+    )
+    returning id into repaired_prep_product_id;
+
+    update public.prep_items
+    set product_id = repaired_prep_product_id,
+        updated_at = changed_at
+    where id = prep_item.id;
+
+    prep_item.product_id := repaired_prep_product_id;
   end if;
 
   insert into public.inventory (product_id, store_id)
@@ -87,7 +124,11 @@ begin
     insert into public.inventory (product_id, store_id)
     select ingredients.ingredient_product_id, prep_item.store_id
     from public.prep_item_ingredients ingredients
+    join public.products products
+      on products.id = ingredients.ingredient_product_id
+     and products.store_id = prep_item.store_id
     where ingredients.prep_item_id = prep_item.id
+      and ingredients.ingredient_product_id is not null
     on conflict (product_id) do nothing;
 
     for ingredient in
@@ -106,21 +147,27 @@ begin
         on inventory.product_id = ingredients.ingredient_product_id
        and inventory.store_id = prep_item.store_id
       where ingredients.prep_item_id = prep_item.id
+        and ingredients.ingredient_product_id is not null
       order by ingredients.ingredient_product_id
       for update of inventory
     loop
       required_quantity := ingredient.quantity_per_unit * operation_quantity;
       ingredient_total_before := ingredient.warehouse_qty + ingredient.store_qty;
+      consumable_quantity := least(required_quantity, ingredient_total_before);
 
       if ingredient_total_before < required_quantity then
-        raise exception '% 재고가 부족합니다. 필요 수량 %, 현재 수량 %',
-          ingredient.ingredient_name,
-          required_quantity,
-          ingredient_total_before;
+        shortage_messages := array_append(
+          shortage_messages,
+          ingredient.ingredient_name || '재고가 부족합니다. 재고를 확인해 주세요.'
+        );
       end if;
 
-      ingredient_store_consumed := least(ingredient.store_qty, required_quantity);
-      ingredient_warehouse_consumed := required_quantity - ingredient_store_consumed;
+      if consumable_quantity <= 0 then
+        continue;
+      end if;
+
+      ingredient_store_consumed := least(ingredient.store_qty, consumable_quantity);
+      ingredient_warehouse_consumed := consumable_quantity - ingredient_store_consumed;
       ingredient_next_store_qty := ingredient.store_qty - ingredient_store_consumed;
       ingredient_next_warehouse_qty := ingredient.warehouse_qty - ingredient_warehouse_consumed;
 
@@ -155,8 +202,8 @@ begin
         null,
         null,
         ingredient_total_before,
-        ingredient_total_before - required_quantity,
-        required_quantity,
+        ingredient_total_before - consumable_quantity,
+        consumable_quantity,
         '[프랩 제조] ' || prep_item.name || ' +' || operation_quantity::text,
         ingredient.warehouse_qty,
         ingredient.store_qty,
@@ -253,7 +300,10 @@ begin
         and todos.is_completed = false
     );
 
-    return inserted_log_id;
+    return jsonb_build_object(
+      'log_id', inserted_log_id,
+      'warning_message', nullif(array_to_string(shortage_messages, E'\n'), '')
+    );
   end if;
 
   if prep_inventory.store_qty < operation_quantity then
@@ -331,7 +381,10 @@ begin
   )
   returning id into inserted_log_id;
 
-  return inserted_log_id;
+  return jsonb_build_object(
+    'log_id', inserted_log_id,
+    'warning_message', null
+  );
 end;
 $$;
 

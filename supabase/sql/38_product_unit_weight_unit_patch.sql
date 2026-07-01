@@ -19,7 +19,7 @@ check (
     unit_weight_enabled = true
     and unit_weight is not null
     and unit_weight > 0
-    and unit_weight_unit in ('g', 'kg')
+    and unit_weight_unit in ('g', 'kg', 'ml', 'L')
   )
 );
 
