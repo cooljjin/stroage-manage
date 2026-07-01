@@ -56,6 +56,14 @@ function initialRoute(): AppRoute {
   return { name: "landing" };
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function defaultSignedInRoute(): AppRoute {
+  return { name: isMobileViewport() ? "scan" : "home" };
+}
+
 function getProfileRole(profile: StaffProfile): ProfileRole {
   return profile.role ?? (profile.is_admin ? "store_admin" : "staff");
 }
@@ -137,7 +145,7 @@ export default function App() {
       if (inviteToken) {
         const { data, error } = await supabase.rpc("accept_store_invite" as never, { invite_token: inviteToken } as never);
         if (!cancelled && !error && data) {
-          const homeRoute: AppRoute = { name: "home" };
+          const homeRoute = defaultSignedInRoute();
           setProfile(data as StaffProfile);
           pendingScrollYRef.current = 0;
           setRoute(homeRoute);
@@ -161,7 +169,7 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     if (route.name === "landing" || (route.name === "login" && !route.authInviteToken) || route.name === "signup-request") {
-      const homeRoute: AppRoute = { name: "home" };
+      const homeRoute = defaultSignedInRoute();
       pendingScrollYRef.current = 0;
       setRoute(homeRoute);
       updateBrowserPath(homeRoute);
@@ -245,7 +253,7 @@ export default function App() {
           inviteToken={route.authInviteToken}
           onInviteAccepted={(nextProfile) => {
             setProfile(nextProfile);
-            navigate({ name: "home" }, { replace: true });
+            navigate(defaultSignedInRoute(), { replace: true });
           }}
         />
       );
@@ -262,7 +270,7 @@ export default function App() {
           signedIn={false}
           onAccepted={(nextProfile) => {
             setProfile(nextProfile);
-            navigate({ name: "home" }, { replace: true });
+            navigate(defaultSignedInRoute(), { replace: true });
           }}
           onSignup={(email) => navigate({ name: "login", authMode: "signup", authEmail: email, authInviteToken: route.inviteToken })}
         />
@@ -280,7 +288,7 @@ export default function App() {
         onSignup={(email) => void goToSignup(email, route.inviteToken)}
         onAccepted={(nextProfile) => {
           setProfile(nextProfile);
-          navigate({ name: "home" }, { replace: true });
+          navigate(defaultSignedInRoute(), { replace: true });
         }}
       />
     );
@@ -294,7 +302,7 @@ export default function App() {
         inviteToken={route.authInviteToken}
         onInviteAccepted={(nextProfile) => {
           setProfile(nextProfile);
-          navigate({ name: "home" }, { replace: true });
+          navigate(defaultSignedInRoute(), { replace: true });
         }}
       />
     );
