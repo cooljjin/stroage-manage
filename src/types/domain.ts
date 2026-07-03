@@ -328,6 +328,7 @@ export type AppRoute = {
   authEmail?: string;
   authInviteToken?: string;
   barcode?: string;
+  scanLaunchId?: number;
   productId?: string;
   prepItemId?: string;
   returnTo?: "prep-items" | "group-order" | "group-order-recipes";

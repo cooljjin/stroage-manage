@@ -1,0 +1,5 @@
+{
+  "appId": "com.jinkim.storeinventory.poc",
+  "appName": "매장 재고관리",
+  "webDir": "dist"
+}

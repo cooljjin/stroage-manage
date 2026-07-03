@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowLeftRight, Check, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
-import { formatDateTime, formatFullDateTime } from "../lib/date";
+import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { supabase } from "../lib/supabase";
@@ -24,10 +24,42 @@ type InventoryHistoryPoint = {
   storeQty: number;
 };
 
+type LocationCheckInfo = {
+  checkedAt: string | null;
+  staffName: string | null;
+};
+
+type LocationCheckDates = {
+  warehouse: LocationCheckInfo;
+  store: LocationCheckInfo;
+};
+
 type StockOperationAction = (typeof ACTIONS)[number];
 
-function formatLastInventoryCheckAt(value: string | null | undefined): string {
-  return value ? formatFullDateTime(value) : "-";
+const emptyLocationCheckInfo: LocationCheckInfo = {
+  checkedAt: null,
+  staffName: null
+};
+
+function formatDateOnly(value: string): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(value));
+}
+
+function LastInventoryCheckLabel({ info }: { info: LocationCheckInfo }) {
+  if (!info.checkedAt) return <>마지막 확인 -</>;
+
+  const timeLabel = formatDateTime(info.checkedAt).split(" ").slice(1).join(" ");
+
+  return (
+    <>
+      마지막 확인 {formatDateOnly(info.checkedAt)}
+      {timeLabel ? <span className="hidden sm:inline"> {timeLabel}</span> : null}
+      {info.staffName ? <> · {info.staffName}</> : null}
+    </>
+  );
 }
 
 function formatStatusUpdateError(message: string) {
@@ -56,7 +88,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [receiptQuantity, setReceiptQuantity] = useState("1");
   const [memoText, setMemoText] = useState("");
   const [latestMemo, setLatestMemo] = useState<InventoryLog | null>(null);
-  const [lastInventoryCheckAt, setLastInventoryCheckAt] = useState<string | null>(null);
+  const [lastInventoryCheckDates, setLastInventoryCheckDates] = useState<LocationCheckDates>({
+    warehouse: emptyLocationCheckInfo,
+    store: emptyLocationCheckInfo
+  });
   const [memoHistory, setMemoHistory] = useState<InventoryLog[]>([]);
   const [memoStaffNames, setMemoStaffNames] = useState<Map<string, string>>(new Map());
   const [memoHistoryOpen, setMemoHistoryOpen] = useState(false);
@@ -130,19 +165,59 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     });
   }, [memoStaffNames]);
 
+  function logAffectsLocation(log: InventoryLog, targetLocation: Location) {
+    if (log.source_location === targetLocation || log.destination_location === targetLocation) return true;
+    if (targetLocation === "창고" && log.warehouse_qty_before !== null && log.warehouse_qty_after !== null) {
+      return log.warehouse_qty_before !== log.warehouse_qty_after;
+    }
+    if (targetLocation === "매장" && log.store_qty_before !== null && log.store_qty_after !== null) {
+      return log.store_qty_before !== log.store_qty_after;
+    }
+    return false;
+  }
+
   const loadLatestInventoryCheck = useCallback(async () => {
     const { data, error: latestCheckError } = await supabase
       .from("inventory_logs")
-      .select("created_at")
+      .select("*")
       .eq("store_id", currentStoreId)
       .eq("product_id", productId)
       .neq("action", "메모")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(100);
 
-    setLastInventoryCheckAt(latestCheckError ? null : data?.created_at ?? null);
+    if (latestCheckError) {
+      setLastInventoryCheckDates({
+        warehouse: emptyLocationCheckInfo,
+        store: emptyLocationCheckInfo
+      });
+      return;
+    }
+
+    const logs = (data ?? []) as InventoryLog[];
+    const warehouseLog = logs.find((log) => logAffectsLocation(log, "창고")) ?? null;
+    const storeLog = logs.find((log) => logAffectsLocation(log, "매장")) ?? null;
+    const userIds = Array.from(new Set([warehouseLog?.user_id, storeLog?.user_id].filter(Boolean) as string[]));
+    const staffNames = new Map<string, string>();
+
+    if (userIds.length > 0) {
+      const { data: profileData } = await supabase.from("profiles").select("*").in("id", userIds);
+      ((profileData ?? []) as StaffProfile[]).forEach((profile) => {
+        staffNames.set(profile.id, profile.display_name);
+      });
+    }
+
+    setLastInventoryCheckDates({
+      warehouse: {
+        checkedAt: warehouseLog?.created_at ?? null,
+        staffName: warehouseLog ? staffNames.get(warehouseLog.user_id) ?? warehouseLog.user_id.slice(0, 8) : null
+      },
+      store: {
+        checkedAt: storeLog?.created_at ?? null,
+        staffName: storeLog ? staffNames.get(storeLog.user_id) ?? storeLog.user_id.slice(0, 8) : null
+      }
+    });
   }, [currentStoreId, productId]);
 
   const loadLatestMemo = useCallback(async () => {
@@ -658,9 +733,6 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
               </span>
             ) : null}
           </div>
-          <p className="break-keep text-right text-[11px] font-semibold leading-snug text-slate-500 dark:text-slate-400 sm:text-xs">
-            마지막 확인일자 : {formatLastInventoryCheckAt(lastInventoryCheckAt)}
-          </p>
         </div>
       </div>
 
@@ -733,10 +805,16 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
               <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">창고</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.warehouse_qty)}</p>
+                <p className="mt-1 text-[10px] font-semibold leading-snug text-slate-500 dark:text-slate-400">
+                  <LastInventoryCheckLabel info={lastInventoryCheckDates.warehouse} />
+                </p>
               </div>
               <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">매장</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.store_qty)}</p>
+                <p className="mt-1 text-[10px] font-semibold leading-snug text-slate-500 dark:text-slate-400">
+                  <LastInventoryCheckLabel info={lastInventoryCheckDates.store} />
+                </p>
               </div>
             </div>
             <div className="mt-2 rounded-md border border-slate-200 p-2 text-sm dark:border-slate-800">

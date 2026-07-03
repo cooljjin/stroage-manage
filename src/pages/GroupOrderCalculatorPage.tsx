@@ -66,6 +66,17 @@ type PendingTouchRange = {
   cancelled: boolean;
 };
 
+type ScrollLockSnapshot = {
+  scrollY: number;
+  bodyOverflow: string;
+  bodyOverscrollBehavior: string;
+  bodyPosition: string;
+  bodyTop: string;
+  bodyWidth: string;
+  bodyTouchAction: string;
+  htmlOverscrollBehavior: string;
+};
+
 type CalculationBuildResult = {
   results: CalculationResult[];
   errorMessage: string;
@@ -267,6 +278,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
   const draggingRangeRef = useRef(false);
   const rangeDragMovedRef = useRef(false);
   const pendingTouchRangeRef = useRef<PendingTouchRange | null>(null);
+  const calendarScrollLockRef = useRef<ScrollLockSnapshot | null>(null);
 
   const productsById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const menusById = useMemo(() => new Map(menus.map((menu) => [menu.id, menu])), [menus]);
@@ -615,7 +627,48 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function lockCalendarPageScroll() {
+    if (calendarScrollLockRef.current) return;
+
+    const scrollY = window.scrollY;
+    calendarScrollLockRef.current = {
+      scrollY,
+      bodyOverflow: document.body.style.overflow,
+      bodyOverscrollBehavior: document.body.style.overscrollBehavior,
+      bodyPosition: document.body.style.position,
+      bodyTop: document.body.style.top,
+      bodyWidth: document.body.style.width,
+      bodyTouchAction: document.body.style.touchAction,
+      htmlOverscrollBehavior: document.documentElement.style.overscrollBehavior
+    };
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.body.style.touchAction = "none";
+    document.documentElement.style.overscrollBehavior = "none";
+  }
+
+  function unlockCalendarPageScroll() {
+    const snapshot = calendarScrollLockRef.current;
+    if (!snapshot) return;
+
+    document.body.style.overflow = snapshot.bodyOverflow;
+    document.body.style.overscrollBehavior = snapshot.bodyOverscrollBehavior;
+    document.body.style.position = snapshot.bodyPosition;
+    document.body.style.top = snapshot.bodyTop;
+    document.body.style.width = snapshot.bodyWidth;
+    document.body.style.touchAction = snapshot.bodyTouchAction;
+    document.documentElement.style.overscrollBehavior = snapshot.htmlOverscrollBehavior;
+    calendarScrollLockRef.current = null;
+    window.scrollTo({ top: snapshot.scrollY, behavior: "auto" });
+  }
+
   function startCalendarRange(dateValue: string) {
+    clearPendingTouchRange();
+    lockCalendarPageScroll();
     draggingRangeRef.current = true;
     rangeDragMovedRef.current = false;
     setSelectedDate(dateValue);
@@ -644,6 +697,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setRangeEndDate(dateValue);
     setSelectedDate(dateValue);
     draggingRangeRef.current = false;
+    unlockCalendarPageScroll();
   }
 
   function getCalendarDateFromPointer(event: PointerEvent<HTMLDivElement>): string | null {
@@ -739,6 +793,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
   function handleCalendarPointerCancel(event: PointerEvent<HTMLDivElement>) {
     clearPendingTouchRange();
     draggingRangeRef.current = false;
+    unlockCalendarPageScroll();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }

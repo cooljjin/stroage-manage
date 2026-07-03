@@ -3,6 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
+import { isNativeBarcodeScannerAvailable, scanNativeBarcode } from "../lib/nativeBarcodeScanner";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { supabase } from "../lib/supabase";
 import type { AppRoute, Product } from "../types/domain";
@@ -10,6 +11,7 @@ import type { AppRoute, Product } from "../types/domain";
 type Props = {
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
+  scanLaunchId?: number;
 };
 
 const SCANNER_ID = "barcode-scanner";
@@ -55,7 +57,7 @@ async function findProductByBarcode(barcode: string, currentStoreId: string): Pr
   return { product: (aliasProduct as Product | null) ?? null, errorMessage: "" };
 }
 
-export function ScanPage({ navigate, currentStoreId }: Props) {
+export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const [scannerActive, setScannerActive] = useState(false);
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,12 +65,15 @@ export function ScanPage({ navigate, currentStoreId }: Props) {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_CAMERA_ZOOM);
+  const [nativeScanBusy, setNativeScanBusy] = useState(false);
+  const nativeScannerAvailable = useMemo(() => isNativeBarcodeScannerAvailable(), []);
+  const [showFallbackUi, setShowFallbackUi] = useState(!nativeScannerAvailable);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const barcodeHandlingRef = useRef(false);
-  const autoStartAttemptedRef = useRef(false);
-
-  const canScan = useMemo(() => "mediaDevices" in navigator, []);
+  const lastAutoStartKeyRef = useRef<string | number | null>(null);
+  const canWebScan = useMemo(() => "mediaDevices" in navigator, []);
+  const canScan = canWebScan || nativeScannerAvailable;
 
   useEffect(() => {
     return () => {
@@ -108,9 +113,10 @@ export function ScanPage({ navigate, currentStoreId }: Props) {
     }
   }, [currentStoreId, navigate]);
 
-  const startScanner = useCallback(async () => {
-    setMessage("");
-    if (!canScan) {
+  const startWebScanner = useCallback(async (initialMessage = "") => {
+    setShowFallbackUi(true);
+    setMessage(initialMessage);
+    if (!canWebScan) {
       setMessage("이 기기에서는 카메라를 사용할 수 없습니다.");
       return;
     }
@@ -170,17 +176,59 @@ export function ScanPage({ navigate, currentStoreId }: Props) {
       setScannerActive(false);
       setMessage(error instanceof Error ? error.message : "카메라 실행에 실패했습니다.");
     }
-  }, [canScan, handleBarcode]);
+  }, [canWebScan, handleBarcode]);
+
+  const startScanner = useCallback(async () => {
+    setMessage("");
+
+    if (!canScan) {
+      setMessage("이 기기에서는 카메라를 사용할 수 없습니다.");
+      return;
+    }
+
+    if (nativeScannerAvailable) {
+      setNativeScanBusy(true);
+      const result = await scanNativeBarcode();
+      setNativeScanBusy(false);
+
+      if (result.status === "success") {
+        await handleBarcode(result.barcode);
+        return;
+      }
+
+      if (result.status === "register") {
+        navigate({ name: "register", barcode: "" });
+        return;
+      }
+
+      if (result.status === "cancelled") {
+        navigate({ name: "home" });
+        return;
+      }
+
+      if (!result.fallbackToWeb) {
+        setShowFallbackUi(true);
+        setMessage(result.message);
+        return;
+      }
+
+      await startWebScanner(result.message);
+      return;
+    }
+
+    await startWebScanner();
+  }, [canScan, handleBarcode, nativeScannerAvailable, navigate, startWebScanner]);
 
   useEffect(() => {
-    if (autoStartAttemptedRef.current) return;
-    autoStartAttemptedRef.current = true;
+    const autoStartKey = nativeScannerAvailable ? (scanLaunchId ?? "native-initial") : "web-initial";
+    if (lastAutoStartKeyRef.current === autoStartKey) return;
+    lastAutoStartKeyRef.current = autoStartKey;
     const timer = window.setTimeout(() => {
       void startScanner();
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [startScanner]);
+  }, [nativeScannerAvailable, scanLaunchId, startScanner]);
 
   async function stopScanner() {
     if (scannerRef.current?.isScanning) await scannerRef.current.stop();
@@ -275,92 +323,100 @@ export function ScanPage({ navigate, currentStoreId }: Props) {
 
   return (
     <section>
-      <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
+      {!showFallbackUi ? (
+        <div className="grid min-h-[55dvh] place-items-center">
+          <StatusMessage>{nativeScanBusy ? "카메라를 여는 중..." : "스캔 화면으로 이동하는 중..."}</StatusMessage>
+        </div>
+      ) : (
+        <>
+          <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="panel p-4">
-          <div className="relative overflow-hidden rounded-md bg-slate-900">
-            <div id={SCANNER_ID} className="min-h-[320px]" />
-            {scannerActive ? (
-              <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
-                바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
+          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="panel p-4">
+              <div className="relative overflow-hidden rounded-md bg-slate-900">
+                <div id={SCANNER_ID} className="min-h-[320px]" />
+                {scannerActive ? (
+                  <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
+                    바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
 
-          {scannerActive && zoomRange ? (
-            <label className="mt-3 flex items-center gap-3 rounded-md bg-slate-100 px-3 py-2 dark:bg-slate-900">
-              <ZoomIn className="shrink-0 text-slate-500" size={18} />
+              {scannerActive && zoomRange ? (
+                <label className="mt-3 flex items-center gap-3 rounded-md bg-slate-100 px-3 py-2 dark:bg-slate-900">
+                  <ZoomIn className="shrink-0 text-slate-500" size={18} />
+                  <input
+                    type="range"
+                    min={zoomRange.min}
+                    max={zoomRange.max}
+                    step={zoomRange.step}
+                    value={zoom}
+                    onChange={(event) => void changeZoom(Number(event.target.value))}
+                    className="min-w-0 flex-1 accent-teal-700"
+                    aria-label="카메라 확대"
+                  />
+                  <span className="w-10 text-right text-xs font-bold">{zoom.toFixed(1)}x</span>
+                </label>
+              ) : null}
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button type="button" onClick={startScanner} disabled={scannerActive || nativeScanBusy} className="primary-button inline-flex items-center justify-center gap-2">
+                  <ScanLine size={20} />
+                  {nativeScanBusy ? "스캔 중..." : "바코드 스캔"}
+                </button>
+                <button type="button" onClick={stopScanner} disabled={!scannerActive} className="secondary-button">
+                  중지
+                </button>
+              </div>
               <input
-                type="range"
-                min={zoomRange.min}
-                max={zoomRange.max}
-                step={zoomRange.step}
-                value={zoom}
-                onChange={(event) => void changeZoom(Number(event.target.value))}
-                className="min-w-0 flex-1 accent-teal-700"
-                aria-label="카메라 확대"
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => void scanImage(event)}
+                className="hidden"
               />
-              <span className="w-10 text-right text-xs font-bold">{zoom.toFixed(1)}x</span>
-            </label>
-          ) : null}
-
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button type="button" onClick={startScanner} disabled={scannerActive} className="primary-button inline-flex items-center justify-center gap-2">
-              <ScanLine size={20} />
-              바코드 스캔
-            </button>
-            <button type="button" onClick={stopScanner} disabled={!scannerActive} className="secondary-button">
-              중지
-            </button>
-          </div>
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(event) => void scanImage(event)}
-            className="hidden"
-          />
-          <button
-            type="button"
-            onClick={() => imageInputRef.current?.click()}
-            className="secondary-button mt-3 inline-flex w-full items-center justify-center gap-2"
-          >
-            <Camera size={19} />
-            사진으로 바코드 인식
-          </button>
-          {message ? <div className="mt-3"><StatusMessage type={message.includes("실패") ? "error" : "info"}>{message}</StatusMessage></div> : null}
-        </div>
-
-        <div className="panel p-4">
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <input className="field" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="상품명 또는 바코드" />
-            <button type="submit" className="primary-button inline-flex min-w-[56px] items-center justify-center" aria-label="상품 검색">
-              <Search size={22} />
-            </button>
-          </form>
-
-          <div className="mt-4 space-y-2">
-            {loadingSearch ? <StatusMessage>검색 중...</StatusMessage> : null}
-            {!loadingSearch && results.length === 0 && searchTerm ? <StatusMessage>검색 결과가 없습니다.</StatusMessage> : null}
-            {results.map((product) => (
               <button
-                key={product.id}
                 type="button"
-                onClick={() => navigate({ name: "operation", productId: product.id })}
-                className="w-full rounded-md border border-slate-200 bg-white p-3 text-left dark:border-slate-800 dark:bg-slate-900"
+                onClick={() => imageInputRef.current?.click()}
+                className="secondary-button mt-3 inline-flex w-full items-center justify-center gap-2"
               >
-                <span className="block font-semibold">{product.name}</span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
+                <Camera size={19} />
+                사진으로 바코드 인식
               </button>
-            ))}
-            <button type="button" onClick={() => navigate({ name: "register", barcode: searchTerm.trim() })} className="secondary-button w-full">
-              새 상품 등록
-            </button>
+              {message ? <div className="mt-3"><StatusMessage type={message.includes("실패") ? "error" : "info"}>{message}</StatusMessage></div> : null}
+            </div>
+
+            <div className="panel p-4">
+              <form onSubmit={handleSearch} className="flex gap-2">
+                <input className="field" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="상품명 또는 바코드" />
+                <button type="submit" className="primary-button inline-flex min-w-[56px] items-center justify-center" aria-label="상품 검색">
+                  <Search size={22} />
+                </button>
+              </form>
+
+              <div className="mt-4 space-y-2">
+                {loadingSearch ? <StatusMessage>검색 중...</StatusMessage> : null}
+                {!loadingSearch && results.length === 0 && searchTerm ? <StatusMessage>검색 결과가 없습니다.</StatusMessage> : null}
+                {results.map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => navigate({ name: "operation", productId: product.id })}
+                    className="w-full rounded-md border border-slate-200 bg-white p-3 text-left dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <span className="block font-semibold">{product.name}</span>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">{product.barcode ?? "바코드 없음"}</span>
+                  </button>
+                ))}
+                <button type="button" onClick={() => navigate({ name: "register", barcode: searchTerm.trim() })} className="secondary-button w-full">
+                  새 상품 등록
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </section>
   );
 }

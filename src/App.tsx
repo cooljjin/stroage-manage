@@ -35,6 +35,8 @@ import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 import type { ProfileRole } from "./types/domain";
 
 const NAV_ROUTES: RouteName[] = ["home", "inventory", "scan", "low-stock", "logs"];
+const SCROLL_RESTORE_TIMEOUT_MS = 2500;
+const SCROLL_RESTORE_TOLERANCE_PX = 2;
 
 type RouteHistoryEntry = {
   route: AppRoute;
@@ -61,7 +63,7 @@ function isMobileViewport() {
 }
 
 function defaultSignedInRoute(): AppRoute {
-  return { name: isMobileViewport() ? "scan" : "home" };
+  return isMobileViewport() ? { name: "scan", scanLaunchId: Date.now() } : { name: "home" };
 }
 
 function getProfileRole(profile: StaffProfile): ProfileRole {
@@ -91,6 +93,11 @@ function updateBrowserPath(next: AppRoute) {
   } else {
     window.history.replaceState(null, "", "/");
   }
+}
+
+function maxWindowScrollY() {
+  const scrollHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+  return Math.max(0, scrollHeight - window.innerHeight);
 }
 
 export default function App() {
@@ -180,11 +187,34 @@ export default function App() {
     const pendingScrollY = pendingScrollYRef.current;
     if (pendingScrollY === null) return;
 
+    const scrollY = pendingScrollY;
     pendingScrollYRef.current = null;
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: pendingScrollY, behavior: "auto" });
-      window.setTimeout(() => window.scrollTo({ top: pendingScrollY, behavior: "auto" }), 150);
-    });
+    let frameId = 0;
+    let timeoutId = 0;
+    let cancelled = false;
+    const startedAt = performance.now();
+
+    function restoreScroll() {
+      if (cancelled) return;
+
+      window.scrollTo({ top: scrollY, behavior: "auto" });
+
+      const reachedTarget = Math.abs(window.scrollY - scrollY) <= SCROLL_RESTORE_TOLERANCE_PX;
+      const canReachTarget = maxWindowScrollY() >= scrollY;
+      const timedOut = performance.now() - startedAt >= SCROLL_RESTORE_TIMEOUT_MS;
+      if ((reachedTarget && canReachTarget) || timedOut) return;
+
+      frameId = requestAnimationFrame(restoreScroll);
+    }
+
+    frameId = requestAnimationFrame(restoreScroll);
+    timeoutId = window.setTimeout(restoreScroll, 150);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
   }, [route]);
 
   useEffect(() => {
@@ -195,6 +225,10 @@ export default function App() {
   const activeRoute = useMemo<RouteName>(() => {
     return NAV_ROUTES.includes(route.name) ? route.name : "home";
   }, [route.name]);
+
+  function navigateFromBottomNav(name: RouteName) {
+    navigate(name === "scan" ? { name, scanLaunchId: Date.now() } : { name }, { resetHistory: true });
+  }
 
   function navigate(next: AppRoute, options: { replace?: boolean; resetHistory?: boolean; scrollY?: number } = {}) {
     setMenuOpen(false);
@@ -332,7 +366,7 @@ export default function App() {
   return (
     <div className="min-h-dvh overflow-x-clip bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <OfflineBanner />
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
@@ -383,7 +417,7 @@ export default function App() {
           </button>
         ) : null}
         {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} />}
+        {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
         {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
         {permittedRoute.name === "product-edit" && (
           <ProductEditPage
@@ -432,7 +466,7 @@ export default function App() {
         {permittedRoute.name === "admin" && <AdminPage />}
       </main>
 
-      <BottomNav activeRoute={activeRoute} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
+      <BottomNav activeRoute={activeRoute} onNavigate={navigateFromBottomNav} />
     </div>
   );
 }
