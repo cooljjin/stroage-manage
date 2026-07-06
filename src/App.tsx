@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { App as CapacitorApp, type URLOpenListenerEvent } from "@capacitor/app";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { ArrowLeft, KeyRound, Moon, Plus, Shield, Sun } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
@@ -207,6 +209,41 @@ export default function App() {
     });
 
     return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let listenerHandle: PluginListenerHandle | null = null;
+    let cancelled = false;
+
+    CapacitorApp
+      .addListener("appUrlOpen", (event) => {
+        const urlOpenEvent = event as URLOpenListenerEvent;
+        const url = urlOpenEvent.url;
+        if (!url.startsWith("com.jinkim.storeinventory.poc://auth/callback")) return;
+        void Services.AuthService.handleOAuthCallbackUrl(url).then(({ data, error }) => {
+          if (cancelled) return;
+          if (!error) {
+            setSession(data.session);
+          }
+        });
+      })
+      .then((handle) => {
+        if (cancelled) {
+          void handle.remove();
+        } else {
+          listenerHandle = handle;
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      if (listenerHandle) {
+        void listenerHandle.remove();
+      }
+    };
   }, []);
 
   useEffect(() => {
