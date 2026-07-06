@@ -41,6 +41,8 @@ const SCROLL_RESTORE_TIMEOUT_MS = 2500;
 const SCROLL_RESTORE_TOLERANCE_PX = 2;
 const POST_SCAN_ROUTE_STORAGE_KEY = "store-inventory-post-scan-route";
 const POST_SCAN_ROUTE_TTL_MS = 5 * 60 * 1000;
+const PENDING_SCAN_STORAGE_KEY = "store-inventory-pending-scan";
+const PENDING_SCAN_TTL_MS = 5 * 60 * 1000;
 
 type RouteHistoryEntry = {
   route: AppRoute;
@@ -51,6 +53,27 @@ type StoredRouteEntry = {
   route: AppRoute;
   savedAt: number;
 };
+
+type StoredPendingScanEntry = {
+  savedAt: number;
+};
+
+function hasPendingScanBarcode() {
+  const rawEntry = localStorage.getItem(PENDING_SCAN_STORAGE_KEY);
+  if (!rawEntry) return false;
+
+  try {
+    const entry = JSON.parse(rawEntry) as StoredPendingScanEntry;
+    if (Date.now() - entry.savedAt > PENDING_SCAN_TTL_MS) {
+      localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+    return false;
+  }
+}
 
 function initialRoute(): AppRoute {
   const inviteMatch = window.location.pathname.match(/^\/invite\/([^/]+)$/);
@@ -67,12 +90,8 @@ function initialRoute(): AppRoute {
   return { name: "landing" };
 }
 
-function isMobileViewport() {
-  return window.matchMedia("(max-width: 767px)").matches;
-}
-
 function defaultSignedInRoute(): AppRoute {
-  return isMobileViewport() ? { name: "scan", scanLaunchId: Date.now() } : { name: "home" };
+  return hasPendingScanBarcode() ? { name: "scan", scanLaunchId: Date.now() } : { name: "home" };
 }
 
 function isPostScanRoute(route: AppRoute) {
