@@ -39,10 +39,17 @@ import type { ProfileRole } from "./types/domain";
 const NAV_ROUTES: RouteName[] = ["home", "inventory", "scan", "low-stock", "logs"];
 const SCROLL_RESTORE_TIMEOUT_MS = 2500;
 const SCROLL_RESTORE_TOLERANCE_PX = 2;
+const POST_SCAN_ROUTE_STORAGE_KEY = "store-inventory-post-scan-route";
+const POST_SCAN_ROUTE_TTL_MS = 5 * 60 * 1000;
 
 type RouteHistoryEntry = {
   route: AppRoute;
   scrollY: number;
+};
+
+type StoredRouteEntry = {
+  route: AppRoute;
+  savedAt: number;
 };
 
 function initialRoute(): AppRoute {
@@ -66,6 +73,33 @@ function isMobileViewport() {
 
 function defaultSignedInRoute(): AppRoute {
   return isMobileViewport() ? { name: "scan", scanLaunchId: Date.now() } : { name: "home" };
+}
+
+function isPostScanRoute(route: AppRoute) {
+  return route.name === "operation" || route.name === "register";
+}
+
+function savePostScanRoute(route: AppRoute) {
+  if (!isPostScanRoute(route)) return;
+  const entry: StoredRouteEntry = { route, savedAt: Date.now() };
+  sessionStorage.setItem(POST_SCAN_ROUTE_STORAGE_KEY, JSON.stringify(entry));
+}
+
+function consumePostScanRoute(): AppRoute | null {
+  const rawEntry = sessionStorage.getItem(POST_SCAN_ROUTE_STORAGE_KEY);
+  if (!rawEntry) return null;
+
+  try {
+    const entry = JSON.parse(rawEntry) as StoredRouteEntry;
+    if (!isPostScanRoute(entry.route) || Date.now() - entry.savedAt > POST_SCAN_ROUTE_TTL_MS) {
+      sessionStorage.removeItem(POST_SCAN_ROUTE_STORAGE_KEY);
+      return null;
+    }
+    return entry.route;
+  } catch {
+    sessionStorage.removeItem(POST_SCAN_ROUTE_STORAGE_KEY);
+    return null;
+  }
 }
 
 function getProfileRole(profile: StaffProfile): ProfileRole {
@@ -179,7 +213,7 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     if (route.name === "landing" || (route.name === "login" && !route.authInviteToken) || route.name === "signup-request") {
-      const homeRoute = defaultSignedInRoute();
+      const homeRoute = consumePostScanRoute() ?? defaultSignedInRoute();
       pendingScrollYRef.current = 0;
       setRoute(homeRoute);
       updateBrowserPath(homeRoute);
@@ -235,6 +269,9 @@ export default function App() {
 
   function navigate(next: AppRoute, options: { replace?: boolean; resetHistory?: boolean; scrollY?: number } = {}) {
     setMenuOpen(false);
+    if (route.name === "scan") {
+      savePostScanRoute(next);
+    }
     if (options.resetHistory) {
       routeHistoryRef.current = [];
       setCanGoBack(false);
