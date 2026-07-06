@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, PointerEvent } from "react";
 import { Calculator, CalendarDays, ChevronLeft, ChevronRight, Clock, Pencil, Plus, Trash2, X } from "lucide-react";
+import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
@@ -259,6 +260,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
   const [rangeEndDate, setRangeEndDate] = useState(() => toDateValue(new Date()));
   const [selectedEvent, setSelectedEvent] = useState<GroupOrderEvent | null>(null);
   const [organizationName, setOrganizationName] = useState("");
+  const [customerContact, setCustomerContact] = useState("");
   const [requestedTime, setRequestedTime] = useState("");
   const [eventNote, setEventNote] = useState("");
   const [orderDrafts, setOrderDrafts] = useState<OrderDraft[]>([{ menuId: "", menuSearch: "", quantity: "" }]);
@@ -582,6 +584,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setRangeEndDate(dateValue);
     setSelectedEvent(null);
     setOrganizationName("");
+    setCustomerContact("");
     setRequestedTime("");
     setEventNote("");
     setCalendarMonth(getMonthStart(dateValue));
@@ -596,6 +599,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setRangeEndDate(event.order_date);
     setSelectedEvent(event);
     setOrganizationName(event.organization_name);
+    setCustomerContact(event.customer_contact ?? "");
     setRequestedTime(formatTimeLabel(event.requested_time));
     setEventNote(event.note ?? "");
     setCalendarMonth(getMonthStart(event.order_date));
@@ -617,6 +621,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setRangeEndDate(event.order_date);
     setSelectedEvent(event);
     setOrganizationName(event.organization_name);
+    setCustomerContact(event.customer_contact ?? "");
     setRequestedTime(formatTimeLabel(event.requested_time));
     setEventNote(event.note ?? "");
     setOrderDrafts(getOrderDraftsForEvent(event.id));
@@ -676,6 +681,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setRangeEndDate(dateValue);
     setSelectedEvent(null);
     setOrganizationName("");
+    setCustomerContact("");
     setRequestedTime("");
     setEventNote("");
     setResults(null);
@@ -824,6 +830,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     const eventPayload = {
       order_date: selectedDate,
       organization_name: nextOrganizationName,
+      customer_contact: customerContact.trim() || null,
       requested_time: nextRequestedTime,
       note: eventNote.trim() || null
     };
@@ -852,6 +859,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     await refresh();
     setSelectedEvent(savedEvent);
     setOrganizationName(savedEvent.organization_name);
+    setCustomerContact(savedEvent.customer_contact ?? "");
     setRequestedTime(formatTimeLabel(savedEvent.requested_time));
     setEventNote(savedEvent.note ?? "");
     setCalculatorStep("orders");
@@ -883,6 +891,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
 
     setSelectedEvent(null);
     setOrganizationName("");
+    setCustomerContact("");
     setRequestedTime("");
     setEventNote("");
     setCalculatorStep("calendar");
@@ -1550,6 +1559,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                           onClick={() => {
                             setSelectedEvent(null);
                             setOrganizationName("");
+                            setCustomerContact("");
                             setRequestedTime("");
                             setEventNote("");
                           }}
@@ -1578,6 +1588,10 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                       <input className="field" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} placeholder="단체명" required />
                     </label>
                     <label className="block min-w-0">
+                      <span className="mb-1 block text-sm font-semibold">고객 연락처</span>
+                      <input className="field" type="tel" value={customerContact} onChange={(event) => setCustomerContact(event.target.value)} placeholder="010-0000-0000" />
+                    </label>
+                    <label className="block min-w-0">
                       <span className="mb-1 block text-sm font-semibold">요청 시간</span>
                       <input className="field" type="time" value={requestedTime} onChange={(event) => setRequestedTime(event.target.value)} required />
                     </label>
@@ -1592,12 +1606,12 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                   </button>
                 </form>
 
-                <div className="space-y-2">
+                <AnimatedList className="space-y-2">
                   {selectedDateEvents.map((event) => {
                     const savedOrderItems = eventItemsByEventId.get(event.id) ?? [];
 
                     return (
-                      <div
+                      <AnimatedListItem
                         key={event.id}
                         role="button"
                         tabIndex={0}
@@ -1617,6 +1631,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                               <Clock size={14} />
                               {formatTimeLabel(event.requested_time)}
                             </p>
+                            {event.customer_contact ? <p className="mt-1 break-words text-xs font-bold text-slate-500 dark:text-slate-400">연락처 {event.customer_contact}</p> : null}
                             {savedOrderItems.length > 0 ? (
                               <div className="mt-2 space-y-1 rounded-md bg-slate-50 px-2 py-2 text-xs font-bold text-slate-700 dark:bg-slate-900 dark:text-slate-200">
                                 {savedOrderItems.map((item) => {
@@ -1645,12 +1660,12 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                             </button>
                           </div>
                         </div>
-                      </div>
+                      </AnimatedListItem>
                     );
                   })}
 
                   {selectedDateEvents.length === 0 ? <StatusMessage>선택한 날짜의 단체주문 일정이 없습니다.</StatusMessage> : null}
-                </div>
+                </AnimatedList>
               </div>
             </div>
           ) : null}
@@ -1664,6 +1679,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
                     <h2 className="mt-1 break-words text-lg font-extrabold">
                       {selectedEvent ? `${selectedEvent.organization_name} · ${formatTimeLabel(selectedEvent.requested_time)}` : "단체주문"}
                     </h2>
+                    {selectedEvent?.customer_contact ? <p className="mt-1 break-words text-sm font-bold text-slate-500 dark:text-slate-400">연락처 {selectedEvent.customer_contact}</p> : null}
                     {selectedEvent?.note ? <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">{selectedEvent.note}</p> : null}
                   </div>
                   <button type="button" onClick={() => setCalculatorStep("calendar")} className="secondary-button min-h-11 px-3">

@@ -24,6 +24,7 @@ create table if not exists public.group_order_events (
   store_id uuid not null references public.stores(id) on delete restrict,
   order_date date not null,
   organization_name text not null check (char_length(trim(organization_name)) > 0),
+  customer_contact text,
   requested_time time not null,
   note text,
   created_at timestamptz not null default now(),

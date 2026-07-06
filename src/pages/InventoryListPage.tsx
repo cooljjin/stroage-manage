@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Search, TriangleAlert } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
+import { InventoryTableSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
 import { VIEW_MODE_STORAGE_KEY } from "../lib/constants";
 import { fallbackCategories, loadCategories } from "../lib/categories";
@@ -149,7 +150,12 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
         </div>
       </div>
 
-      {loading ? <StatusMessage>재고를 불러오는 중...</StatusMessage> : null}
+      {loading ? (
+        <div role="status" aria-live="polite" aria-label="재고를 불러오는 중">
+          <span className="sr-only">재고를 불러오는 중...</span>
+          <InventoryTableSkeleton compact={viewMode === "compact"} />
+        </div>
+      ) : null}
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
       {message ? <StatusMessage type="success">{message}</StatusMessage> : null}
 

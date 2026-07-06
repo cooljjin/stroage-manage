@@ -3,6 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { ScanLine, Search, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
+import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
@@ -604,7 +605,17 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
         }
       />
 
-      {loading ? <StatusMessage>부족 재고를 불러오는 중...</StatusMessage> : null}
+      {loading ? (
+        <div role="status" aria-live="polite" aria-label="부족 재고를 불러오는 중">
+          <span className="sr-only">부족 재고를 불러오는 중...</span>
+          <div className="sm:hidden">
+            <LowStockCardSkeleton />
+          </div>
+          <div className="hidden sm:block">
+            <InventoryTableSkeleton rows={6} />
+          </div>
+        </div>
+      ) : null}
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
 
       {!loading && !error ? (

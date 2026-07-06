@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
+import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { StatusMessage } from "../components/StatusMessage";
 import { getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
@@ -475,7 +476,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               </button>
             ) : undefined}
           />
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
             {!loading && receipts.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
@@ -483,7 +484,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               </div>
             ) : null}
             {receipts.map((item) => (
-              <div key={item.productId} className="flex min-h-11 items-center gap-1 border-b border-slate-100 px-2 last:border-0 dark:border-slate-800">
+              <AnimatedListItem key={item.productId} className="flex min-h-11 items-center gap-1 border-b border-slate-100 px-2 last:border-0 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => navigate({ name: "operation", productId: item.productId })}
@@ -506,9 +507,9 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     <Trash2 size={17} />
                   </button>
                 ) : null}
-              </div>
+              </AnimatedListItem>
             ))}
-          </div>
+          </AnimatedList>
         </article>
 
         <article className="panel flex min-h-0 flex-col overflow-hidden">
@@ -530,14 +531,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               </button>
             </form>
           ) : null}
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
             {!loading && todos.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
                 {isToday ? "오늘 해야 할 일이 없습니다." : "내일 근무자를 위한 할 일이 없습니다."}
               </div>
             ) : null}
             {todos.map((todo) => (
-              <div key={todo.id} className="flex min-h-11 items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
+              <AnimatedListItem key={todo.id} className="flex min-h-11 items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
                 <label className={`flex min-w-0 flex-1 items-center gap-2.5 ${isToday ? "cursor-pointer" : ""}`}>
                   <input
                     type="checkbox"
@@ -560,9 +561,9 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     <Trash2 size={17} />
                   </button>
                 ) : null}
-              </div>
+              </AnimatedListItem>
             ))}
-          </div>
+          </AnimatedList>
         </article>
 
         <article className="panel flex min-h-0 flex-col overflow-hidden">
@@ -591,14 +592,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               </button>
             </form>
           ) : null}
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
             {!loading && handovers.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
                 {isToday ? "오늘 인지할 인수인계가 없습니다." : "내일 근무자를 위한 인수인계가 없습니다."}
               </div>
             ) : null}
             {handovers.map((note) => (
-              <div key={note.id} className="flex gap-2 border-b border-slate-100 px-3 py-2.5 last:border-0 dark:border-slate-800">
+              <AnimatedListItem key={note.id} className="flex gap-2 border-b border-slate-100 px-3 py-2.5 last:border-0 dark:border-slate-800">
                 <div className="min-w-0 flex-1">
                   <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-snug">{note.content}</p>
                   <p className="mt-1 text-[10px] text-slate-400">{profiles.get(note.created_by) ?? "직원"} · {formatDateTime(note.created_at)}</p>
@@ -615,9 +616,9 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     <Trash2 size={17} />
                   </button>
                 ) : null}
-              </div>
+              </AnimatedListItem>
             ))}
-          </div>
+          </AnimatedList>
         </article>
       </div>
 
@@ -633,17 +634,17 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {history.length === 0 ? <StatusMessage>저장된 인수인계가 없습니다.</StatusMessage> : null}
-              <div className="space-y-2">
+              <AnimatedList className="space-y-2">
                 {history.map((note) => (
-                  <div key={note.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                  <AnimatedListItem key={note.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-xs font-extrabold text-brand-700 dark:text-brand-100">{shortDateLabel(note.handover_date)}</span>
                       <span className="text-[10px] text-slate-400">{note.author_name}</span>
                     </div>
                     <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{note.content}</p>
-                  </div>
+                  </AnimatedListItem>
                 ))}
-              </div>
+              </AnimatedList>
             </div>
           </div>
         </div>

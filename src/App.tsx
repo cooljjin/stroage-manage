@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { ArrowLeft, Moon, Shield, Sun } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
@@ -29,6 +30,7 @@ import { StaffManagementPage } from "./pages/StaffManagementPage";
 import { MasterStoresPage } from "./pages/MasterStoresPage";
 import { MasterUsersPage } from "./pages/MasterUsersPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
+import { pageTransitionMotion, reducedPageTransitionMotion } from "./lib/animations";
 import { ensureCurrentProfile } from "./lib/profiles";
 import { supabase } from "./lib/supabase";
 import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
@@ -111,6 +113,7 @@ export default function App() {
   const [canGoBack, setCanGoBack] = useState(false);
   const routeHistoryRef = useRef<RouteHistoryEntry[]>([]);
   const pendingScrollYRef = useRef<number | null>(null);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -362,6 +365,7 @@ export default function App() {
 
   const permittedRoute = canAccess(route.name, profile) ? route : { name: "home" as const };
   const profileRole = getProfileRole(profile);
+  const routeMotionProps = shouldReduceMotion ? reducedPageTransitionMotion : pageTransitionMotion;
 
   return (
     <div className="min-h-dvh overflow-x-clip bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
@@ -416,54 +420,58 @@ export default function App() {
             뒤로가기
           </button>
         ) : null}
-        {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
-        {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
-        {permittedRoute.name === "product-edit" && (
-          <ProductEditPage
-            productId={permittedRoute.productId ?? ""}
-            navigate={navigate}
-            currentStoreId={profile.store_id}
-            returnTo={permittedRoute.returnTo}
-            prepDraft={permittedRoute.prepDraft}
-            groupOrderDraft={permittedRoute.groupOrderDraft}
-          />
-        )}
-        {permittedRoute.name === "operation" && (
-          <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
-        )}
-        {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
-        {permittedRoute.name === "group-order" && (
-          <GroupOrderCalculatorPage
-            mode="calculator"
-            navigate={navigate}
-            currentStoreId={profile.store_id}
-            currentRole={profileRole}
-            restoreDraft={permittedRoute.groupOrderDraft}
-          />
-        )}
-        {permittedRoute.name === "group-order-recipes" && (
-          <GroupOrderCalculatorPage
-            mode="recipes"
-            navigate={navigate}
-            currentStoreId={profile.store_id}
-            currentRole={profileRole}
-            restoreDraft={permittedRoute.groupOrderDraft}
-          />
-        )}
-        {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
-        {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
-        {permittedRoute.name === "category-management" && <CategoryManagementPage />}
-        {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
-        {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
-        {permittedRoute.name === "settings" && <SettingsPage />}
-        {permittedRoute.name === "staff-management" && <StaffManagementPage />}
-        {permittedRoute.name === "master-stores" && <MasterStoresPage />}
-        {permittedRoute.name === "master-users" && <MasterUsersPage />}
-        {permittedRoute.name === "admin" && <AdminPage />}
+        <LazyMotion features={domAnimation}>
+          <m.div key={routeKey(permittedRoute)} initial={routeMotionProps.initial} animate={routeMotionProps.animate} transition={routeMotionProps.transition}>
+            {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
+            {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
+            {permittedRoute.name === "product-edit" && (
+              <ProductEditPage
+                productId={permittedRoute.productId ?? ""}
+                navigate={navigate}
+                currentStoreId={profile.store_id}
+                returnTo={permittedRoute.returnTo}
+                prepDraft={permittedRoute.prepDraft}
+                groupOrderDraft={permittedRoute.groupOrderDraft}
+              />
+            )}
+            {permittedRoute.name === "operation" && (
+              <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
+            )}
+            {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "group-order" && (
+              <GroupOrderCalculatorPage
+                mode="calculator"
+                navigate={navigate}
+                currentStoreId={profile.store_id}
+                currentRole={profileRole}
+                restoreDraft={permittedRoute.groupOrderDraft}
+              />
+            )}
+            {permittedRoute.name === "group-order-recipes" && (
+              <GroupOrderCalculatorPage
+                mode="recipes"
+                navigate={navigate}
+                currentStoreId={profile.store_id}
+                currentRole={profileRole}
+                restoreDraft={permittedRoute.groupOrderDraft}
+              />
+            )}
+            {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
+            {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
+            {permittedRoute.name === "category-management" && <CategoryManagementPage />}
+            {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
+            {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
+            {permittedRoute.name === "settings" && <SettingsPage />}
+            {permittedRoute.name === "staff-management" && <StaffManagementPage />}
+            {permittedRoute.name === "master-stores" && <MasterStoresPage />}
+            {permittedRoute.name === "master-users" && <MasterUsersPage />}
+            {permittedRoute.name === "admin" && <AdminPage />}
+          </m.div>
+        </LazyMotion>
       </main>
 
       <BottomNav activeRoute={activeRoute} onNavigate={navigateFromBottomNav} />

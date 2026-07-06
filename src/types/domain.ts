@@ -203,6 +203,7 @@ export type GroupOrderEvent = {
   store_id: string;
   order_date: string;
   organization_name: string;
+  customer_contact: string | null;
   requested_time: string;
   note: string | null;
   created_at: string;

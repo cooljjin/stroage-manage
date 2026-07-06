@@ -72,11 +72,16 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const barcodeHandlingRef = useRef(false);
   const lastAutoStartKeyRef = useRef<string | number | null>(null);
+  const mountedRef = useRef(true);
+  const scanAttemptRef = useRef(0);
+  const completedNavigationRef = useRef(false);
   const canWebScan = useMemo(() => "mediaDevices" in navigator, []);
   const canScan = canWebScan || nativeScannerAvailable;
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
+      scanAttemptRef.current += 1;
       if (scannerRef.current?.isScanning) {
         scannerRef.current.stop().catch(() => undefined);
       }
@@ -93,6 +98,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     setScannerActive(false);
 
     const { product, errorMessage } = await findProductByBarcode(barcode, currentStoreId);
+    if (!mountedRef.current || completedNavigationRef.current) return;
     if (errorMessage) {
       setMessage(errorMessage);
       barcodeHandlingRef.current = false;
@@ -101,19 +107,23 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
 
     if (product?.receipt_check_only) {
       const { errorMessage } = await recordReceiptCheckOnly(product.id, currentStoreId);
+      if (!mountedRef.current || completedNavigationRef.current) return;
       setMessage(errorMessage || `${product.name} 입고완료를 기록했습니다.`);
       barcodeHandlingRef.current = false;
       return;
     }
 
     if (product) {
+      completedNavigationRef.current = true;
       navigate({ name: "operation", productId: product.id });
     } else {
+      completedNavigationRef.current = true;
       navigate({ name: "register", barcode });
     }
   }, [currentStoreId, navigate]);
 
-  const startWebScanner = useCallback(async (initialMessage = "") => {
+  const startWebScanner = useCallback(async (initialMessage = "", scanAttempt = scanAttemptRef.current) => {
+    if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
     setShowFallbackUi(true);
     setMessage(initialMessage);
     if (!canWebScan) {
@@ -157,6 +167,12 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
         () => undefined
       );
 
+      if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) {
+        await scanner.stop().catch(() => undefined);
+        setScannerActive(false);
+        return;
+      }
+
       const focusConstraints: FocusMediaTrackConstraints = {
         advanced: [{ focusMode: "continuous" }]
       };
@@ -173,12 +189,16 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
         await zoomFeature.apply(initialZoom).catch(() => undefined);
       }
     } catch (error) {
+      if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
       setScannerActive(false);
       setMessage(error instanceof Error ? error.message : "카메라 실행에 실패했습니다.");
     }
   }, [canWebScan, handleBarcode]);
 
   const startScanner = useCallback(async () => {
+    const scanAttempt = scanAttemptRef.current + 1;
+    scanAttemptRef.current = scanAttempt;
+    completedNavigationRef.current = false;
     setMessage("");
 
     if (!canScan) {
@@ -189,6 +209,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (nativeScannerAvailable) {
       setNativeScanBusy(true);
       const result = await scanNativeBarcode();
+      if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
       setNativeScanBusy(false);
 
       if (result.status === "success") {
@@ -197,11 +218,13 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       }
 
       if (result.status === "register") {
+        completedNavigationRef.current = true;
         navigate({ name: "register", barcode: "" });
         return;
       }
 
       if (result.status === "cancelled") {
+        completedNavigationRef.current = true;
         navigate({ name: "home" });
         return;
       }
@@ -212,11 +235,11 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
         return;
       }
 
-      await startWebScanner(result.message);
+      await startWebScanner(result.message, scanAttempt);
       return;
     }
 
-    await startWebScanner();
+    await startWebScanner("", scanAttempt);
   }, [canScan, handleBarcode, nativeScannerAvailable, navigate, startWebScanner]);
 
   useEffect(() => {
@@ -224,6 +247,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (lastAutoStartKeyRef.current === autoStartKey) return;
     lastAutoStartKeyRef.current = autoStartKey;
     const timer = window.setTimeout(() => {
+      if (!mountedRef.current || completedNavigationRef.current) return;
       void startScanner();
     }, 250);
 
@@ -231,6 +255,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   }, [nativeScannerAvailable, scanLaunchId, startScanner]);
 
   async function stopScanner() {
+    scanAttemptRef.current += 1;
     if (scannerRef.current?.isScanning) await scannerRef.current.stop();
     barcodeHandlingRef.current = false;
     setScannerActive(false);

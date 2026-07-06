@@ -30,6 +30,7 @@ export function ProductOrderAction({ item, supplier, quantity, onQuantityChange 
   const hasProductUrl = Boolean(item.product_url);
   const hasSmsPhone = Boolean(supplier?.sms_phone?.trim());
   const hasQuantity = Boolean(quantity.trim());
+  const showQuantityInput = isSmsOrder && hasSmsPhone;
   const disabled = isSmsOrder ? !hasSmsPhone || !hasQuantity : !hasProductUrl;
   const actionLabel = isSmsOrder ? `${item.name} 문자 발주` : `${item.name} 링크 열기`;
 
@@ -46,16 +47,18 @@ export function ProductOrderAction({ item, supplier, quantity, onQuantityChange 
   }
 
   return (
-    <span className="mx-auto grid w-full min-w-0 max-w-[92px] grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-1" onClick={(event) => event.stopPropagation()}>
-      <input
-        className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-1 text-center text-sm font-bold tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={quantity}
-        onChange={(event) => onQuantityChange(event.target.value.replace(/\D/g, ""))}
-        placeholder="수량"
-        aria-label={`${item.name} 발주 수량`}
-      />
+    <span className={`mx-auto grid min-w-0 items-center gap-1 ${showQuantityInput ? "w-full max-w-[92px] grid-cols-[minmax(0,1fr)_2.5rem]" : "w-10 grid-cols-1"}`} onClick={(event) => event.stopPropagation()}>
+      {showQuantityInput ? (
+        <input
+          className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-1 text-center text-sm font-bold tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={quantity}
+          onChange={(event) => onQuantityChange(event.target.value.replace(/\D/g, ""))}
+          placeholder="수량"
+          aria-label={`${item.name} 발주 수량`}
+        />
+      ) : null}
       <button
         type="button"
         disabled={disabled}
