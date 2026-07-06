@@ -1,9 +1,9 @@
-import type { Session } from "@supabase/supabase-js";
 import type { StaffProfile } from "../types/domain";
-import { supabase } from "./supabase";
+import * as Services from "../services";
+import type { Session } from "../services";
 
 export async function ensureCurrentProfile(session: Session): Promise<StaffProfile | null> {
-  const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+  const { data: profile, error } = await Services.DatabaseService.select("profiles", "*").eq("id", session.user.id).maybeSingle();
 
   if (error) {
     return null;
@@ -12,7 +12,7 @@ export async function ensureCurrentProfile(session: Session): Promise<StaffProfi
   if (profile) {
     const email = session.user.email ?? null;
     if (profile.email !== email) {
-      await supabase.from("profiles").update({ email }).eq("id", session.user.id);
+      await Services.DatabaseService.update("profiles", { email }).eq("id", session.user.id);
     }
     return profile;
   }
@@ -21,14 +21,12 @@ export async function ensureCurrentProfile(session: Session): Promise<StaffProfi
 }
 
 export async function getCurrentStoreId(): Promise<{ storeId: string | null; errorMessage: string }> {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await Services.AuthService.getUser();
   if (userError || !userData.user) {
     return { storeId: null, errorMessage: userError?.message ?? "로그인이 필요합니다." };
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("store_id")
+  const { data: profile, error: profileError } = await Services.DatabaseService.select("profiles", "store_id")
     .eq("id", userData.user.id)
     .maybeSingle();
 

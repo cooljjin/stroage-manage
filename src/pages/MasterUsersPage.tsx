@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Save, Trash2, UserPlus, X } from "lucide-react";
+import { Copy, Save, Share2, Trash2, UserPlus, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { ProfileRole, StaffProfile, Store, StoreInvite } from "../types/domain";
 
 const ROLE_LABEL: Record<ProfileRole, string> = {
@@ -29,8 +29,6 @@ export function MasterUsersPage() {
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
   const [draftStoreIds, setDraftStoreIds] = useState<Record<string, string>>({});
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteStoreId, setInviteStoreId] = useState("");
   const [inviteRole, setInviteRole] = useState<Exclude<ProfileRole, "master">>("staff");
   const [createdInvite, setCreatedInvite] = useState<StoreInvite | null>(null);
   const [inviteSaving, setInviteSaving] = useState(false);
@@ -42,10 +40,17 @@ export function MasterUsersPage() {
     return new Map(stores.map((store) => [store.id, store.name]));
   }, [stores]);
 
-  const inviteLink = useMemo(() => {
+  const inviteCode = useMemo(() => {
     if (!createdInvite) return "";
-    return `${window.location.origin}/invite/${createdInvite.token}`;
+    return createdInvite.token;
   }, [createdInvite]);
+
+  const inviteUrl = useMemo(() => {
+    if (!inviteCode) return "";
+    const url = new URL(window.location.origin);
+    url.searchParams.set("inviteCode", inviteCode);
+    return url.toString();
+  }, [inviteCode]);
 
   const groupedProfiles = useMemo(() => {
     return profiles.reduce<Record<string, StaffProfile[]>>((groups, profile) => {
@@ -65,8 +70,8 @@ export function MasterUsersPage() {
     setError("");
 
     const [storesResult, profilesResult] = await Promise.all([
-      supabase.from("stores").select("*").order("name", { ascending: true }),
-      supabase.from("profiles").select("*").order("created_at", { ascending: true })
+      Services.DatabaseService.select("stores", "*").order("name", { ascending: true }),
+      Services.DatabaseService.select("profiles", "*").order("created_at", { ascending: true })
     ]);
 
     if (storesResult.error) {
@@ -74,78 +79,63 @@ export function MasterUsersPage() {
     } else if (profilesResult.error) {
       setError(profilesResult.error.message);
     } else {
-      const nextProfiles = profilesResult.data ?? [];
-      setStores(storesResult.data ?? []);
+      const nextProfiles = (profilesResult.data ?? []) as StaffProfile[];
+      setStores((storesResult.data ?? []) as Store[]);
       setProfiles(nextProfiles);
       setDraftNames(Object.fromEntries(nextProfiles.map((profile) => [profile.id, profile.display_name])));
       setDraftStoreIds(Object.fromEntries(nextProfiles.map((profile) => [profile.id, profile.store_id])));
-      setInviteStoreId((current) => current || storesResult.data?.[0]?.id || "");
     }
 
     setLoading(false);
   }
 
   async function createInvite() {
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email) {
-      setError("초대할 이메일을 입력해 주세요.");
-      return;
-    }
-    if (!inviteStoreId) {
-      setError("초대할 매장을 선택해 주세요.");
-      return;
-    }
-
     setInviteSaving(true);
     setError("");
     setMessage("");
     setCreatedInvite(null);
 
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData.user) {
-      setError(userError?.message ?? "로그인이 필요합니다.");
-      setInviteSaving(false);
-      return;
-    }
+    const { data, error: inviteError } = await Services.DatabaseService.rpc("create_store_invite", {
+      target_role: inviteRole
+    });
 
-    const { error: deleteError } = await supabase
-      .from("store_invites")
-      .delete()
-      .eq("store_id", inviteStoreId)
-      .eq("email", email)
-      .is("accepted_at", null);
-
-    if (deleteError) {
-      setError(deleteError.message);
-      setInviteSaving(false);
-      return;
-    }
-
-    const { data, error: insertError } = await supabase
-      .from("store_invites")
-      .insert({
-        store_id: inviteStoreId,
-        email,
-        role: inviteRole,
-        invited_by: userData.user.id
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      setError(insertError.message);
+    if (inviteError) {
+      setError(inviteError.message);
     } else {
-      setCreatedInvite(data);
-      setMessage("초대 링크를 생성했습니다.");
+      setCreatedInvite(data as StoreInvite);
+      setMessage("초대코드를 생성했습니다.");
     }
 
     setInviteSaving(false);
   }
 
-  async function copyInviteLink() {
-    if (!inviteLink) return;
-    await navigator.clipboard.writeText(inviteLink);
-    setMessage("초대 링크를 복사했습니다.");
+  async function copyInviteCode() {
+    if (!inviteCode) return;
+    await navigator.clipboard.writeText(inviteCode);
+    setMessage("초대코드를 복사했습니다.");
+  }
+
+  async function shareInvite() {
+    if (!inviteUrl) return;
+
+    const shareData = {
+      title: "매장 초대",
+      text: `초대코드 ${inviteCode}로 매장에 참여해 주세요.`,
+      url: inviteUrl
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        setMessage("초대 링크를 공유했습니다.");
+        return;
+      } catch (shareError) {
+        if (shareError instanceof DOMException && shareError.name === "AbortError") return;
+      }
+    }
+
+    await navigator.clipboard.writeText(inviteUrl);
+    setMessage("공유 링크를 복사했습니다.");
   }
 
   async function saveProfile(profile: StaffProfile) {
@@ -163,9 +153,7 @@ export function MasterUsersPage() {
     setError("");
     setMessage("");
 
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ display_name: displayName, store_id: storeId, updated_at: new Date().toISOString() })
+    const { error: updateError } = await Services.DatabaseService.update("profiles", { display_name: displayName, store_id: storeId, updated_at: new Date().toISOString() })
       .eq("id", profile.id);
 
     if (updateError) {
@@ -185,7 +173,7 @@ export function MasterUsersPage() {
     setError("");
     setMessage("");
 
-    const { data, error: deleteError } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>("delete-auth-user", {
+    const { data, error: deleteError } = await Services.EdgeFunctionService.invoke<{ ok?: boolean; error?: string }>("delete-auth-user", {
       body: { userId: profile.id }
     });
 
@@ -212,24 +200,7 @@ export function MasterUsersPage() {
 
       {inviteOpen ? (
         <div className="panel mb-4 space-y-3 p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_180px_150px_auto] lg:items-end">
-            <label className="block">
-              <span className="mb-1 block text-sm font-semibold">초대 이메일</span>
-              <input className="field" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="staff@example.com" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-sm font-semibold">배정 매장</span>
-              <select className="field" value={inviteStoreId} onChange={(event) => setInviteStoreId(event.target.value)}>
-                <option value="" disabled>
-                  매장 선택
-                </option>
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="grid gap-3 lg:grid-cols-[150px_auto] lg:items-end">
             <label className="block">
               <span className="mb-1 block text-sm font-semibold">권한</span>
               <select className="field" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Exclude<ProfileRole, "master">)}>
@@ -239,17 +210,24 @@ export function MasterUsersPage() {
             </label>
             <button type="button" onClick={createInvite} className="primary-button inline-flex items-center justify-center gap-2" disabled={inviteSaving}>
               <UserPlus size={18} />
-              {inviteSaving ? "생성 중..." : "링크 생성"}
+              {inviteSaving ? "생성 중..." : "초대코드 생성"}
             </button>
           </div>
 
-          {inviteLink ? (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input className="field flex-1" value={inviteLink} readOnly />
-              <button type="button" onClick={copyInviteLink} className="secondary-button inline-flex items-center justify-center gap-2">
-                <Copy size={18} />
-                복사
-              </button>
+          {inviteCode ? (
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input className="field flex-1 text-center text-lg font-bold uppercase tracking-widest" value={inviteCode} readOnly />
+                <button type="button" onClick={copyInviteCode} className="secondary-button inline-flex items-center justify-center gap-2">
+                  <Copy size={18} />
+                  코드 복사
+                </button>
+                <button type="button" onClick={() => void shareInvite()} className="primary-button inline-flex items-center justify-center gap-2">
+                  <Share2 size={18} />
+                  공유
+                </button>
+              </div>
+              <input className="field text-xs" value={inviteUrl} readOnly aria-label="초대 공유 링크" />
             </div>
           ) : null}
         </div>

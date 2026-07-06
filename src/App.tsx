@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
-import { ArrowLeft, Moon, Shield, Sun } from "lucide-react";
+import { ArrowLeft, KeyRound, Moon, Plus, Shield, Sun } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { TopMenu } from "./components/TopMenu";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupRequestPage } from "./pages/SignupRequestPage";
-import { InviteAcceptPage } from "./pages/InviteAcceptPage";
 import { HomePage } from "./pages/HomePage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductRegisterPage } from "./pages/ProductRegisterPage";
@@ -32,7 +30,8 @@ import { MasterUsersPage } from "./pages/MasterUsersPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
 import { pageTransitionMotion, reducedPageTransitionMotion } from "./lib/animations";
 import { ensureCurrentProfile } from "./lib/profiles";
-import { supabase } from "./lib/supabase";
+import * as Services from "./services";
+import type { Session } from "./services";
 import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 import type { ProfileRole } from "./types/domain";
 
@@ -43,6 +42,7 @@ const POST_SCAN_ROUTE_STORAGE_KEY = "store-inventory-post-scan-route";
 const POST_SCAN_ROUTE_TTL_MS = 5 * 60 * 1000;
 const PENDING_SCAN_STORAGE_KEY = "store-inventory-pending-scan";
 const PENDING_SCAN_TTL_MS = 5 * 60 * 1000;
+const PENDING_INVITE_CODE_STORAGE_KEY = "store-inventory-pending-invite-code";
 
 type RouteHistoryEntry = {
   route: AppRoute;
@@ -76,18 +76,32 @@ function hasPendingScanBarcode() {
 }
 
 function initialRoute(): AppRoute {
-  const inviteMatch = window.location.pathname.match(/^\/invite\/([^/]+)$/);
-  const inviteParam = new URLSearchParams(window.location.search).get("invite");
-
-  if (inviteMatch?.[1]) {
-    return { name: "invite-accept", inviteToken: decodeURIComponent(inviteMatch[1]) };
-  }
-
-  if (inviteParam) {
-    return { name: "invite-accept", inviteToken: inviteParam };
-  }
-
   return { name: "landing" };
+}
+
+function normalizeInviteCode(value: string | null) {
+  return value?.trim().toUpperCase().replace(/\s+/g, "") ?? "";
+}
+
+function readInviteCodeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return normalizeInviteCode(params.get("inviteCode") ?? params.get("invite_code") ?? params.get("code"));
+}
+
+function readPendingInviteCode() {
+  return normalizeInviteCode(localStorage.getItem(PENDING_INVITE_CODE_STORAGE_KEY));
+}
+
+function savePendingInviteCode(code: string) {
+  const normalized = normalizeInviteCode(code);
+  if (normalized) {
+    localStorage.setItem(PENDING_INVITE_CODE_STORAGE_KEY, normalized);
+  }
+  return normalized;
+}
+
+function clearPendingInviteCode() {
+  localStorage.removeItem(PENDING_INVITE_CODE_STORAGE_KEY);
 }
 
 function defaultSignedInRoute(): AppRoute {
@@ -143,12 +157,8 @@ function routeKey(route: AppRoute) {
   return JSON.stringify(route);
 }
 
-function updateBrowserPath(next: AppRoute) {
-  if (next.name === "invite-accept" && next.inviteToken) {
-    window.history.replaceState(null, "", `/invite/${encodeURIComponent(next.inviteToken)}`);
-  } else {
-    window.history.replaceState(null, "", "/");
-  }
+function updateBrowserPath() {
+  window.history.replaceState(null, "", "/");
 }
 
 function maxWindowScrollY() {
@@ -165,17 +175,33 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
   const [menuOpen, setMenuOpen] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
+  const [storeName, setStoreName] = useState("");
+  const [inviteCode, setInviteCode] = useState(() => savePendingInviteCode(readInviteCodeFromUrl()) || readPendingInviteCode());
+  const [connectionLoading, setConnectionLoading] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
+  const [connectionMessage, setConnectionMessage] = useState("");
   const routeHistoryRef = useRef<RouteHistoryEntry[]>([]);
   const pendingScrollYRef = useRef<number | null>(null);
+  const profileRef = useRef<StaffProfile | null>(null);
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    const codeFromUrl = readInviteCodeFromUrl();
+    if (codeFromUrl) {
+      setInviteCode(savePendingInviteCode(codeFromUrl));
+      updateBrowserPath();
+    }
+
+    Services.AuthService.getSession().then(({ data }) => {
       setSession(data.session);
       setAuthLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = Services.AuthService.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setAuthLoading(false);
     });
@@ -194,29 +220,16 @@ export default function App() {
     const currentSession = session;
 
     async function loadProfile() {
-      setProfileLoading(true);
+      setProfileLoading(profileRef.current === null);
       const existingProfile = await ensureCurrentProfile(currentSession);
 
       if (cancelled) return;
 
       if (existingProfile) {
         setProfile(existingProfile);
+        clearPendingInviteCode();
         setProfileLoading(false);
         return;
-      }
-
-      const inviteToken = route.inviteToken ?? route.authInviteToken;
-      if (inviteToken) {
-        const { data, error } = await supabase.rpc("accept_store_invite" as never, { invite_token: inviteToken } as never);
-        if (!cancelled && !error && data) {
-          const homeRoute = defaultSignedInRoute();
-          setProfile(data as StaffProfile);
-          pendingScrollYRef.current = 0;
-          setRoute(homeRoute);
-          updateBrowserPath(homeRoute);
-          setProfileLoading(false);
-          return;
-        }
       }
 
       setProfile(null);
@@ -228,17 +241,17 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session, route.authInviteToken, route.inviteToken]);
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
-    if (route.name === "landing" || (route.name === "login" && !route.authInviteToken) || route.name === "signup-request") {
+    if (route.name === "landing" || route.name === "login" || route.name === "signup-request") {
       const homeRoute = consumePostScanRoute() ?? defaultSignedInRoute();
       pendingScrollYRef.current = 0;
       setRoute(homeRoute);
-      updateBrowserPath(homeRoute);
+      updateBrowserPath();
     }
-  }, [session, route.authInviteToken, route.name]);
+  }, [session, route.name]);
 
   useEffect(() => {
     const pendingScrollY = pendingScrollYRef.current;
@@ -302,7 +315,7 @@ export default function App() {
 
     pendingScrollYRef.current = options.scrollY ?? 0;
     setRoute(next);
-    updateBrowserPath(next);
+    updateBrowserPath();
   }
 
   function goBack() {
@@ -313,25 +326,71 @@ export default function App() {
     setCanGoBack(routeHistoryRef.current.length > 0);
     pendingScrollYRef.current = previous.scrollY;
     setRoute(previous.route);
-    updateBrowserPath(previous.route);
+    updateBrowserPath();
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    await Services.AuthService.signOut();
     routeHistoryRef.current = [];
     setCanGoBack(false);
+    setProfile(null);
+    setConnectionError("");
+    setConnectionMessage("");
     navigate({ name: "landing" }, { replace: true });
   }
 
-  async function goToSignup(email = "", inviteToken = "") {
-    if (session) {
-      await supabase.auth.signOut();
-      setSession(null);
-      setProfile(null);
+  async function createPersonalStore(event: FormEvent) {
+    event.preventDefault();
+    const name = storeName.trim();
+    if (!name) {
+      setConnectionError("매장 이름을 입력해 주세요.");
+      return;
     }
-    routeHistoryRef.current = [];
-    setCanGoBack(false);
-    navigate({ name: "login", authMode: "signup", authEmail: email, authInviteToken: inviteToken }, { replace: true });
+
+    setConnectionLoading(true);
+    setConnectionError("");
+    setConnectionMessage("");
+
+    const { data, error } = await Services.DatabaseService.rpc("create_personal_store", { store_name: name });
+    if (error) {
+      setConnectionError(error.message);
+    } else if (data) {
+      const nextProfile = data as StaffProfile;
+      setProfile(nextProfile);
+      setStoreName("");
+      clearPendingInviteCode();
+      setConnectionMessage("");
+      navigate(defaultSignedInRoute(), { replace: true });
+    }
+
+    setConnectionLoading(false);
+  }
+
+  async function acceptInviteCode(event: FormEvent) {
+    event.preventDefault();
+    const code = inviteCode.trim().toUpperCase();
+    if (!code) {
+      setConnectionError("초대코드를 입력해 주세요.");
+      return;
+    }
+
+    setConnectionLoading(true);
+    setConnectionError("");
+    setConnectionMessage("");
+
+    const { data, error } = await Services.DatabaseService.rpc("accept_store_invite_code", { invite_code: code });
+    if (error) {
+      setConnectionError(error.message);
+    } else if (data) {
+      const nextProfile = data as StaffProfile;
+      setProfile(nextProfile);
+      setInviteCode("");
+      clearPendingInviteCode();
+      setConnectionMessage("");
+      navigate(defaultSignedInRoute(), { replace: true });
+    }
+
+    setConnectionLoading(false);
   }
 
   if (authLoading) {
@@ -344,11 +403,6 @@ export default function App() {
         <LoginPage
           initialMode={route.authMode ?? "login"}
           initialEmail={route.authEmail ?? ""}
-          inviteToken={route.authInviteToken}
-          onInviteAccepted={(nextProfile) => {
-            setProfile(nextProfile);
-            navigate(defaultSignedInRoute(), { replace: true });
-          }}
         />
       );
     }
@@ -357,61 +411,65 @@ export default function App() {
       return <SignupRequestPage onBack={() => navigate({ name: "landing" })} />;
     }
 
-    if (route.name === "invite-accept" && route.inviteToken) {
-      return (
-        <InviteAcceptPage
-          token={route.inviteToken}
-          signedIn={false}
-          onAccepted={(nextProfile) => {
-            setProfile(nextProfile);
-            navigate(defaultSignedInRoute(), { replace: true });
-          }}
-          onSignup={(email) => navigate({ name: "login", authMode: "signup", authEmail: email, authInviteToken: route.inviteToken })}
-        />
-      );
-    }
-
     return <LandingPage onLogin={() => navigate({ name: "login" })} onSignupRequest={() => navigate({ name: "signup-request" })} />;
   }
 
-  if (route.name === "invite-accept" && route.inviteToken) {
-    return (
-      <InviteAcceptPage
-        token={route.inviteToken}
-        signedIn={true}
-        onSignup={(email) => void goToSignup(email, route.inviteToken)}
-        onAccepted={(nextProfile) => {
-          setProfile(nextProfile);
-          navigate(defaultSignedInRoute(), { replace: true });
-        }}
-      />
-    );
-  }
-
-  if (route.name === "login" && route.authInviteToken) {
-    return (
-      <LoginPage
-        initialMode={route.authMode ?? "signup"}
-        initialEmail={route.authEmail ?? ""}
-        inviteToken={route.authInviteToken}
-        onInviteAccepted={(nextProfile) => {
-          setProfile(nextProfile);
-          navigate(defaultSignedInRoute(), { replace: true });
-        }}
-      />
-    );
-  }
-
-  if (profileLoading) {
+  if (profileLoading && !profile) {
     return <div className="grid min-h-dvh place-items-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">매장 정보를 연결하는 중...</div>;
   }
 
   if (!profile) {
     return (
-      <div className="grid min-h-dvh place-items-center bg-slate-50 px-4 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
-        <div className="panel max-w-sm p-5 text-center">
-          <p className="text-lg font-bold">매장 연결이 필요합니다.</p>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">관리자가 보낸 초대 링크로 접속해 계정을 매장에 연결해 주세요.</p>
+      <div className="min-h-dvh bg-slate-50 px-4 py-6 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+        <div className="mx-auto max-w-2xl">
+          <div className="mb-4">
+            <p className="text-2xl font-bold">매장 연결</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">새 매장을 만들거나 관리자에게 받은 초대코드를 입력해 주세요.</p>
+          </div>
+
+          {connectionError ? <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-100">{connectionError}</div> : null}
+          {connectionMessage ? <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{connectionMessage}</div> : null}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <form onSubmit={createPersonalStore} className="panel p-4">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-md bg-brand-600 text-white">
+                  <Plus size={20} />
+                </div>
+                <div>
+                  <p className="font-bold">새 매장 만들기</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">관리자 권한으로 시작합니다.</p>
+                </div>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold">매장 이름</span>
+                <input className="field" value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="예: 강남점" disabled={connectionLoading} />
+              </label>
+              <button type="submit" className="primary-button mt-3 w-full" disabled={connectionLoading}>
+                {connectionLoading ? "처리 중..." : "새 매장 만들기"}
+              </button>
+            </form>
+
+            <form onSubmit={acceptInviteCode} className="panel p-4">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-md bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950">
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <p className="font-bold">초대코드로 참여</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">초대한 매장으로 계정을 연결합니다.</p>
+                </div>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold">초대코드</span>
+                <input className="field uppercase tracking-widest" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} placeholder="ABCD2345" disabled={connectionLoading} />
+              </label>
+              <button type="submit" className="secondary-button mt-3 w-full" disabled={connectionLoading}>
+                {connectionLoading ? "처리 중..." : "초대코드로 참여"}
+              </button>
+            </form>
+          </div>
+
           <button type="button" onClick={handleLogout} className="secondary-button mt-4 w-full">
             로그아웃
           </button>

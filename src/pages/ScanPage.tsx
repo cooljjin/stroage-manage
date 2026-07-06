@@ -5,7 +5,7 @@ import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { isNativeBarcodeScannerAvailable, scanNativeBarcode } from "../lib/nativeBarcodeScanner";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, Product } from "../types/domain";
 
 type Props = {
@@ -78,15 +78,15 @@ function getBarcodeCandidates(barcode: string): string[] {
 
 async function findProductByBarcode(barcode: string, currentStoreId: string): Promise<{ product: Product | null; errorMessage: string }> {
   const barcodeCandidates = getBarcodeCandidates(barcode);
-  const { data, error } = await supabase.from("products").select("*").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).eq("is_active", true).limit(1).maybeSingle();
+  const { data, error } = await Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).eq("is_active", true).limit(1).maybeSingle();
   if (error) return { product: null, errorMessage: error.message };
   if (data) return { product: data as Product, errorMessage: "" };
 
-  const { data: barcodeData, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).limit(1).maybeSingle();
+  const { data: barcodeData, error: barcodeError } = await Services.DatabaseService.select("product_barcodes", "product_id").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).limit(1).maybeSingle();
   if (barcodeError) return { product: null, errorMessage: barcodeError.message };
   if (!barcodeData) return { product: null, errorMessage: "" };
 
-  const { data: aliasProduct, error: aliasError } = await supabase.from("products").select("*").eq("store_id", currentStoreId).eq("id", barcodeData.product_id).eq("is_active", true).maybeSingle();
+  const { data: aliasProduct, error: aliasError } = await Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).eq("id", barcodeData.product_id).eq("is_active", true).maybeSingle();
   if (aliasError) return { product: null, errorMessage: aliasError.message };
   return { product: (aliasProduct as Product | null) ?? null, errorMessage: "" };
 }
@@ -359,9 +359,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (!keyword) return;
 
     setLoadingSearch(true);
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
+    const { data, error } = await Services.DatabaseService.select("products", "*")
       .eq("store_id", currentStoreId)
       .or(`name.ilike.%${keyword}%,barcode.ilike.%${keyword}%`)
       .eq("is_active", true)
@@ -375,13 +373,13 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       const productsById = new Map<string, Product>();
       ((data ?? []) as Product[]).forEach((product) => productsById.set(product.id, product));
 
-      const { data: barcodeRows, error: barcodeError } = await supabase.from("product_barcodes").select("product_id").eq("store_id", currentStoreId).ilike("barcode", `%${keyword}%`).limit(20);
+      const { data: barcodeRows, error: barcodeError } = await Services.DatabaseService.select("product_barcodes", "product_id").eq("store_id", currentStoreId).ilike("barcode", `%${keyword}%`).limit(20);
       if (barcodeError) {
         setMessage(barcodeError.message);
       } else {
-        const missingProductIds = [...new Set((barcodeRows ?? []).map((row) => row.product_id).filter((id) => !productsById.has(id)))];
+        const missingProductIds = [...new Set(((barcodeRows ?? []) as Array<{ product_id: string }>).map((row) => row.product_id).filter((id) => !productsById.has(id)))];
         if (missingProductIds.length > 0) {
-          const { data: aliasProducts, error: aliasProductsError } = await supabase.from("products").select("*").eq("store_id", currentStoreId).in("id", missingProductIds).eq("is_active", true);
+          const { data: aliasProducts, error: aliasProductsError } = await Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).in("id", missingProductIds).eq("is_active", true);
           if (aliasProductsError) {
             setMessage(aliasProductsError.message);
           } else {

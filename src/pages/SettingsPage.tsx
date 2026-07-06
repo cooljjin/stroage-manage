@@ -3,7 +3,7 @@ import { CalendarDays, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { getSeoulDateValue, WEEKDAYS } from "../lib/businessCalendar";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { StoreClosureDate, WeeklyStoreClosure } from "../types/domain";
 
 const APP_VERSION = "1.0.1";
@@ -34,8 +34,8 @@ export function SettingsPage() {
     setLoading(true);
     setError("");
     const [weeklyResult, specificResult] = await Promise.all([
-      supabase.from("weekly_store_closures").select("*").order("weekday", { ascending: true }),
-      supabase.from("store_closure_dates").select("*").gte("closure_date", todayValue).order("closure_date", { ascending: true })
+      Services.DatabaseService.select("weekly_store_closures", "*").order("weekday", { ascending: true }),
+      Services.DatabaseService.select("store_closure_dates", "*").gte("closure_date", todayValue).order("closure_date", { ascending: true })
     ]);
 
     const loadError = weeklyResult.error ?? specificResult.error;
@@ -62,7 +62,7 @@ export function SettingsPage() {
     setMessage("");
 
     if (closedWeekdays.has(weekday)) {
-      const { error: deleteError } = await supabase.from("weekly_store_closures").delete().eq("weekday", weekday);
+      const { error: deleteError } = await Services.DatabaseService.delete("weekly_store_closures").eq("weekday", weekday);
       if (deleteError) {
         setError(deleteError.message);
       } else {
@@ -75,11 +75,11 @@ export function SettingsPage() {
         setSavingKey(null);
         return;
       }
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await Services.AuthService.getUser();
       if (!userData.user) {
         setError("로그인이 필요합니다.");
       } else {
-        const { error: insertError } = await supabase.from("weekly_store_closures").insert({
+        const { error: insertError } = await Services.DatabaseService.insert("weekly_store_closures", {
           weekday,
           created_by: userData.user.id
         });
@@ -102,14 +102,14 @@ export function SettingsPage() {
     setSavingKey("specific");
     setError("");
     setMessage("");
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData } = await Services.AuthService.getUser();
     if (!userData.user) {
       setError("로그인이 필요합니다.");
       setSavingKey(null);
       return;
     }
 
-    const { error: insertError } = await supabase.from("store_closure_dates").insert({
+    const { error: insertError } = await Services.DatabaseService.insert("store_closure_dates", {
       closure_date: closureDate,
       reason: reason.trim() || null,
       created_by: userData.user.id
@@ -132,7 +132,7 @@ export function SettingsPage() {
     setSavingKey(`date-${item.closure_date}`);
     setError("");
     setMessage("");
-    const { error: deleteError } = await supabase.from("store_closure_dates").delete().eq("closure_date", item.closure_date);
+    const { error: deleteError } = await Services.DatabaseService.delete("store_closure_dates").eq("closure_date", item.closure_date);
     if (deleteError) {
       setError(deleteError.message);
     } else {

@@ -4,7 +4,7 @@ import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { formatLogContent } from "../lib/inventory";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, InventoryLog, InventoryLogWithStaff, StaffProfile } from "../types/domain";
 
 type LogPeriod = "day" | "week" | "month";
@@ -73,7 +73,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
   }, [logKind, logs, productSearch]);
 
   const loadProfiles = useCallback(async () => {
-    const profileResult = await supabase.from("profiles").select("*").eq("store_id", currentStoreId).order("display_name", { ascending: true });
+    const profileResult = await Services.DatabaseService.select("profiles", "*").eq("store_id", currentStoreId).order("display_name", { ascending: true });
 
     if (!profileResult.error) setProfiles((profileResult.data ?? []) as StaffProfile[]);
   }, [currentStoreId]);
@@ -82,9 +82,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
     setLoading(true);
     setError("");
 
-    let query = supabase
-      .from("inventory_logs")
-      .select("*, products(name, barcode)")
+    let query = Services.DatabaseService.select("inventory_logs", "*, products(name, barcode)")
       .eq("store_id", currentStoreId)
       .gte("created_at", range.start.toISOString())
       .lt("created_at", range.end.toISOString());
@@ -100,8 +98,8 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
     } else {
       const nextLogs = (data ?? []) as unknown as InventoryLog[];
       const userIds = Array.from(new Set(nextLogs.map((log) => log.user_id)));
-      const { data: profiles } = await supabase.from("profiles").select("*").eq("store_id", currentStoreId).in("id", userIds);
-      const profileMap = new Map((profiles ?? []).map((profile: StaffProfile) => [profile.id, profile.display_name]));
+      const { data: profiles } = await Services.DatabaseService.select("profiles", "*").eq("store_id", currentStoreId).in("id", userIds);
+      const profileMap = new Map<string, string>(((profiles ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name]));
 
       setLogs(
         nextLogs.map((log) => ({

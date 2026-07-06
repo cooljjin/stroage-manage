@@ -1,8 +1,8 @@
 import { DEFAULT_CATEGORIES, type ProductCategory } from "../types/domain";
-import { supabase } from "./supabase";
+import * as Services from "../services";
 
 export async function loadCategories(options?: { activeOnly?: boolean }): Promise<ProductCategory[]> {
-  let query = supabase.from("categories").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true });
+  let query = Services.DatabaseService.select("categories", "*").order("sort_order", { ascending: true }).order("name", { ascending: true });
 
   if (options?.activeOnly) {
     query = query.eq("is_active", true);

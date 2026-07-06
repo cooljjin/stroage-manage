@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Save } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { StaffProfile } from "../types/domain";
 
 export function AdminPage() {
@@ -19,12 +19,12 @@ export function AdminPage() {
   async function loadProfiles() {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await supabase.from("profiles").select("*").order("created_at", { ascending: true });
+    const { data, error: loadError } = await Services.DatabaseService.select("profiles", "*").order("created_at", { ascending: true });
 
     if (loadError) {
       setError(loadError.message);
     } else {
-      const nextProfiles = data ?? [];
+      const nextProfiles = (data ?? []) as StaffProfile[];
       setProfiles(nextProfiles);
       setDraftNames(Object.fromEntries(nextProfiles.map((profile) => [profile.id, profile.display_name])));
     }
@@ -41,9 +41,7 @@ export function AdminPage() {
 
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ display_name: displayName, updated_at: new Date().toISOString() })
+    const { error: updateError } = await Services.DatabaseService.update("profiles", { display_name: displayName, updated_at: new Date().toISOString() })
       .eq("id", profile.id);
 
     if (updateError) {

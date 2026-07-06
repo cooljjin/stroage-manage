@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { loadProductUnits } from "../lib/productUnits";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { ProductUnit } from "../types/domain";
 
 export function ProductUnitManagementPage() {
@@ -40,7 +40,7 @@ export function ProductUnitManagementPage() {
     setError("");
     setMessage("");
     const nextSortOrder = units.reduce((max, unit) => Math.max(max, unit.sort_order), 0) + 1;
-    const { error: insertError } = await supabase.from("product_units").insert({ name: trimmedName, sort_order: nextSortOrder });
+    const { error: insertError } = await Services.DatabaseService.insert("product_units", { name: trimmedName, sort_order: nextSortOrder });
     if (insertError) {
       setError(insertError.message);
     } else {
@@ -53,7 +53,7 @@ export function ProductUnitManagementPage() {
   async function setUnitActive(unit: ProductUnit, isActive: boolean) {
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase.from("product_units").update({ is_active: isActive }).eq("id", unit.id);
+    const { error: updateError } = await Services.DatabaseService.update("product_units", { is_active: isActive }).eq("id", unit.id);
     if (updateError) {
       setError(updateError.message);
     } else {
@@ -75,13 +75,13 @@ export function ProductUnitManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: unitError } = await supabase.from("product_units").update({ name: nextName }).eq("id", unit.id);
+    const { error: unitError } = await Services.DatabaseService.update("product_units", { name: nextName }).eq("id", unit.id);
     if (unitError) {
       setError(unitError.message);
       return;
     }
 
-    const { error: productError } = await supabase.from("products").update({ unit_name: nextName }).eq("unit_name", unit.name);
+    const { error: productError } = await Services.DatabaseService.update("products", { unit_name: nextName }).eq("unit_name", unit.name);
     if (productError) {
       setError(productError.message);
     } else {
@@ -105,7 +105,7 @@ export function ProductUnitManagementPage() {
     setMessage("");
 
     const results = await Promise.all(
-      nextUnits.map((unit, nextIndex) => supabase.from("product_units").update({ sort_order: nextIndex + 1 }).eq("id", unit.id))
+      nextUnits.map((unit, nextIndex) => Services.DatabaseService.update("product_units", { sort_order: nextIndex + 1 }).eq("id", unit.id))
     );
     const updateError = results.find((result) => result.error)?.error;
 
@@ -123,7 +123,7 @@ export function ProductUnitManagementPage() {
       return;
     }
 
-    const { count, error: countError } = await supabase.from("products").select("id", { count: "exact", head: true }).eq("unit_name", unit.name);
+    const { count, error: countError } = await Services.DatabaseService.select("products", "id", { count: "exact", head: true }).eq("unit_name", unit.name);
     if (countError) {
       setError(countError.message);
       return;
@@ -137,7 +137,7 @@ export function ProductUnitManagementPage() {
     const ok = window.confirm(`${unit.name} 품목 단위를 삭제할까요?`);
     if (!ok) return;
 
-    const { error: deleteError } = await supabase.from("product_units").delete().eq("id", unit.id).eq("is_active", false);
+    const { error: deleteError } = await Services.DatabaseService.delete("product_units").eq("id", unit.id).eq("is_active", false);
     if (deleteError) {
       setError(deleteError.message);
     } else {

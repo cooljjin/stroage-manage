@@ -3,7 +3,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, ChefHat, Minus, Plus, RefreshCw, Trash2,
 import { StatusMessage } from "../components/StatusMessage";
 import { QUICK_AMOUNTS } from "../lib/constants";
 import { formatInventoryQuantity } from "../lib/inventory";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, Inventory, PrepItem } from "../types/domain";
 
 type Props = {
@@ -89,9 +89,7 @@ export function PrepModePage({ navigate }: Props) {
     setLoading(true);
     setError("");
 
-    const { data, error: itemError } = await supabase
-      .from("prep_items")
-      .select("*")
+    const { data, error: itemError } = await Services.DatabaseService.select("prep_items", "*")
       .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
@@ -105,7 +103,7 @@ export function PrepModePage({ navigate }: Props) {
     const nextItems = (data ?? []) as PrepItem[];
     const productIds = nextItems.map((item) => item.product_id);
     const inventoryResult = productIds.length > 0
-      ? await supabase.from("inventory").select("*").in("product_id", productIds)
+      ? await Services.DatabaseService.select("inventory", "*").in("product_id", productIds)
       : { data: [], error: null };
 
     if (inventoryResult.error) {
@@ -169,7 +167,7 @@ export function PrepModePage({ navigate }: Props) {
     setError("");
     setMessage("");
 
-    const { error: reorderError } = await supabase.rpc("reorder_prep_items", {
+    const { error: reorderError } = await Services.DatabaseService.rpc("reorder_prep_items", {
       ordered_prep_item_ids: nextItems.map((item) => item.id)
     });
 
@@ -188,7 +186,7 @@ export function PrepModePage({ navigate }: Props) {
     setSaving(true);
     setError("");
     setMessage("");
-    const { data: operationResult, error: operationError } = await supabase.rpc("record_prep_operation", {
+    const { data: operationResult, error: operationError } = await Services.DatabaseService.rpc("record_prep_operation", {
       target_prep_item_id: selectedItem.id,
       operation_type: operation,
       operation_quantity: quantityValue

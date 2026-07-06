@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity } from "../lib/inventory";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, Inventory, PrepItem, PrepItemIngredient, PrepItemRouteDraft, Product } from "../types/domain";
 import type { Json } from "../types/supabase";
 
@@ -185,8 +185,8 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     setLoading(true);
     setError("");
 
-    const prepResult = await supabase.from("prep_items").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true });
-    const productResult = await supabase.from("products").select("*").eq("is_active", true).order("name", { ascending: true });
+    const prepResult = await Services.DatabaseService.select("prep_items", "*").order("sort_order", { ascending: true }).order("name", { ascending: true });
+    const productResult = await Services.DatabaseService.select("products", "*").eq("is_active", true).order("name", { ascending: true });
 
     if (prepResult.error || productResult.error) {
       setError(buildSchemaError(prepResult.error?.message ?? productResult.error?.message ?? "프랩 품목을 불러오지 못했습니다."));
@@ -199,10 +199,10 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     const prepProductIds = nextPrepItems.map((item) => item.product_id);
     const [ingredientResult, inventoryResult] = await Promise.all([
       prepItemIds.length > 0
-        ? supabase.from("prep_item_ingredients").select("*").in("prep_item_id", prepItemIds).order("sort_order", { ascending: true })
+        ? Services.DatabaseService.select("prep_item_ingredients", "*").in("prep_item_id", prepItemIds).order("sort_order", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
       prepProductIds.length > 0
-        ? supabase.from("inventory").select("*").in("product_id", prepProductIds)
+        ? Services.DatabaseService.select("inventory", "*").in("product_id", prepProductIds)
         : Promise.resolve({ data: [], error: null })
     ]);
 
@@ -357,7 +357,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     setSaving(true);
     setError("");
     setMessage("");
-    const { data: savedItem, error: saveError } = await supabase.rpc("save_prep_item", {
+    const { data: savedItem, error: saveError } = await Services.DatabaseService.rpc("save_prep_item", {
       target_prep_item_id: editingId,
       item_name: nextName,
       item_shelf_life_days: nextShelfLifeDays,
@@ -373,9 +373,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
       if (savedPrepItemId) {
         const unitUpdateErrors = await Promise.all(
           ingredients.map((ingredient) =>
-            supabase
-              .from("prep_item_ingredients")
-              .update({ ingredient_unit: ingredient.ingredient_unit })
+            Services.DatabaseService.update("prep_item_ingredients", { ingredient_unit: ingredient.ingredient_unit })
               .eq("prep_item_id", savedPrepItemId)
               .eq("sort_order", ingredient.sort_order)
           )
@@ -398,7 +396,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
   async function setPrepItemActive(item: PrepItemWithDetails, isActive: boolean) {
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase.from("prep_items").update({ is_active: isActive }).eq("id", item.id);
+    const { error: updateError } = await Services.DatabaseService.update("prep_items", { is_active: isActive }).eq("id", item.id);
     if (updateError) {
       setError(buildSchemaError(updateError.message));
     } else {
@@ -420,7 +418,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     setError("");
     setMessage("");
 
-    const { error: reorderError } = await supabase.rpc("reorder_prep_items", {
+    const { error: reorderError } = await Services.DatabaseService.rpc("reorder_prep_items", {
       ordered_prep_item_ids: nextItems.map((item) => item.id)
     });
 
@@ -442,7 +440,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     }
 
     setDeletingIds((current) => new Set(current).add(item.id));
-    const { error: deleteError } = await supabase.rpc("delete_prep_item", {
+    const { error: deleteError } = await Services.DatabaseService.rpc("delete_prep_item", {
       target_prep_item_id: item.id
     });
 

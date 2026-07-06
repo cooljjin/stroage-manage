@@ -6,7 +6,7 @@ import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { getCurrentStoreId } from "../lib/profiles";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
 import type { AppRoute, ProductCategory, ProductSupplier, ProductUnit, StorageType } from "../types/domain";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 
 type Props = {
   barcode: string;
@@ -68,9 +68,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
 
     const nextBarcode = barcodeValue.trim() || null;
     if (nextBarcode) {
-      const { data: existingProduct, error: existingError } = await supabase
-        .from("products")
-        .select("id, name, is_active")
+      const { data: existingProduct, error: existingError } = await Services.DatabaseService.select("products", "id, name, is_active")
         .eq("store_id", storeId)
         .eq("barcode", nextBarcode)
         .maybeSingle();
@@ -88,9 +86,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
       }
 
       if (existingProduct) {
-        const { data: restoredProduct, error: restoreError } = await supabase
-          .from("products")
-          .update({
+        const { data: restoredProduct, error: restoreError } = await Services.DatabaseService.update("products", {
             name: name.trim(),
             category,
             supplier_name: supplierName || null,
@@ -108,7 +104,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
         if (restoreError) {
           setError(restoreError.message);
         } else {
-          const { error: inventoryError } = await supabase.from("inventory").upsert({ product_id: restoredProduct.id, store_id: storeId }, { onConflict: "product_id" });
+          const { error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: restoredProduct.id, store_id: storeId }, { onConflict: "product_id" });
           if (inventoryError) {
             setError(inventoryError.message);
           } else {
@@ -121,9 +117,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
       }
     }
 
-    const { data, error: insertError } = await supabase
-      .from("products")
-      .insert({
+    const { data, error: insertError } = await Services.DatabaseService.insert("products", {
         store_id: storeId,
         name: name.trim(),
         barcode: nextBarcode,
@@ -140,7 +134,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
     if (insertError) {
       setError(insertError.code === "23505" ? "이미 같은 바코드로 등록된 품목이 있습니다." : insertError.message);
     } else {
-      const { error: inventoryError } = await supabase.from("inventory").upsert({ product_id: data.id, store_id: storeId }, { onConflict: "product_id" });
+      const { error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: data.id, store_id: storeId }, { onConflict: "product_id" });
       if (inventoryError) {
         setError(inventoryError.message);
       } else {

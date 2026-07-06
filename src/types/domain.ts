@@ -5,7 +5,6 @@ export type Category = string;
 export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
 export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "메모" | "프랩 제조" | "프랩 소진" | "프랩 폐기";
-export type ViewMode = "compact" | "full";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
 export type UnitWeightUnit = "g" | "kg" | "ml" | "L";
@@ -15,7 +14,6 @@ export type RouteName =
   | "landing"
   | "login"
   | "signup-request"
-  | "invite-accept"
   | "home"
   | "scan"
   | "register"
@@ -126,13 +124,16 @@ export type Store = {
 export type StoreInvite = {
   id: string;
   store_id: string;
-  email: string;
+  email: string | null;
   role: Exclude<ProfileRole, "master">;
   token: string;
   invited_by: string;
   accepted_by: string | null;
   accepted_at: string | null;
   expires_at: string;
+  max_uses: number;
+  used_count: number;
+  revoked_at: string | null;
   created_at: string;
 };
 
@@ -327,7 +328,6 @@ export type AppRoute = {
   name: RouteName;
   authMode?: "login" | "signup";
   authEmail?: string;
-  authInviteToken?: string;
   barcode?: string;
   scanLaunchId?: number;
   productId?: string;
@@ -336,7 +336,6 @@ export type AppRoute = {
   prepDraft?: PrepItemRouteDraft;
   groupOrderDraft?: GroupOrderRouteDraft;
   storeId?: string;
-  inviteToken?: string;
 };
 
 export type SortKey = "name" | "warehouse_qty" | "store_qty" | "total_stock";

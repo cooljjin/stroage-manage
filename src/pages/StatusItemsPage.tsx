@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, InventoryItem, StockStatus } from "../types/domain";
 
 type Props = {
@@ -36,9 +36,7 @@ export function StatusItemsPage({ navigate, currentStoreId }: Props) {
       setLoading(true);
       setError("");
 
-      const { data, error: loadError } = await supabase
-        .from("products")
-        .select("*, inventory(*)")
+      const { data, error: loadError } = await Services.DatabaseService.select("products", "*, inventory(*)")
         .eq("store_id", currentStoreId)
         .eq("is_active", true)
         .eq("status_enabled", true)
@@ -47,7 +45,7 @@ export function StatusItemsPage({ navigate, currentStoreId }: Props) {
       if (loadError) {
         setError(loadError.message);
       } else {
-        setItems((data ?? []).map((row) => normalizeInventoryItem(row as Parameters<typeof normalizeInventoryItem>[0])));
+        setItems(((data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
       }
 
       setLoading(false);

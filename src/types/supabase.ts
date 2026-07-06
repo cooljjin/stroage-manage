@@ -34,34 +34,43 @@ export type Database = {
         Row: {
           id: string;
           store_id: string;
-          email: string;
+          email: string | null;
           role: "store_admin" | "staff";
           token: string;
           invited_by: string;
           accepted_by: string | null;
           accepted_at: string | null;
           expires_at: string;
+          max_uses: number;
+          used_count: number;
+          revoked_at: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           store_id: string;
-          email: string;
+          email?: string | null;
           role?: "store_admin" | "staff";
           token?: string;
           invited_by: string;
           accepted_by?: string | null;
           accepted_at?: string | null;
           expires_at?: string;
+          max_uses?: number;
+          used_count?: number;
+          revoked_at?: string | null;
           created_at?: string;
         };
         Update: {
-          email?: string;
+          email?: string | null;
           role?: "store_admin" | "staff";
           token?: string;
           accepted_by?: string | null;
           accepted_at?: string | null;
           expires_at?: string;
+          max_uses?: number;
+          used_count?: number;
+          revoked_at?: string | null;
         };
         Relationships: [];
       };
@@ -839,6 +848,24 @@ export type Database = {
       restore_latest_dashboard_receipt_deletion: {
         Args: Record<PropertyKey, never>;
         Returns: string;
+      };
+      create_store_invite: {
+        Args: {
+          target_role?: "store_admin" | "staff";
+        };
+        Returns: Database["public"]["Tables"]["store_invites"]["Row"];
+      };
+      accept_store_invite_code: {
+        Args: {
+          invite_code: string;
+        };
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
+      create_personal_store: {
+        Args: {
+          store_name: string;
+        };
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
       };
       delete_prep_item: {
         Args: {

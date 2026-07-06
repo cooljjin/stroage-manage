@@ -7,7 +7,7 @@ import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import { loadSuppliers } from "../lib/suppliers";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, GroupOrderEvent, GroupOrderEventItem, GroupOrderMenu, GroupOrderRecipeIngredient, GroupOrderRouteDraft, InventoryItem, Product, ProductSupplier, ProfileRole, RecipeUsageUnit, UnitWeightUnit } from "../types/domain";
 
 type Props = {
@@ -321,10 +321,10 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
 
     const [supplierResult, productResult, menuResult, eventResult, eventItemResult] = await Promise.all([
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      supabase.from("products").select("*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true }),
-      supabase.from("group_order_menus").select("*").eq("store_id", currentStoreId).order("sort_order", { ascending: true }).order("name", { ascending: true }),
-      supabase.from("group_order_events").select("*").eq("store_id", currentStoreId).order("order_date", { ascending: true }).order("requested_time", { ascending: true }),
-      supabase.from("group_order_event_items").select("*").eq("store_id", currentStoreId)
+      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true }),
+      Services.DatabaseService.select("group_order_menus", "*").eq("store_id", currentStoreId).order("sort_order", { ascending: true }).order("name", { ascending: true }),
+      Services.DatabaseService.select("group_order_events", "*").eq("store_id", currentStoreId).order("order_date", { ascending: true }).order("requested_time", { ascending: true }),
+      Services.DatabaseService.select("group_order_event_items", "*").eq("store_id", currentStoreId)
     ]);
 
     if (productResult.error || menuResult.error || eventResult.error || eventItemResult.error) {
@@ -337,9 +337,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     const menuIds = nextMenus.map((menu) => menu.id);
     const ingredientResult =
       menuIds.length > 0
-        ? await supabase
-            .from("group_order_recipe_ingredients")
-            .select("*")
+        ? await Services.DatabaseService.select("group_order_recipe_ingredients", "*")
             .eq("store_id", currentStoreId)
             .in("menu_id", menuIds)
             .order("sort_order", { ascending: true })
@@ -353,7 +351,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
 
     const ingredients = (ingredientResult.data ?? []) as GroupOrderRecipeIngredient[];
     setSuppliers(supplierResult);
-    setProducts((productResult.data ?? []).map((row) => normalizeInventoryItem(row as Parameters<typeof normalizeInventoryItem>[0])));
+    setProducts(((productResult.data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
     setEvents((eventResult.data ?? []) as GroupOrderEvent[]);
     setEventItems((eventItemResult.data ?? []) as GroupOrderEventItem[]);
     setMenus(
@@ -836,16 +834,12 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     };
 
     const saveResult = selectedEvent
-      ? await supabase
-          .from("group_order_events")
-          .update(eventPayload)
+      ? await Services.DatabaseService.update("group_order_events", eventPayload)
           .eq("store_id", currentStoreId)
           .eq("id", selectedEvent.id)
           .select()
           .single()
-      : await supabase
-          .from("group_order_events")
-          .insert({ store_id: currentStoreId, ...eventPayload })
+      : await Services.DatabaseService.insert("group_order_events", { store_id: currentStoreId, ...eventPayload })
           .select()
           .single();
 
@@ -877,9 +871,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setError("");
     setMessage("");
 
-    const { error: deleteError } = await supabase
-      .from("group_order_events")
-      .delete()
+    const { error: deleteError } = await Services.DatabaseService.delete("group_order_events")
       .eq("store_id", currentStoreId)
       .eq("id", selectedEvent.id);
 
@@ -965,9 +957,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setMessage("");
 
     const saveResult = editingId
-      ? await supabase
-          .from("group_order_menus")
-          .update({
+      ? await Services.DatabaseService.update("group_order_menus", {
             name: nextName,
             sort_order: Math.trunc(nextSortOrder),
             is_active: editingMenu?.is_active ?? true
@@ -976,9 +966,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
           .eq("id", editingId)
           .select()
           .single()
-      : await supabase
-          .from("group_order_menus")
-          .insert({
+      : await Services.DatabaseService.insert("group_order_menus", {
             store_id: currentStoreId,
             name: nextName,
             sort_order: Math.trunc(nextSortOrder)
@@ -993,14 +981,14 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     }
 
     const savedMenu = saveResult.data as GroupOrderMenu;
-    const deleteResult = await supabase.from("group_order_recipe_ingredients").delete().eq("store_id", currentStoreId).eq("menu_id", savedMenu.id);
+    const deleteResult = await Services.DatabaseService.delete("group_order_recipe_ingredients").eq("store_id", currentStoreId).eq("menu_id", savedMenu.id);
     if (deleteResult.error) {
       setError(buildSchemaError(deleteResult.error.message));
       setSaving(false);
       return;
     }
 
-    const insertResult = await supabase.from("group_order_recipe_ingredients").insert(
+    const insertResult = await Services.DatabaseService.insert("group_order_recipe_ingredients", 
       ingredientRows.map((ingredient) => ({
         store_id: currentStoreId,
         menu_id: savedMenu.id,
@@ -1024,7 +1012,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     if (!canManageRecipes) return;
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase.from("group_order_menus").update({ is_active: isActive }).eq("store_id", currentStoreId).eq("id", menu.id);
+    const { error: updateError } = await Services.DatabaseService.update("group_order_menus", { is_active: isActive }).eq("store_id", currentStoreId).eq("id", menu.id);
     if (updateError) {
       setError(buildSchemaError(updateError.message));
       return;
@@ -1040,7 +1028,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setDeletingIds((current) => new Set(current).add(menu.id));
     setError("");
     setMessage("");
-    const { error: deleteError } = await supabase.from("group_order_menus").delete().eq("store_id", currentStoreId).eq("id", menu.id);
+    const { error: deleteError } = await Services.DatabaseService.delete("group_order_menus").eq("store_id", currentStoreId).eq("id", menu.id);
     if (deleteError) {
       setError(buildSchemaError(deleteError.message));
     } else {
@@ -1095,9 +1083,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
     setError("");
     setMessage("");
 
-    const deleteResult = await supabase
-      .from("group_order_event_items")
-      .delete()
+    const deleteResult = await Services.DatabaseService.delete("group_order_event_items")
       .eq("store_id", currentStoreId)
       .eq("event_id", selectedEvent.id);
 
@@ -1107,7 +1093,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, curre
       return;
     }
 
-    const insertResult = await supabase.from("group_order_event_items").insert(
+    const insertResult = await Services.DatabaseService.insert("group_order_event_items", 
       Array.from(quantitiesByMenuId.entries()).map(([menuId, quantity]) => ({
         store_id: currentStoreId,
         event_id: selectedEvent.id,

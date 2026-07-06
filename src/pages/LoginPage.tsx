@@ -1,39 +1,61 @@
 import { FormEvent, useState } from "react";
-import { LockKeyhole } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { LockKeyhole, MessageCircle, Search } from "lucide-react";
+import * as Services from "../services";
 import { StatusMessage } from "../components/StatusMessage";
-import type { StaffProfile } from "../types/domain";
+
+type OAuthProvider = "google" | "kakao" | "apple";
+
+const OAUTH_BUTTONS: Array<{
+  provider: OAuthProvider;
+  label: string;
+  className: string;
+  icon: typeof Search;
+}> = [
+  {
+    provider: "google",
+    label: "Google로 계속하기",
+    className: "border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900",
+    icon: Search
+  },
+  {
+    provider: "kakao",
+    label: "카카오로 계속하기",
+    className: "border-[#FEE500] bg-[#FEE500] text-[#191919] hover:bg-[#f5dc00]",
+    icon: MessageCircle
+  },
+];
 
 type Props = {
   initialMode?: "login" | "signup";
   initialEmail?: string;
-  inviteToken?: string;
-  onInviteAccepted?: (profile: StaffProfile) => void;
 };
 
-export function LoginPage({ initialMode = "login", initialEmail = "", inviteToken, onInviteAccepted }: Props) {
+export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  async function acceptInviteAfterAuth() {
-    if (!inviteToken) return false;
+  async function handleOAuthLogin(provider: OAuthProvider) {
+    setError("");
+    setMessage("");
+    setOauthLoading(provider);
 
-    setMessage("매장에 연결하는 중입니다.");
-    const { data: profileData, error: acceptError } = await supabase.rpc("accept_store_invite" as never, { invite_token: inviteToken } as never);
-    if (acceptError) {
-      setError(acceptError.message);
-      return true;
+    const { error: oauthError } =
+      provider === "google"
+        ? await Services.AuthService.loginWithGoogle()
+        : provider === "kakao"
+          ? await Services.AuthService.loginWithKakao()
+          : await Services.AuthService.loginWithApple();
+
+    if (oauthError) {
+      setError(oauthError.message);
+      setOauthLoading(null);
     }
-    if (profileData && onInviteAccepted) {
-      onInviteAccepted(profileData as StaffProfile);
-      return true;
-    }
-    return false;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -49,14 +71,14 @@ export function LoginPage({ initialMode = "login", initialEmail = "", inviteToke
     setLoading(true);
 
     if (mode === "login") {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: signInError } = await Services.AuthService.signInWithPassword({ email, password });
       if (signInError) {
         setError(signInError.message);
-      } else if (!(await acceptInviteAfterAuth())) {
+      } else {
         setMessage("로그인되었습니다.");
       }
     } else {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await Services.AuthService.signUp({
         email,
         password,
         options: {
@@ -67,8 +89,6 @@ export function LoginPage({ initialMode = "login", initialEmail = "", inviteToke
         setError(signUpError.message);
       } else if (!data.session) {
         setError("회원가입은 완료됐지만 자동 로그인이 되지 않았습니다. Supabase Email 설정에서 Confirm email이 꺼져 있는지 확인해 주세요.");
-      } else if (inviteToken && data.session) {
-        await acceptInviteAfterAuth();
       } else {
         setMessage("회원가입이 완료되었습니다.");
       }
@@ -118,6 +138,31 @@ export function LoginPage({ initialMode = "login", initialEmail = "", inviteToke
           <button className="primary-button w-full" type="submit" disabled={loading}>
             {loading ? (mode === "login" ? "로그인 중..." : "가입 중...") : mode === "login" ? "로그인" : "회원가입"}
           </button>
+        </div>
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+          <span className="text-xs font-semibold text-slate-400">또는</span>
+          <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+        </div>
+
+        <div className="grid gap-2">
+          {OAUTH_BUTTONS.map((item) => {
+            const Icon = item.icon;
+            const busy = oauthLoading === item.provider;
+            return (
+              <button
+                key={item.provider}
+                type="button"
+                onClick={() => void handleOAuthLogin(item.provider)}
+                disabled={loading || oauthLoading !== null}
+                className={`touch-button inline-flex w-full items-center justify-center gap-2 rounded-md border px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60 ${item.className}`}
+              >
+                <Icon size={18} />
+                {busy ? "이동 중..." : item.label}
+              </button>
+            );
+          })}
         </div>
       </form>
     </main>

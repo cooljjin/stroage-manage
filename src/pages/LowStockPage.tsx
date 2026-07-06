@@ -8,7 +8,7 @@ import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { loadSuppliers } from "../lib/suppliers";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
 
 type Props = {
@@ -94,14 +94,14 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     setLoading(true);
     const [supplierResult, productResult] = await Promise.all([
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      supabase.from("products").select("*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true })
+      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true })
     ]);
     const { data, error: loadError } = productResult;
     setSuppliers(supplierResult);
     if (loadError) {
       setError(loadError.message);
     } else {
-      setItems((data ?? []).map((row) => normalizeInventoryItem(row as Parameters<typeof normalizeInventoryItem>[0])));
+      setItems(((data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
     }
     setLoading(false);
   }, [currentStoreId]);
@@ -189,9 +189,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
 
   const findProductByFreshBarcode = useCallback(async (barcode: string) => {
     const barcodeCandidates = getBarcodeCandidates(barcode);
-    const { data, error: productError } = await supabase
-      .from("products")
-      .select("*")
+    const { data, error: productError } = await Services.DatabaseService.select("products", "*")
       .eq("store_id", currentStoreId)
       .in("barcode", barcodeCandidates)
       .eq("is_active", true)
@@ -200,9 +198,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     if (productError) return { product: null, errorMessage: productError.message };
     if (data) return { product: data as InventoryItem, errorMessage: "" };
 
-    const { data: barcodeData, error: barcodeError } = await supabase
-      .from("product_barcodes")
-      .select("product_id")
+    const { data: barcodeData, error: barcodeError } = await Services.DatabaseService.select("product_barcodes", "product_id")
       .eq("store_id", currentStoreId)
       .in("barcode", barcodeCandidates)
       .limit(1)
@@ -210,9 +206,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     if (barcodeError) return { product: null, errorMessage: barcodeError.message };
     if (!barcodeData) return { product: null, errorMessage: "" };
 
-    const { data: aliasProduct, error: aliasError } = await supabase
-      .from("products")
-      .select("*")
+    const { data: aliasProduct, error: aliasError } = await Services.DatabaseService.select("products", "*")
       .eq("store_id", currentStoreId)
       .eq("id", barcodeData.product_id)
       .eq("is_active", true)
@@ -329,9 +323,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     const results = await Promise.all(
       changedItems.map((item) => {
         const selected = selectedFreshIds.has(item.id);
-        return supabase
-          .from("products")
-          .update({
+        return Services.DatabaseService.update("products", {
             fresh_order_selected: selected,
             fresh_order_selected_at: selected ? new Date().toISOString() : null
           })
@@ -377,9 +369,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     setDeletingUrgentIds((current) => new Set(current).add(item.id));
     setItems((current) => current.map((product) => (product.id === item.id ? { ...product, urgent_order_requested: false, urgent_order_quantity: null } : product)));
 
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({ urgent_order_requested: false, urgent_order_quantity: null })
+    const { error: updateError } = await Services.DatabaseService.update("products", { urgent_order_requested: false, urgent_order_quantity: null })
       .eq("store_id", currentStoreId)
       .eq("id", item.id);
 
@@ -400,7 +390,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     setUpdatingOrderIds((current) => new Set(current).add(item.id));
     setItems((current) => current.map((product) => (product.id === item.id ? { ...product, order_completed: checked } : product)));
 
-    const { error: updateError } = await supabase.from("products").update({ order_completed: checked }).eq("store_id", currentStoreId).eq("id", item.id);
+    const { error: updateError } = await Services.DatabaseService.update("products", { order_completed: checked }).eq("store_id", currentStoreId).eq("id", item.id);
     if (updateError) {
       setItems((current) => current.map((product) => (product.id === item.id ? { ...product, order_completed: item.order_completed } : product)));
       setError(updateError.message);
@@ -420,9 +410,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     const updateErrorMessage = item.receipt_check_only
       ? (await recordReceiptCheckOnly(item.id, currentStoreId)).errorMessage
       : (
-          await supabase
-            .from("products")
-            .update({
+          await Services.DatabaseService.update("products", {
               fresh_order_selected: false,
               fresh_order_selected_at: null
             })
@@ -468,9 +456,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     setError("");
     setUndoingFreshReceiving(true);
 
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({
+    const { error: updateError } = await Services.DatabaseService.update("products", {
         fresh_order_selected: previous.freshOrderSelected,
         fresh_order_selected_at: previous.freshOrderSelectedAt
       })
@@ -519,9 +505,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     setError("");
 
     if (urgentDirectInput) {
-      const { data, error: insertError } = await supabase
-        .from("products")
-        .insert({
+      const { data, error: insertError } = await Services.DatabaseService.insert("products", {
           store_id: currentStoreId,
           name: directName,
           barcode: null,
@@ -540,7 +524,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
       if (insertError) {
         setError(insertError.message);
       } else {
-        const { error: inventoryError } = await supabase.from("inventory").insert({ product_id: data.id, store_id: currentStoreId });
+        const { error: inventoryError } = await Services.DatabaseService.insert("inventory", { product_id: data.id, store_id: currentStoreId });
         if (inventoryError) {
           setError(inventoryError.message);
         } else {
@@ -552,9 +536,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
       return;
     }
 
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({ urgent_order_requested: true, urgent_order_quantity: quantity })
+    const { error: updateError } = await Services.DatabaseService.update("products", { urgent_order_requested: true, urgent_order_quantity: quantity })
       .eq("store_id", currentStoreId)
       .eq("id", urgentProductId);
 

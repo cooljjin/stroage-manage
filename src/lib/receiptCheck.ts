@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import * as Services from "../services";
 
 export const RECEIPT_CHECK_NOTE = "입고여부만 확인";
 
@@ -10,14 +10,12 @@ export function formatReceiptCheckError(message: string) {
 }
 
 export async function recordReceiptCheckOnly(productId: string, storeId: string, quantity?: number | null): Promise<{ errorMessage: string }> {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await Services.AuthService.getUser();
   if (userError || !userData.user) {
     return { errorMessage: userError?.message ?? "로그인이 필요합니다." };
   }
 
-  const { data: inventory, error: inventoryError } = await supabase
-    .from("inventory")
-    .upsert({ product_id: productId, store_id: storeId }, { onConflict: "product_id" })
+  const { data: inventory, error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: productId, store_id: storeId }, { onConflict: "product_id" })
     .select()
     .single();
 
@@ -27,7 +25,7 @@ export async function recordReceiptCheckOnly(productId: string, storeId: string,
 
   const warehouseQty = Number(inventory?.warehouse_qty ?? 0);
   const storeQty = Number(inventory?.store_qty ?? 0);
-  const { error: logError } = await supabase.from("inventory_logs").insert({
+  const { error: logError } = await Services.DatabaseService.insert("inventory_logs", {
     store_id: storeId,
     product_id: productId,
     user_id: userData.user.id,
@@ -48,9 +46,7 @@ export async function recordReceiptCheckOnly(productId: string, storeId: string,
     return { errorMessage: formatReceiptCheckError(logError.message) };
   }
 
-  const { error: freshOrderError } = await supabase
-    .from("products")
-    .update({
+  const { error: freshOrderError } = await Services.DatabaseService.update("products", {
       fresh_order_selected: false,
       fresh_order_selected_at: null
     })

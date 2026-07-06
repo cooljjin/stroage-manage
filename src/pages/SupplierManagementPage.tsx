@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { loadSuppliers } from "../lib/suppliers";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { ProductSupplier } from "../types/domain";
 
 export function SupplierManagementPage() {
@@ -45,7 +45,7 @@ export function SupplierManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: insertError } = await supabase.from("suppliers").insert({ name: trimmedName });
+    const { error: insertError } = await Services.DatabaseService.insert("suppliers", { name: trimmedName });
     if (insertError) {
       setError(insertError.message);
     } else {
@@ -80,9 +80,7 @@ export function SupplierManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase
-      .from("suppliers")
-      .update({
+    const { error: updateError } = await Services.DatabaseService.update("suppliers", {
         name: nextName,
         order_method: nextOrderMethod,
         sms_phone: nextOrderMethod === "sms" ? nextSmsPhone : null,
@@ -94,7 +92,7 @@ export function SupplierManagementPage() {
       return;
     }
 
-    const { error: productUpdateError } = await supabase.from("products").update({ supplier_name: nextName }).eq("supplier_name", supplier.name);
+    const { error: productUpdateError } = await Services.DatabaseService.update("products", { supplier_name: nextName }).eq("supplier_name", supplier.name);
     if (productUpdateError) {
       setError(`발주처 이름은 변경됐지만 상품 연결 수정에 실패했습니다: ${productUpdateError.message}`);
       return;
@@ -108,7 +106,7 @@ export function SupplierManagementPage() {
   async function setSupplierActive(supplier: ProductSupplier, isActive: boolean) {
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase.from("suppliers").update({ is_active: isActive }).eq("id", supplier.id);
+    const { error: updateError } = await Services.DatabaseService.update("suppliers", { is_active: isActive }).eq("id", supplier.id);
     if (updateError) {
       setError(updateError.message);
     } else {
@@ -123,7 +121,7 @@ export function SupplierManagementPage() {
       return;
     }
 
-    const { count, error: countError } = await supabase.from("products").select("id", { count: "exact", head: true }).eq("supplier_name", supplier.name);
+    const { count, error: countError } = await Services.DatabaseService.select("products", "id", { count: "exact", head: true }).eq("supplier_name", supplier.name);
     if (countError) {
       setError(countError.message);
       return;
@@ -137,7 +135,7 @@ export function SupplierManagementPage() {
     const ok = window.confirm(`${supplier.name} 발주처를 삭제할까요?`);
     if (!ok) return;
 
-    const { error: deleteError } = await supabase.from("suppliers").delete().eq("id", supplier.id).eq("is_active", false);
+    const { error: deleteError } = await Services.DatabaseService.delete("suppliers").eq("id", supplier.id).eq("is_active", false);
     if (deleteError) {
       setError(deleteError.message);
     } else {

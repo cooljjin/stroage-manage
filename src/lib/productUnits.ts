@@ -1,8 +1,8 @@
 import { DEFAULT_PRODUCT_UNITS, type ProductUnit } from "../types/domain";
-import { supabase } from "./supabase";
+import * as Services from "../services";
 
 export async function loadProductUnits(options?: { activeOnly?: boolean }): Promise<ProductUnit[]> {
-  let query = supabase.from("product_units").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true });
+  let query = Services.DatabaseService.select("product_units", "*").order("sort_order", { ascending: true }).order("name", { ascending: true });
 
   if (options?.activeOnly) {
     query = query.eq("is_active", true);

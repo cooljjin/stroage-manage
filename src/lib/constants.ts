@@ -12,5 +12,4 @@ export const NAV_ITEMS = [
   { route: "logs", label: "작업로그", icon: ClipboardList }
 ] as const;
 
-export const VIEW_MODE_STORAGE_KEY = "inventory-view-mode";
 export const DARK_MODE_STORAGE_KEY = "inventory-dark-mode";

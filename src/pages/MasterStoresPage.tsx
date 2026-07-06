@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { Store } from "../types/domain";
 
 export function MasterStoresPage() {
@@ -21,9 +21,7 @@ export function MasterStoresPage() {
     setLoading(true);
     setError("");
 
-    const { data, error: loadError } = await supabase
-      .from("stores")
-      .select("*")
+    const { data, error: loadError } = await Services.DatabaseService.select("stores", "*")
       .order("created_at", { ascending: false });
 
     if (loadError) {
@@ -48,7 +46,7 @@ export function MasterStoresPage() {
     setError("");
     setMessage("");
 
-    const { error: insertError } = await supabase.from("stores").insert({ name });
+    const { error: insertError } = await Services.DatabaseService.insert("stores", { name });
 
     if (insertError) {
       setError(insertError.message);

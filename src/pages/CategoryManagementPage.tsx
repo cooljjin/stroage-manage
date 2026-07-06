@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { loadCategories } from "../lib/categories";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { ProductCategory } from "../types/domain";
 
 export function CategoryManagementPage() {
@@ -40,7 +40,7 @@ export function CategoryManagementPage() {
     setError("");
     setMessage("");
     const nextSortOrder = categories.reduce((max, category) => Math.max(max, category.sort_order), 0) + 1;
-    const { error: insertError } = await supabase.from("categories").insert({ name: trimmedName, sort_order: nextSortOrder });
+    const { error: insertError } = await Services.DatabaseService.insert("categories", { name: trimmedName, sort_order: nextSortOrder });
     if (insertError) {
       setError(insertError.message);
     } else {
@@ -53,7 +53,7 @@ export function CategoryManagementPage() {
   async function setCategoryActive(category: ProductCategory, isActive: boolean) {
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase.from("categories").update({ is_active: isActive }).eq("id", category.id);
+    const { error: updateError } = await Services.DatabaseService.update("categories", { is_active: isActive }).eq("id", category.id);
     if (updateError) {
       setError(updateError.message);
     } else {
@@ -75,13 +75,13 @@ export function CategoryManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: categoryError } = await supabase.from("categories").update({ name: nextName }).eq("id", category.id);
+    const { error: categoryError } = await Services.DatabaseService.update("categories", { name: nextName }).eq("id", category.id);
     if (categoryError) {
       setError(categoryError.message);
       return;
     }
 
-    const { error: productError } = await supabase.from("products").update({ category: nextName }).eq("category", category.name);
+    const { error: productError } = await Services.DatabaseService.update("products", { category: nextName }).eq("category", category.name);
     if (productError) {
       setError(productError.message);
     } else {
@@ -105,7 +105,7 @@ export function CategoryManagementPage() {
     setMessage("");
 
     const results = await Promise.all(
-      nextCategories.map((category, nextIndex) => supabase.from("categories").update({ sort_order: nextIndex + 1 }).eq("id", category.id))
+      nextCategories.map((category, nextIndex) => Services.DatabaseService.update("categories", { sort_order: nextIndex + 1 }).eq("id", category.id))
     );
     const updateError = results.find((result) => result.error)?.error;
 
@@ -123,7 +123,7 @@ export function CategoryManagementPage() {
       return;
     }
 
-    const { count, error: countError } = await supabase.from("products").select("id", { count: "exact", head: true }).eq("category", category.name);
+    const { count, error: countError } = await Services.DatabaseService.select("products", "id", { count: "exact", head: true }).eq("category", category.name);
     if (countError) {
       setError(countError.message);
       return;
@@ -137,7 +137,7 @@ export function CategoryManagementPage() {
     const ok = window.confirm(`${category.name} 카테고리를 삭제할까요?`);
     if (!ok) return;
 
-    const { error: deleteError } = await supabase.from("categories").delete().eq("id", category.id).eq("is_active", false);
+    const { error: deleteError } = await Services.DatabaseService.delete("categories").eq("id", category.id).eq("is_active", false);
     if (deleteError) {
       setError(deleteError.message);
     } else {

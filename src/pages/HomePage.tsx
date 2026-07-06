@@ -5,7 +5,7 @@ import { StatusMessage } from "../components/StatusMessage";
 import { getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, DashboardTodo, HandoverNote, InventoryLog, Product, StaffProfile } from "../types/domain";
 
 type Props = {
@@ -94,8 +94,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setError("");
     setMessage("");
     const [weeklyClosureResult, specificClosureResult] = await Promise.all([
-      supabase.from("weekly_store_closures").select("weekday"),
-      supabase.from("store_closure_dates").select("closure_date").gte("closure_date", todayValue)
+      Services.DatabaseService.select("weekly_store_closures", "weekday"),
+      Services.DatabaseService.select("store_closure_dates", "closure_date").gte("closure_date", todayValue)
     ]);
     const closureError = weeklyClosureResult.error ?? specificClosureResult.error;
     if (closureError) {
@@ -112,8 +112,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     try {
       calculatedNextBusinessDate = getNextBusinessDate(
         todayValue,
-        new Set((weeklyClosureResult.data ?? []).map((item) => item.weekday)),
-        new Set((specificClosureResult.data ?? []).map((item) => item.closure_date))
+        new Set(((weeklyClosureResult.data ?? []) as Array<{ weekday: number }>).map((item) => item.weekday)),
+        new Set(((specificClosureResult.data ?? []) as Array<{ closure_date: string }>).map((item) => item.closure_date))
       );
     } catch (calendarError) {
       setError(calendarError instanceof Error ? calendarError.message : "내일 날짜를 계산하지 못했습니다.");
@@ -126,29 +126,23 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     const range = getDayRange(new Date(`${dashboardDate}T00:00:00`));
     const receiptQuery =
       dashboardView === "today"
-        ? supabase
-            .from("inventory_logs")
-            .select("*, products(name, barcode, receipt_check_only)")
+        ? Services.DatabaseService.select("inventory_logs", "*, products(name, barcode, receipt_check_only)")
             .eq("action", "입고")
             .is("reverted_at", null)
             .gte("created_at", range.start)
             .lt("created_at", range.end)
             .order("created_at", { ascending: false })
-        : supabase
-            .from("products")
-            .select("*")
+        : Services.DatabaseService.select("products", "*")
             .eq("is_active", true)
             .eq("fresh_order_selected", true)
             .order("name", { ascending: true });
 
     const [receiptResult, todoResult, handoverResult, profileResult, receiptDeletionResult] = await Promise.all([
       receiptQuery,
-      supabase.from("dashboard_todos").select("*").eq("task_date", dashboardDate).order("created_at", { ascending: true }),
-      supabase.from("handover_notes").select("*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
-      supabase.from("profiles").select("*"),
-      supabase
-        .from("dashboard_receipt_deletions")
-        .select("id")
+      Services.DatabaseService.select("dashboard_todos", "*").eq("task_date", dashboardDate).order("created_at", { ascending: true }),
+      Services.DatabaseService.select("handover_notes", "*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
+      Services.DatabaseService.select("profiles", "*"),
+      Services.DatabaseService.select("dashboard_receipt_deletions", "id")
         .is("restored_at", null)
         .gte("deleted_at", range.start)
         .lt("deleted_at", range.end)
@@ -231,7 +225,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setReceiptDeletingIds((current) => new Set(current).add(item.productId));
     setError("");
     setMessage("");
-    const { error: deleteError } = await supabase.rpc("delete_today_product_receipts", {
+    const { error: deleteError } = await Services.DatabaseService.rpc("delete_today_product_receipts", {
       target_product_id: item.productId
     });
 
@@ -257,7 +251,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setReceiptActioning(true);
     setError("");
     setMessage("");
-    const { error: restoreError } = await supabase.rpc("restore_latest_dashboard_receipt_deletion");
+    const { error: restoreError } = await Services.DatabaseService.rpc("restore_latest_dashboard_receipt_deletion");
 
     if (restoreError) {
       setError(receiptActionError(restoreError.message));
@@ -275,14 +269,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     setSaving(true);
     setError("");
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData } = await Services.AuthService.getUser();
     if (!userData.user) {
       setError("로그인이 필요합니다.");
       setSaving(false);
       return;
     }
 
-    const { error: insertError } = await supabase.from("dashboard_todos").insert({
+    const { error: insertError } = await Services.DatabaseService.insert("dashboard_todos", {
       task_date: selectedDate,
       content,
       created_by: userData.user.id
@@ -300,10 +294,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   async function toggleTodo(todo: DashboardTodo) {
     const nextCompleted = !todo.is_completed;
     setTodos((current) => current.map((item) => (item.id === todo.id ? { ...item, is_completed: nextCompleted } : item)));
-    const { data: userData } = await supabase.auth.getUser();
-    const { error: updateError } = await supabase
-      .from("dashboard_todos")
-      .update({
+    const { data: userData } = await Services.AuthService.getUser();
+    const { error: updateError } = await Services.DatabaseService.update("dashboard_todos", {
         is_completed: nextCompleted,
         completed_at: nextCompleted ? new Date().toISOString() : null,
         completed_by: nextCompleted ? userData.user?.id ?? null : null
@@ -322,9 +314,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     setDeletingIds((current) => new Set(current).add(todo.id));
     setError("");
-    const { error: deleteError } = await supabase
-      .from("dashboard_todos")
-      .delete()
+    const { error: deleteError } = await Services.DatabaseService.delete("dashboard_todos")
       .eq("id", todo.id)
       .eq("task_date", nextBusinessDate);
 
@@ -347,14 +337,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     setSaving(true);
     setError("");
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData } = await Services.AuthService.getUser();
     if (!userData.user) {
       setError("로그인이 필요합니다.");
       setSaving(false);
       return;
     }
 
-    const { error: insertError } = await supabase.from("handover_notes").insert({
+    const { error: insertError } = await Services.DatabaseService.insert("handover_notes", {
       store_id: currentStoreId,
       handover_date: selectedDate,
       content,
@@ -376,9 +366,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     setDeletingIds((current) => new Set(current).add(note.id));
     setError("");
-    const { error: deleteError } = await supabase
-      .from("handover_notes")
-      .delete()
+    const { error: deleteError } = await Services.DatabaseService.delete("handover_notes")
       .eq("id", note.id)
       .eq("store_id", currentStoreId)
       .eq("handover_date", nextBusinessDate);
@@ -397,9 +385,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
   async function openHistory() {
     setShowHistory(true);
-    const { data, error: historyError } = await supabase
-      .from("handover_notes")
-      .select("*")
+    const { data, error: historyError } = await Services.DatabaseService.select("handover_notes", "*")
       .eq("store_id", currentStoreId)
       .order("handover_date", { ascending: false })
       .order("created_at", { ascending: false })

@@ -4,7 +4,7 @@ import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { AppRoute, GroupOrderRouteDraft, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
 
 type Props = {
@@ -91,8 +91,8 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => fallbackSuppliers()),
       loadProductUnits({ activeOnly: true }).catch(() => fallbackProductUnits()),
-      supabase.from("products").select("*").eq("store_id", currentStoreId).eq("id", productId).single(),
-      supabase.from("products").select("*").eq("store_id", currentStoreId).order("name", { ascending: true })
+      Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).eq("id", productId).single(),
+      Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).order("name", { ascending: true })
     ]);
 
     const { data, error: loadError } = productResult;
@@ -206,9 +206,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
 
     setSaving(true);
     setError("");
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({
+    const { error: updateError } = await Services.DatabaseService.update("products", {
         name: nextName,
         barcode: barcode.trim() || null,
         category,
@@ -248,7 +246,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     setError("");
     setMessage("");
 
-    const { error: deleteError } = await supabase.from("products").update({ is_active: false }).eq("store_id", currentStoreId).eq("id", product.id);
+    const { error: deleteError } = await Services.DatabaseService.update("products", { is_active: false }).eq("store_id", currentStoreId).eq("id", product.id);
 
     setDeleting(false);
     if (deleteError) {
@@ -285,7 +283,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     setError("");
     setMessage("");
     setMerging(true);
-    const { error: mergeError } = await supabase.rpc("merge_products", {
+    const { error: mergeError } = await Services.DatabaseService.rpc("merge_products", {
       target_product_id: product.id,
       source_product_id: sourceProduct.id
     });

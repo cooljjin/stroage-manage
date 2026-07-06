@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Copy, Save, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
-import { supabase } from "../lib/supabase";
+import * as Services from "../services";
 import type { ProfileRole, StaffProfile, StoreInvite } from "../types/domain";
 
 const ROLE_LABEL: Record<ProfileRole, string> = {
@@ -26,16 +26,15 @@ function formatDeleteUserError(message: string | undefined) {
 export function StaffManagementPage() {
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
-  const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Exclude<ProfileRole, "master">>("staff");
   const [createdInvite, setCreatedInvite] = useState<StoreInvite | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const inviteLink = useMemo(() => {
+  const inviteCode = useMemo(() => {
     if (!createdInvite) return "";
-    return `${window.location.origin}/invite/${createdInvite.token}`;
+    return createdInvite.token;
   }, [createdInvite]);
 
   useEffect(() => {
@@ -45,12 +44,12 @@ export function StaffManagementPage() {
   async function loadProfiles() {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await supabase.from("profiles").select("*").order("created_at", { ascending: true });
+    const { data, error: loadError } = await Services.DatabaseService.select("profiles", "*").order("created_at", { ascending: true });
 
     if (loadError) {
       setError(loadError.message);
     } else {
-      const nextProfiles = data ?? [];
+      const nextProfiles = (data ?? []) as StaffProfile[];
       setProfiles(nextProfiles);
       setDraftNames(Object.fromEntries(nextProfiles.map((profile) => [profile.id, profile.display_name])));
     }
@@ -67,9 +66,7 @@ export function StaffManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ display_name: displayName, updated_at: new Date().toISOString() })
+    const { error: updateError } = await Services.DatabaseService.update("profiles", { display_name: displayName, updated_at: new Date().toISOString() })
       .eq("id", profile.id);
 
     if (updateError) {
@@ -86,10 +83,9 @@ export function StaffManagementPage() {
     setMessage("");
     setCreatedInvite(null);
 
-    const { data, error: inviteError } = await supabase.rpc("create_store_invite" as never, {
-      target_email: inviteEmail,
+    const { data, error: inviteError } = await Services.DatabaseService.rpc("create_store_invite", {
       target_role: inviteRole
-    } as never);
+    });
 
     if (inviteError) {
       setError(inviteError.message);
@@ -97,13 +93,13 @@ export function StaffManagementPage() {
     }
 
     setCreatedInvite(data as StoreInvite);
-    setMessage("초대 링크를 생성했습니다.");
+    setMessage("초대코드를 생성했습니다.");
   }
 
-  async function copyInviteLink() {
-    if (!inviteLink) return;
-    await navigator.clipboard.writeText(inviteLink);
-    setMessage("초대 링크를 복사했습니다.");
+  async function copyInviteCode() {
+    if (!inviteCode) return;
+    await navigator.clipboard.writeText(inviteCode);
+    setMessage("초대코드를 복사했습니다.");
   }
 
   async function deleteProfile(profile: StaffProfile) {
@@ -120,7 +116,7 @@ export function StaffManagementPage() {
     setError("");
     setMessage("");
 
-    const { data, error: deleteError } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>("delete-auth-user", {
+    const { data, error: deleteError } = await Services.EdgeFunctionService.invoke<{ ok?: boolean; error?: string }>("delete-auth-user", {
       body: { userId: profile.id }
     });
 
@@ -134,13 +130,9 @@ export function StaffManagementPage() {
 
   return (
     <section>
-      <PageTitle title="직원 관리" description="직원 이름을 관리하고 초대 링크를 생성합니다." />
+      <PageTitle title="직원 관리" description="직원 이름을 관리하고 초대코드를 생성합니다." />
 
-      <form onSubmit={createInvite} className="panel mb-4 grid gap-3 p-4 sm:grid-cols-[1fr_150px_auto]">
-        <label className="block">
-          <span className="mb-1 block text-sm font-semibold">초대 이메일</span>
-          <input className="field" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} required />
-        </label>
+      <form onSubmit={createInvite} className="panel mb-4 grid gap-3 p-4 sm:grid-cols-[150px_auto]">
         <label className="block">
           <span className="mb-1 block text-sm font-semibold">권한</span>
           <select className="field" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Exclude<ProfileRole, "master">)}>
@@ -149,14 +141,14 @@ export function StaffManagementPage() {
           </select>
         </label>
         <button type="submit" className="primary-button self-end">
-          초대 링크 생성
+          초대코드 생성
         </button>
       </form>
 
-      {inviteLink ? (
+      {inviteCode ? (
         <div className="panel mb-4 flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-          <input className="field flex-1" value={inviteLink} readOnly />
-          <button type="button" onClick={copyInviteLink} className="secondary-button inline-flex items-center justify-center gap-2">
+          <input className="field flex-1 text-center text-lg font-bold uppercase tracking-widest" value={inviteCode} readOnly />
+          <button type="button" onClick={copyInviteCode} className="secondary-button inline-flex items-center justify-center gap-2">
             <Copy size={18} />
             복사
           </button>

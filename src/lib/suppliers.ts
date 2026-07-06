@@ -1,10 +1,10 @@
 import type { ProductSupplier } from "../types/domain";
-import { supabase } from "./supabase";
+import * as Services from "../services";
 
 const DEFAULT_SUPPLIERS = ["쿠팡", "쿠팡 프레시"] as const;
 
 export async function loadSuppliers(options?: { activeOnly?: boolean }): Promise<ProductSupplier[]> {
-  let query = supabase.from("suppliers").select("*").order("name", { ascending: true });
+  let query = Services.DatabaseService.select("suppliers", "*").order("name", { ascending: true });
 
   if (options?.activeOnly) {
     query = query.eq("is_active", true);
