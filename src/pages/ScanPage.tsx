@@ -15,6 +15,8 @@ type Props = {
 };
 
 const SCANNER_ID = "barcode-scanner";
+const PENDING_SCAN_STORAGE_KEY = "store-inventory-pending-scan";
+const PENDING_SCAN_TTL_MS = 5 * 60 * 1000;
 const PRODUCT_BARCODE_FORMATS = [
   Html5QrcodeSupportedFormats.EAN_13,
   Html5QrcodeSupportedFormats.EAN_8,
@@ -31,6 +33,38 @@ const DEFAULT_CAMERA_ZOOM = 2.5;
 type FocusMediaTrackConstraints = MediaTrackConstraints & {
   advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
 };
+
+type PendingScanEntry = {
+  barcode: string;
+  storeId: string;
+  savedAt: number;
+};
+
+function savePendingScanBarcode(barcode: string, storeId: string) {
+  const normalized = barcode.trim();
+  if (!normalized) return;
+  const entry: PendingScanEntry = { barcode: normalized, storeId, savedAt: Date.now() };
+  localStorage.setItem(PENDING_SCAN_STORAGE_KEY, JSON.stringify(entry));
+}
+
+function clearPendingScanBarcode() {
+  localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+}
+
+function consumePendingScanBarcode(storeId: string): string | null {
+  const rawEntry = localStorage.getItem(PENDING_SCAN_STORAGE_KEY);
+  if (!rawEntry) return null;
+
+  try {
+    const entry = JSON.parse(rawEntry) as PendingScanEntry;
+    localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+    if (entry.storeId !== storeId || Date.now() - entry.savedAt > PENDING_SCAN_TTL_MS) return null;
+    return entry.barcode.trim() || null;
+  } catch {
+    localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+    return null;
+  }
+}
 
 function getBarcodeCandidates(barcode: string): string[] {
   const normalized = barcode.trim();
@@ -91,6 +125,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const handleBarcode = useCallback(async (barcode: string) => {
     if (barcodeHandlingRef.current) return;
     barcodeHandlingRef.current = true;
+    savePendingScanBarcode(barcode, currentStoreId);
     setMessage(`스캔됨: ${barcode}`);
     if (scannerRef.current?.isScanning) {
       await scannerRef.current.stop().catch(() => undefined);
@@ -100,6 +135,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     const { product, errorMessage } = await findProductByBarcode(barcode, currentStoreId);
     if (!mountedRef.current || completedNavigationRef.current) return;
     if (errorMessage) {
+      clearPendingScanBarcode();
       setMessage(errorMessage);
       barcodeHandlingRef.current = false;
       return;
@@ -108,15 +144,18 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (product?.receipt_check_only) {
       const { errorMessage } = await recordReceiptCheckOnly(product.id, currentStoreId);
       if (!mountedRef.current || completedNavigationRef.current) return;
+      clearPendingScanBarcode();
       setMessage(errorMessage || `${product.name} 입고완료를 기록했습니다.`);
       barcodeHandlingRef.current = false;
       return;
     }
 
     if (product) {
+      clearPendingScanBarcode();
       completedNavigationRef.current = true;
       navigate({ name: "operation", productId: product.id });
     } else {
+      clearPendingScanBarcode();
       completedNavigationRef.current = true;
       navigate({ name: "register", barcode });
     }
@@ -243,6 +282,16 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   }, [canScan, handleBarcode, nativeScannerAvailable, navigate, startWebScanner]);
 
   useEffect(() => {
+    const pendingBarcode = consumePendingScanBarcode(currentStoreId);
+    if (pendingBarcode) {
+      const timer = window.setTimeout(() => {
+        if (!mountedRef.current || completedNavigationRef.current) return;
+        void handleBarcode(pendingBarcode);
+      }, 0);
+
+      return () => window.clearTimeout(timer);
+    }
+
     const autoStartKey = nativeScannerAvailable ? (scanLaunchId ?? "native-initial") : "web-initial";
     if (lastAutoStartKeyRef.current === autoStartKey) return;
     lastAutoStartKeyRef.current = autoStartKey;
@@ -252,7 +301,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [nativeScannerAvailable, scanLaunchId, startScanner]);
+  }, [currentStoreId, handleBarcode, nativeScannerAvailable, scanLaunchId, startScanner]);
 
   async function stopScanner() {
     scanAttemptRef.current += 1;

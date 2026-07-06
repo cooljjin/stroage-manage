@@ -82,22 +82,23 @@ function isPostScanRoute(route: AppRoute) {
 function savePostScanRoute(route: AppRoute) {
   if (!isPostScanRoute(route)) return;
   const entry: StoredRouteEntry = { route, savedAt: Date.now() };
-  sessionStorage.setItem(POST_SCAN_ROUTE_STORAGE_KEY, JSON.stringify(entry));
+  localStorage.setItem(POST_SCAN_ROUTE_STORAGE_KEY, JSON.stringify(entry));
 }
 
 function consumePostScanRoute(): AppRoute | null {
-  const rawEntry = sessionStorage.getItem(POST_SCAN_ROUTE_STORAGE_KEY);
+  const rawEntry = localStorage.getItem(POST_SCAN_ROUTE_STORAGE_KEY);
   if (!rawEntry) return null;
 
   try {
     const entry = JSON.parse(rawEntry) as StoredRouteEntry;
     if (!isPostScanRoute(entry.route) || Date.now() - entry.savedAt > POST_SCAN_ROUTE_TTL_MS) {
-      sessionStorage.removeItem(POST_SCAN_ROUTE_STORAGE_KEY);
+      localStorage.removeItem(POST_SCAN_ROUTE_STORAGE_KEY);
       return null;
     }
+    localStorage.removeItem(POST_SCAN_ROUTE_STORAGE_KEY);
     return entry.route;
   } catch {
-    sessionStorage.removeItem(POST_SCAN_ROUTE_STORAGE_KEY);
+    localStorage.removeItem(POST_SCAN_ROUTE_STORAGE_KEY);
     return null;
   }
 }
