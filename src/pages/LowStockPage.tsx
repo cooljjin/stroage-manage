@@ -124,6 +124,8 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     });
   }, [freshSearch, items]);
 
+  const freshSearchActive = freshSearch.trim().length > 0;
+
   const freshProductsByCategory = useMemo(() => {
     const groups = new Map<string, InventoryItem[]>();
     freshProducts.forEach((item) => {
@@ -792,7 +794,42 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-3">
                   <div className="space-y-2">
-                    {freshProductsByCategory.map(({ category, products, selectedCount, urgentCount }) => {
+                    {freshSearchActive ? (
+                      freshProducts.map((item) => {
+                        const selected = selectedFreshIds.has(item.id);
+                        const urgent = selectedUrgentIds.has(item.id);
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 ${
+                              selected
+                                ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                                : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                            }`}
+                          >
+                            <label className="grid h-8 w-8 shrink-0 place-items-center" aria-label={`${item.name} 발주품목 선택`}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleFreshProduct(item.id)}
+                                className="h-6 w-6 rounded border-slate-300 accent-emerald-600"
+                              />
+                            </label>
+                            <span className="min-w-0 flex-1 break-words font-bold">{item.name}</span>
+                            <label className="flex shrink-0 flex-col items-center gap-1 text-xs font-bold text-red-700 dark:text-red-200">
+                              긴급
+                              <input
+                                type="checkbox"
+                                checked={urgent}
+                                onChange={() => toggleUrgentProduct(item.id)}
+                                className="h-6 w-6 rounded border-slate-300 accent-red-600"
+                              />
+                            </label>
+                          </div>
+                        );
+                      })
+                    ) : freshProductsByCategory.map(({ category, products, selectedCount, urgentCount }) => {
                       const expanded = expandedFreshCategory === category;
 
                       return (
@@ -852,7 +889,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
                       );
                     })}
 
-                    {freshProductsByCategory.length === 0 ? <StatusMessage>검색 결과가 없습니다.</StatusMessage> : null}
+                    {freshProducts.length === 0 ? <StatusMessage>검색 결과가 없습니다.</StatusMessage> : null}
                   </div>
                 </div>
 

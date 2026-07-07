@@ -4,7 +4,6 @@ import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { isNativeBarcodeScannerAvailable, scanNativeBarcode } from "../lib/nativeBarcodeScanner";
-import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import * as Services from "../services";
 import type { AppRoute, Product } from "../types/domain";
 
@@ -137,15 +136,6 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (errorMessage) {
       clearPendingScanBarcode();
       setMessage(errorMessage);
-      barcodeHandlingRef.current = false;
-      return;
-    }
-
-    if (product?.receipt_check_only) {
-      const { errorMessage } = await recordReceiptCheckOnly(product.id, currentStoreId);
-      if (!mountedRef.current || completedNavigationRef.current) return;
-      clearPendingScanBarcode();
-      setMessage(errorMessage || `${product.name} 입고완료를 기록했습니다.`);
       barcodeHandlingRef.current = false;
       return;
     }

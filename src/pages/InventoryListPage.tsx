@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, TriangleAlert } from "lucide-react";
+import { ChevronDown, Search, TriangleAlert } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton } from "../components/Skeleton";
@@ -21,6 +21,7 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState<CategoryFilter>("전체");
+  const [categoryExpanded, setCategoryExpanded] = useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -68,17 +69,28 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
     <section>
       <PageTitle title="재고 현황" description="카테고리와 검색으로 빠르게 확인합니다." />
 
-      <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-        {["전체", ...categories].map((name) => (
-          <button
-            key={name}
-            type="button"
-            onClick={() => setCategory(name)}
-            className={`touch-button shrink-0 whitespace-nowrap rounded-md px-4 text-sm font-bold ${category === name ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
-          >
-            {name}
-          </button>
-        ))}
+      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+        <div className={`flex gap-2 pb-1 ${categoryExpanded ? "flex-wrap overflow-visible" : "overflow-x-auto"}`}>
+          {["전체", ...categories].map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setCategory(name)}
+              className={`touch-button shrink-0 whitespace-nowrap rounded-md px-4 text-sm font-bold ${category === name ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setCategoryExpanded((value) => !value)}
+          className="touch-button icon-button shrink-0"
+          aria-label={categoryExpanded ? "카테고리 접기" : "카테고리 펼치기"}
+          title={categoryExpanded ? "카테고리 접기" : "카테고리 펼치기"}
+        >
+          <ChevronDown className={`transition-transform ${categoryExpanded ? "rotate-180" : ""}`} size={20} />
+        </button>
       </div>
 
       <div className="mb-4">
