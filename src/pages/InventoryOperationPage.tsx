@@ -643,10 +643,12 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     if (logError) {
       setError(logError.message);
     } else {
-      if (action === "입고" && item.fresh_order_selected) {
+      if (action === "입고" && (item.fresh_order_selected || item.urgent_order_requested)) {
         const { error: freshCompleteError } = await Services.DatabaseService.update("products", {
             fresh_order_selected: false,
-            fresh_order_selected_at: null
+            fresh_order_selected_at: null,
+            urgent_order_requested: false,
+            urgent_order_quantity: null
           })
           .eq("store_id", currentStoreId)
           .eq("id", item.id);

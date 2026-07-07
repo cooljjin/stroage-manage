@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Search, TriangleAlert } from "lucide-react";
+import { Search, TriangleAlert } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
-import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, CategoryFilter, InventoryItem, ProductSupplier } from "../types/domain";
@@ -20,12 +19,10 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
-  const [receiptCompletingIds, setReceiptCompletingIds] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState<CategoryFilter>("전체");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const loadItems = useCallback(async () => {
@@ -65,25 +62,6 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
     return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
   }, [suppliers]);
 
-  async function completeReceiptCheckOnly(item: InventoryItem) {
-    setError("");
-    setMessage("");
-    setReceiptCompletingIds((current) => new Set(current).add(item.id));
-    const { errorMessage } = await recordReceiptCheckOnly(item.id, currentStoreId);
-
-    if (errorMessage) {
-      setError(errorMessage);
-    } else {
-      setMessage(`${item.name} 입고완료를 기록했습니다.`);
-    }
-
-    setReceiptCompletingIds((current) => {
-      const next = new Set(current);
-      next.delete(item.id);
-      return next;
-    });
-  }
-
   const stickyHeaderCell = "sticky top-[73px] z-30 bg-slate-100 shadow-sm dark:bg-slate-900";
 
   return (
@@ -117,7 +95,6 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
         </div>
       ) : null}
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
-      {message ? <StatusMessage type="success">{message}</StatusMessage> : null}
 
       {!loading && !error ? (
         <div className="panel relative overflow-visible before:sticky before:top-[73px] before:z-20 before:block before:h-4 before:bg-slate-50 before:content-[''] dark:before:bg-slate-950">
@@ -153,27 +130,12 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
                   <td className="px-2 py-3 text-right tabular-nums">{item.receipt_check_only ? "-" : formatInventoryQuantity(item.warehouse_qty)}</td>
                   <td className="px-2 py-3 text-right tabular-nums">{item.receipt_check_only ? "-" : formatInventoryQuantity(item.store_qty)}</td>
                   <td className="px-2 py-2 text-center">
-                    {item.receipt_check_only ? (
-                      <button
-                        type="button"
-                        disabled={receiptCompletingIds.has(item.id)}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void completeReceiptCheckOnly(item);
-                        }}
-                        className="mx-auto inline-flex min-h-10 items-center justify-center gap-1 rounded-md bg-brand-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
-                      >
-                        <Check size={16} />
-                        {receiptCompletingIds.has(item.id) ? "처리중" : "입고완료"}
-                      </button>
-                    ) : (
-                      <ProductOrderAction
-                        item={item}
-                        supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
-                        quantity={orderQuantities[item.id] ?? ""}
-                        onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.id]: quantity }))}
-                      />
-                    )}
+                    <ProductOrderAction
+                      item={item}
+                      supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
+                      quantity={orderQuantities[item.id] ?? ""}
+                      onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.id]: quantity }))}
+                    />
                   </td>
                 </tr>
               ))}

@@ -48,11 +48,12 @@ export async function recordReceiptCheckOnly(productId: string, storeId: string,
 
   const { error: freshOrderError } = await Services.DatabaseService.update("products", {
       fresh_order_selected: false,
-      fresh_order_selected_at: null
+      fresh_order_selected_at: null,
+      urgent_order_requested: false,
+      urgent_order_quantity: null
     })
     .eq("store_id", storeId)
-    .eq("id", productId)
-    .eq("fresh_order_selected", true);
+    .eq("id", productId);
 
   return { errorMessage: freshOrderError ? formatReceiptCheckError(freshOrderError.message) : "" };
 }
