@@ -622,7 +622,7 @@ export default function App() {
             )}
             {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
             {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
-            {permittedRoute.name === "category-management" && <CategoryManagementPage />}
+            {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
             {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
             {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} />}
