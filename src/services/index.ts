@@ -1,5 +1,5 @@
-export { AuthService } from "./auth/AuthService";
-export type { AuthChangeEvent, Session, User } from "./auth/AuthService";
+export { ACCOUNT_LINK_RETURN_STORAGE_KEY, AuthService } from "./auth/AuthService";
+export type { AuthChangeEvent, Session, User, UserIdentity } from "./auth/AuthService";
 export { DatabaseService } from "./database/DatabaseService";
 export type { SelectFilter, SelectOptions, SelectOrder } from "./database/DatabaseService";
 export { EdgeFunctionService } from "./functions/EdgeFunctionService";

@@ -4,6 +4,7 @@ import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { formatLogContent } from "../lib/inventory";
+import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
 import type { AppRoute, InventoryLog, InventoryLogWithStaff, StaffProfile } from "../types/domain";
 
@@ -98,13 +99,12 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
     } else {
       const nextLogs = (data ?? []) as unknown as InventoryLog[];
       const userIds = Array.from(new Set(nextLogs.map((log) => log.user_id)));
-      const { data: profiles } = await Services.DatabaseService.select("profiles", "*").eq("store_id", currentStoreId).in("id", userIds);
-      const profileMap = new Map<string, string>(((profiles ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name]));
+      const profileMap = await resolveStoreStaffNames(currentStoreId, userIds);
 
       setLogs(
         nextLogs.map((log) => ({
           ...log,
-          staff_name: profileMap.get(log.user_id) ?? log.user_id.slice(0, 8)
+          staff_name: profileMap.get(log.user_id) ?? "직원"
         }))
       );
     }

@@ -1,3 +1,36 @@
+update public.products
+set unit_weight_enabled = false,
+    unit_weight = null,
+    unit_weight_unit = null,
+    processing_required = false,
+    processed_unit_weight = null,
+    processed_unit_weight_unit = null
+where unit_weight_enabled = true
+  and (unit_weight is null or unit_weight <= 0);
+
+update public.products
+set unit_weight_unit = 'g'
+where unit_weight_enabled = true
+  and unit_weight > 0
+  and (unit_weight_unit is null or unit_weight_unit not in ('g', 'kg', 'ml', 'L'));
+
+update public.products
+set processing_required = false,
+    processed_unit_weight = null,
+    processed_unit_weight_unit = null
+where processing_required = true
+  and (
+    unit_weight_enabled = false
+    or processed_unit_weight is null
+    or processed_unit_weight <= 0
+  );
+
+update public.products
+set processed_unit_weight_unit = 'g'
+where processing_required = true
+  and processed_unit_weight > 0
+  and (processed_unit_weight_unit is null or processed_unit_weight_unit not in ('g', 'kg', 'ml', 'L'));
+
 alter table public.products drop constraint if exists products_unit_weight_check;
 alter table public.products add constraint products_unit_weight_check
 check (

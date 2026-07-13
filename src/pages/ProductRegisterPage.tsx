@@ -5,7 +5,7 @@ import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { getCurrentStoreId } from "../lib/profiles";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
-import type { AppRoute, ProductCategory, ProductSupplier, ProductUnit, StorageType } from "../types/domain";
+import type { AppRoute, Location, ProductCategory, ProductSupplier, ProductUnit, StorageType } from "../types/domain";
 import * as Services from "../services";
 
 type Props = {
@@ -21,6 +21,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [supplierName, setSupplierName] = useState("");
   const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
+  const [defaultLocation, setDefaultLocation] = useState<Location>("창고");
   const [units, setUnits] = useState<ProductUnit[]>([]);
   const [unitName, setUnitName] = useState("낱개");
   const [minimumStock, setMinimumStock] = useState("");
@@ -91,6 +92,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
             category,
             supplier_name: supplierName || null,
             storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+            default_location: defaultLocation,
             unit_name: unitName || null,
             product_url: productUrl.trim() || null,
             minimum_stock: Math.max(0, Number(minimumStock || 0)),
@@ -124,6 +126,7 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
         category,
         supplier_name: supplierName || null,
         storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+        default_location: defaultLocation,
         unit_name: unitName || null,
         product_url: productUrl.trim() || null,
         minimum_stock: Math.max(0, Number(minimumStock || 0))
@@ -186,6 +189,22 @@ export function ProductRegisterPage({ barcode, navigate }: Props) {
                   className={`touch-button rounded-md px-4 text-sm font-bold ${type ? (storageTypes.includes(type) ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900") : storageTypes.length === 0 ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
                 >
                   {type || "미지정"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="min-w-0 sm:col-span-2">
+            <span className="mb-2 block text-sm font-semibold">기본 위치</span>
+            <div className="grid grid-cols-2 gap-2">
+              {(["창고", "매장"] as Location[]).map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setDefaultLocation(name)}
+                  className={`touch-button rounded-md px-4 text-sm font-bold ${defaultLocation === name ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                  aria-pressed={defaultLocation === name}
+                >
+                  {name}
                 </button>
               ))}
             </div>

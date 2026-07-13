@@ -1,10 +1,11 @@
-import type { AuthChangeEvent, Provider, Session, SignInWithPasswordCredentials, SignUpWithPasswordCredentials } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Provider, Session, SignInWithPasswordCredentials, SignUpWithPasswordCredentials, UserIdentity } from "@supabase/supabase-js";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "../../lib/supabase";
 
-export type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
+export type { AuthChangeEvent, Session, User, UserIdentity } from "@supabase/supabase-js";
 
 const NATIVE_AUTH_CALLBACK_URL = "com.jinkim.storeinventory.poc://auth/callback";
+export const ACCOUNT_LINK_RETURN_STORAGE_KEY = "store-inventory-account-link-return";
 
 function getOAuthRedirectUrl() {
   if (Capacitor.isNativePlatform()) {
@@ -21,6 +22,20 @@ function signInWithOAuthProvider(provider: Provider, scopes?: string) {
       scopes
     }
   });
+}
+
+function getOAuthScopes(provider: Provider) {
+  if (provider === "kakao") {
+    return "profile_image profile_nickname account_email";
+  }
+  return undefined;
+}
+
+function getOAuthOptions(provider: Provider) {
+  return {
+    redirectTo: getOAuthRedirectUrl(),
+    scopes: getOAuthScopes(provider)
+  };
 }
 
 export const AuthService = {
@@ -98,6 +113,22 @@ export const AuthService = {
   },
 
   loginWithKakao() {
-    return signInWithOAuthProvider("kakao", "profile_image profile_nickname account_email");
+    return signInWithOAuthProvider("kakao", getOAuthScopes("kakao"));
+  },
+
+  getUserIdentities() {
+    return supabase.auth.getUserIdentities();
+  },
+
+  linkOAuthIdentity(provider: "google" | "kakao") {
+    localStorage.setItem(ACCOUNT_LINK_RETURN_STORAGE_KEY, provider);
+    return supabase.auth.linkIdentity({
+      provider,
+      options: getOAuthOptions(provider)
+    });
+  },
+
+  unlinkIdentity(identity: UserIdentity) {
+    return supabase.auth.unlinkIdentity(identity);
   }
 };

@@ -5,7 +5,7 @@ import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
-import type { AppRoute, GroupOrderRouteDraft, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
+import type { AppRoute, GroupOrderRouteDraft, Location, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -46,9 +46,10 @@ function formatProductUpdateError(message: string) {
     || message.includes("unit_weight")
     || message.includes("processing_required")
     || message.includes("processed_unit_weight")
+    || message.includes("default_location")
     || message.includes("schema cache")
   ) {
-    return "단위당 무게 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 products 단위당 무게 컬럼 추가를 요청해 주세요.";
+    return "품목 설정용 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 products 컬럼 업데이트를 요청해 주세요.";
   }
   return message;
 }
@@ -64,6 +65,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
   const [category, setCategory] = useState("기타");
   const [supplierName, setSupplierName] = useState("");
   const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
+  const [defaultLocation, setDefaultLocation] = useState<Location>("창고");
   const [unitName, setUnitName] = useState("");
   const [unitWeightEnabled, setUnitWeightEnabled] = useState(false);
   const [unitWeight, setUnitWeight] = useState("");
@@ -131,6 +133,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
       setCategory(nextProduct.category);
       setSupplierName(nextProduct.supplier_name ?? "");
       setStorageTypes(parseStorageTypes(nextProduct.storage_type));
+      setDefaultLocation(nextProduct.default_location ?? "창고");
       setUnitName(nextProduct.unit_name ?? "");
       setUnitWeightEnabled(nextProduct.unit_weight_enabled ?? false);
       setUnitWeight(nextProduct.unit_weight !== null && nextProduct.unit_weight !== undefined ? String(nextProduct.unit_weight) : "");
@@ -212,6 +215,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
         category,
         supplier_name: supplierName || null,
         storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+        default_location: defaultLocation,
         unit_name: unitName || null,
         unit_weight_enabled: unitWeightEnabled,
         unit_weight: unitWeightEnabled ? nextUnitWeight : null,
@@ -366,6 +370,23 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
               ))}
             </select>
           </label>
+
+          <div className="min-w-0 sm:col-span-2">
+            <span className="mb-2 block text-sm font-semibold">기본 위치</span>
+            <div className="grid grid-cols-2 gap-2">
+              {(["창고", "매장"] as Location[]).map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setDefaultLocation(name)}
+                  className={`touch-button rounded-md px-4 text-sm font-bold ${defaultLocation === name ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                  aria-pressed={defaultLocation === name}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">품목 단위</span>

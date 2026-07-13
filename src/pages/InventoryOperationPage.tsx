@@ -1,12 +1,13 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowLeftRight, Check, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
+import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
-import type { AppRoute, InventoryItem, InventoryLog, Location, StaffProfile, StockStatus } from "../types/domain";
+import type { AppRoute, InventoryItem, InventoryLog, Location, StockStatus } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -17,6 +18,7 @@ type Props = {
 };
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
+const DEFAULT_LOCATION_LONG_PRESS_MS = 700;
 
 type InventoryHistoryPoint = {
   log: InventoryLog;
@@ -106,8 +108,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [memoSaving, setMemoSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [defaultLocationSaving, setDefaultLocationSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const defaultLocationPressTimerRef = useRef<number | null>(null);
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
@@ -152,16 +156,15 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     );
     if (missingUserIds.length === 0) return;
 
-    const { data } = await Services.DatabaseService.select("profiles", "*").in("id", missingUserIds);
-    const profiles = (data ?? []) as StaffProfile[];
+    const resolvedStaffNames = await resolveStoreStaffNames(currentStoreId, missingUserIds);
     setMemoStaffNames((current) => {
       const next = new Map(current);
       missingUserIds.forEach((userId) => {
-        next.set(userId, profiles.find((profile) => profile.id === userId)?.display_name ?? userId.slice(0, 8));
+        next.set(userId, resolvedStaffNames.get(userId) ?? "직원");
       });
       return next;
     });
-  }, [memoStaffNames]);
+  }, [currentStoreId, memoStaffNames]);
 
   function logAffectsLocation(log: InventoryLog, targetLocation: Location) {
     if (log.source_location === targetLocation || log.destination_location === targetLocation) return true;
@@ -195,23 +198,16 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const warehouseLog = logs.find((log) => logAffectsLocation(log, "창고")) ?? null;
     const storeLog = logs.find((log) => logAffectsLocation(log, "매장")) ?? null;
     const userIds = Array.from(new Set([warehouseLog?.user_id, storeLog?.user_id].filter(Boolean) as string[]));
-    const staffNames = new Map<string, string>();
-
-    if (userIds.length > 0) {
-      const { data: profileData } = await Services.DatabaseService.select("profiles", "*").in("id", userIds);
-      ((profileData ?? []) as StaffProfile[]).forEach((profile) => {
-        staffNames.set(profile.id, profile.display_name);
-      });
-    }
+    const staffNames = await resolveStoreStaffNames(currentStoreId, userIds);
 
     setLastInventoryCheckDates({
       warehouse: {
         checkedAt: warehouseLog?.created_at ?? null,
-        staffName: warehouseLog ? staffNames.get(warehouseLog.user_id) ?? warehouseLog.user_id.slice(0, 8) : null
+        staffName: warehouseLog ? staffNames.get(warehouseLog.user_id) ?? "직원" : null
       },
       store: {
         checkedAt: storeLog?.created_at ?? null,
-        staffName: storeLog ? staffNames.get(storeLog.user_id) ?? storeLog.user_id.slice(0, 8) : null
+        staffName: storeLog ? staffNames.get(storeLog.user_id) ?? "직원" : null
       }
     });
   }, [currentStoreId, productId]);
@@ -240,6 +236,19 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   useEffect(() => {
     void loadProduct();
   }, [loadProduct]);
+
+  useEffect(() => {
+    if (!item?.id) return;
+    setLocation(item.default_location ?? "창고");
+  }, [item?.default_location, item?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (defaultLocationPressTimerRef.current !== null) {
+        window.clearTimeout(defaultLocationPressTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     void loadLatestMemo();
@@ -347,6 +356,46 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setSuccess("최소재고를 수정했습니다.");
       await loadProduct();
     }
+  }
+
+  function clearDefaultLocationPressTimer() {
+    if (defaultLocationPressTimerRef.current === null) return;
+    window.clearTimeout(defaultLocationPressTimerRef.current);
+    defaultLocationPressTimerRef.current = null;
+  }
+
+  function startDefaultLocationPress(nextLocation: Location) {
+    clearDefaultLocationPressTimer();
+    defaultLocationPressTimerRef.current = window.setTimeout(() => {
+      defaultLocationPressTimerRef.current = null;
+      void saveDefaultLocation(nextLocation);
+    }, DEFAULT_LOCATION_LONG_PRESS_MS);
+  }
+
+  async function saveDefaultLocation(nextLocation: Location) {
+    if (!item || defaultLocationSaving) return;
+
+    setLocation(nextLocation);
+    setError("");
+    setSuccess("");
+
+    if (item.default_location === nextLocation) {
+      setSuccess(`${nextLocation}가 기본값으로 선택되어 있습니다.`);
+      return;
+    }
+
+    setDefaultLocationSaving(true);
+    const { error: updateError } = await Services.DatabaseService.update("products", { default_location: nextLocation })
+      .eq("store_id", currentStoreId)
+      .eq("id", item.id);
+
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setItem((current) => current ? { ...current, default_location: nextLocation } : current);
+      setSuccess(`다음 재고 작업부터 ${nextLocation}가 기본값으로 선택됩니다.`);
+    }
+    setDefaultLocationSaving(false);
   }
 
   function getStateBeforeLog(log: InventoryLog, warehouseQty: number, storeQty: number) {
@@ -471,7 +520,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   }
 
   function getMemoStaffName(memo: InventoryLog): string {
-    return memoStaffNames.get(memo.user_id) ?? memo.user_id.slice(0, 8);
+    return memoStaffNames.get(memo.user_id) ?? "직원";
   }
 
   async function handleMemoSubmit(event: FormEvent) {
@@ -859,7 +908,19 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           {action !== "이동" ? (
             <div className="mt-2 grid grid-cols-2 gap-1.5">
               {(["창고", "매장"] as Location[]).map((name) => (
-                <button key={name} type="button" onClick={() => setLocation(name)} className={`${location === name ? "primary-button" : "secondary-button"} min-h-10 px-3 py-1.5 text-sm`}>
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setLocation(name)}
+                  onPointerDown={() => startDefaultLocationPress(name)}
+                  onPointerUp={clearDefaultLocationPressTimer}
+                  onPointerLeave={clearDefaultLocationPressTimer}
+                  onPointerCancel={clearDefaultLocationPressTimer}
+                  onContextMenu={(event) => event.preventDefault()}
+                  disabled={defaultLocationSaving}
+                  className={`${location === name ? "primary-button" : "secondary-button"} min-h-10 px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
+                  title="길게 누르면 기본값으로 저장"
+                >
                   {name}
                 </button>
               ))}

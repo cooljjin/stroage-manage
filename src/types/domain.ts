@@ -45,6 +45,7 @@ export type Product = {
   category: Category;
   supplier_name: string | null;
   storage_type: string | null;
+  default_location: Location;
   unit_name: string | null;
   unit_weight_enabled: boolean;
   unit_weight: number | null;

@@ -33,6 +33,7 @@ import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
 import { pageTransitionMotion, reducedPageTransitionMotion } from "./lib/animations";
 import { ensureCurrentProfile } from "./lib/profiles";
 import * as Services from "./services";
+import { ACCOUNT_LINK_RETURN_STORAGE_KEY } from "./services";
 import type { Session } from "./services";
 import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
 import type { ProfileRole } from "./types/domain";
@@ -110,6 +111,13 @@ function defaultSignedInRoute(): AppRoute {
   return hasPendingScanBarcode() ? { name: "scan", scanLaunchId: Date.now() } : { name: "home" };
 }
 
+function consumeAccountLinkReturnRoute(): AppRoute | null {
+  const linkingProvider = localStorage.getItem(ACCOUNT_LINK_RETURN_STORAGE_KEY);
+  if (!linkingProvider) return null;
+  localStorage.removeItem(ACCOUNT_LINK_RETURN_STORAGE_KEY);
+  return { name: "settings" };
+}
+
 function isPostScanRoute(route: AppRoute) {
   return route.name === "operation" || route.name === "register";
 }
@@ -149,7 +157,7 @@ function canAccess(routeName: RouteName, profile: StaffProfile) {
   const masterRoutes: RouteName[] = ["master-stores", "master-store-detail", "master-users"];
   if (masterRoutes.includes(routeName)) return false;
 
-  const adminRoutes: RouteName[] = ["admin", "category-management", "unit-management", "supplier-management", "prep-items", "group-order-recipes", "settings", "staff-management"];
+  const adminRoutes: RouteName[] = ["admin", "category-management", "unit-management", "supplier-management", "prep-items", "group-order-recipes", "staff-management"];
   if (adminRoutes.includes(routeName)) return role === "store_admin";
 
   return true;
@@ -283,7 +291,7 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     if (route.name === "landing" || route.name === "login" || route.name === "signup-request") {
-      const homeRoute = consumePostScanRoute() ?? defaultSignedInRoute();
+      const homeRoute = consumeAccountLinkReturnRoute() ?? consumePostScanRoute() ?? defaultSignedInRoute();
       pendingScrollYRef.current = 0;
       setRoute(homeRoute);
       updateBrowserPath();
@@ -617,7 +625,7 @@ export default function App() {
             {permittedRoute.name === "category-management" && <CategoryManagementPage />}
             {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
             {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
-            {permittedRoute.name === "settings" && <SettingsPage />}
+            {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} />}
             {permittedRoute.name === "staff-management" && <StaffManagementPage />}
             {permittedRoute.name === "master-stores" && <MasterStoresPage />}
             {permittedRoute.name === "master-users" && <MasterUsersPage />}

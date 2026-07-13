@@ -381,19 +381,24 @@ $$;
 alter table public.stores enable row level security;
 alter table public.store_invites enable row level security;
 
+drop policy if exists "Users can read accessible stores" on public.stores;
 create policy "Users can read accessible stores" on public.stores for select to authenticated
 using (public.is_master(auth.uid()) or id = public.current_store_id(auth.uid()));
 
+drop policy if exists "Masters can manage stores" on public.stores;
 create policy "Masters can manage stores" on public.stores for all to authenticated
 using (public.is_master(auth.uid()))
 with check (public.is_master(auth.uid()));
 
+drop policy if exists "Admins can read invites in their store" on public.store_invites;
 create policy "Admins can read invites in their store" on public.store_invites for select to authenticated
 using (public.can_admin_store(store_id) or accepted_by = auth.uid());
 
+drop policy if exists "Admins can create invites in their store" on public.store_invites;
 create policy "Admins can create invites in their store" on public.store_invites for insert to authenticated
 with check (public.can_admin_store(store_id) and invited_by = auth.uid());
 
+drop policy if exists "Admins can revoke invites in their store" on public.store_invites;
 create policy "Admins can revoke invites in their store" on public.store_invites for delete to authenticated
 using (public.can_admin_store(store_id) and accepted_at is null);
 
@@ -401,6 +406,10 @@ drop policy if exists "Authenticated users can read products" on public.products
 drop policy if exists "Authenticated users can insert products" on public.products;
 drop policy if exists "Authenticated users can update products" on public.products;
 drop policy if exists "Authenticated users can delete inactive products" on public.products;
+drop policy if exists "Users can read products in their store" on public.products;
+drop policy if exists "Users can insert products in their store" on public.products;
+drop policy if exists "Users can update products in their store" on public.products;
+drop policy if exists "Users can delete inactive products in their store" on public.products;
 create policy "Users can read products in their store" on public.products for select to authenticated using (public.can_access_store(store_id));
 create policy "Users can insert products in their store" on public.products for insert to authenticated with check (public.can_access_store(store_id));
 create policy "Users can update products in their store" on public.products for update to authenticated using (public.can_access_store(store_id)) with check (public.can_access_store(store_id));
@@ -410,6 +419,10 @@ drop policy if exists "Authenticated users can read categories" on public.catego
 drop policy if exists "Authenticated users can insert categories" on public.categories;
 drop policy if exists "Authenticated users can update categories" on public.categories;
 drop policy if exists "Authenticated users can delete inactive categories" on public.categories;
+drop policy if exists "Users can read categories in their store" on public.categories;
+drop policy if exists "Admins can insert categories in their store" on public.categories;
+drop policy if exists "Admins can update categories in their store" on public.categories;
+drop policy if exists "Admins can delete inactive categories in their store" on public.categories;
 create policy "Users can read categories in their store" on public.categories for select to authenticated using (public.can_access_store(store_id));
 create policy "Admins can insert categories in their store" on public.categories for insert to authenticated with check (public.can_admin_store(store_id));
 create policy "Admins can update categories in their store" on public.categories for update to authenticated using (public.can_admin_store(store_id)) with check (public.can_admin_store(store_id));
@@ -419,6 +432,10 @@ drop policy if exists "Authenticated users can read suppliers" on public.supplie
 drop policy if exists "Authenticated users can insert suppliers" on public.suppliers;
 drop policy if exists "Authenticated users can update suppliers" on public.suppliers;
 drop policy if exists "Authenticated users can delete inactive suppliers" on public.suppliers;
+drop policy if exists "Users can read suppliers in their store" on public.suppliers;
+drop policy if exists "Admins can insert suppliers in their store" on public.suppliers;
+drop policy if exists "Admins can update suppliers in their store" on public.suppliers;
+drop policy if exists "Admins can delete inactive suppliers in their store" on public.suppliers;
 create policy "Users can read suppliers in their store" on public.suppliers for select to authenticated using (public.can_access_store(store_id));
 create policy "Admins can insert suppliers in their store" on public.suppliers for insert to authenticated with check (public.can_admin_store(store_id));
 create policy "Admins can update suppliers in their store" on public.suppliers for update to authenticated using (public.can_admin_store(store_id)) with check (public.can_admin_store(store_id));
@@ -427,6 +444,9 @@ create policy "Admins can delete inactive suppliers in their store" on public.su
 drop policy if exists "Authenticated users can read product barcodes" on public.product_barcodes;
 drop policy if exists "Authenticated users can insert product barcodes" on public.product_barcodes;
 drop policy if exists "Authenticated users can update product barcodes" on public.product_barcodes;
+drop policy if exists "Users can read product barcodes in their store" on public.product_barcodes;
+drop policy if exists "Users can insert product barcodes in their store" on public.product_barcodes;
+drop policy if exists "Users can update product barcodes in their store" on public.product_barcodes;
 create policy "Users can read product barcodes in their store" on public.product_barcodes for select to authenticated using (public.can_access_store(store_id));
 create policy "Users can insert product barcodes in their store" on public.product_barcodes for insert to authenticated with check (public.can_access_store(store_id));
 create policy "Users can update product barcodes in their store" on public.product_barcodes for update to authenticated using (public.can_access_store(store_id)) with check (public.can_access_store(store_id));
@@ -434,18 +454,26 @@ create policy "Users can update product barcodes in their store" on public.produ
 drop policy if exists "Authenticated users can read inventory" on public.inventory;
 drop policy if exists "Authenticated users can insert inventory" on public.inventory;
 drop policy if exists "Authenticated users can update inventory" on public.inventory;
+drop policy if exists "Users can read inventory in their store" on public.inventory;
+drop policy if exists "Users can insert inventory in their store" on public.inventory;
+drop policy if exists "Users can update inventory in their store" on public.inventory;
 create policy "Users can read inventory in their store" on public.inventory for select to authenticated using (public.can_access_store(store_id));
 create policy "Users can insert inventory in their store" on public.inventory for insert to authenticated with check (public.can_access_store(store_id));
 create policy "Users can update inventory in their store" on public.inventory for update to authenticated using (public.can_access_store(store_id)) with check (public.can_access_store(store_id) and warehouse_qty >= 0 and store_qty >= 0);
 
 drop policy if exists "Authenticated users can read logs" on public.inventory_logs;
 drop policy if exists "Authenticated users can insert own logs" on public.inventory_logs;
+drop policy if exists "Users can read logs in their store" on public.inventory_logs;
+drop policy if exists "Users can insert own logs in their store" on public.inventory_logs;
 create policy "Users can read logs in their store" on public.inventory_logs for select to authenticated using (public.can_access_store(store_id));
 create policy "Users can insert own logs in their store" on public.inventory_logs for insert to authenticated with check (public.can_access_store(store_id) and user_id = auth.uid());
 
 drop policy if exists "Authenticated users can read profiles" on public.profiles;
 drop policy if exists "Users can insert own profile" on public.profiles;
 drop policy if exists "Admins can update profiles" on public.profiles;
+drop policy if exists "Users can read profiles in their scope" on public.profiles;
+drop policy if exists "Only invite RPC can insert profiles" on public.profiles;
+drop policy if exists "Admins can update profiles in their scope" on public.profiles;
 create policy "Users can read profiles in their scope" on public.profiles for select to authenticated using (
   id = auth.uid() or public.is_master(auth.uid()) or public.can_admin_store(store_id)
 );
@@ -460,6 +488,10 @@ drop policy if exists "Authenticated users can read dashboard todos" on public.d
 drop policy if exists "Authenticated users can create dashboard todos" on public.dashboard_todos;
 drop policy if exists "Authenticated users can update dashboard todos" on public.dashboard_todos;
 drop policy if exists "Authenticated users can delete future dashboard todos" on public.dashboard_todos;
+drop policy if exists "Users can read dashboard todos in their store" on public.dashboard_todos;
+drop policy if exists "Users can create dashboard todos in their store" on public.dashboard_todos;
+drop policy if exists "Users can update dashboard todos in their store" on public.dashboard_todos;
+drop policy if exists "Users can delete future dashboard todos in their store" on public.dashboard_todos;
 create policy "Users can read dashboard todos in their store" on public.dashboard_todos for select to authenticated using (public.can_access_store(store_id));
 create policy "Users can create dashboard todos in their store" on public.dashboard_todos for insert to authenticated with check (public.can_access_store(store_id) and created_by = auth.uid());
 create policy "Users can update dashboard todos in their store" on public.dashboard_todos for update to authenticated using (public.can_access_store(store_id)) with check (public.can_access_store(store_id) and (completed_by is null or completed_by = auth.uid()));
@@ -468,21 +500,27 @@ create policy "Users can delete future dashboard todos in their store" on public
 drop policy if exists "Authenticated users can read handover notes" on public.handover_notes;
 drop policy if exists "Authenticated users can create handover notes" on public.handover_notes;
 drop policy if exists "Authenticated users can delete future handover notes" on public.handover_notes;
+drop policy if exists "Users can read handover notes in their store" on public.handover_notes;
+drop policy if exists "Users can create handover notes in their store" on public.handover_notes;
+drop policy if exists "Users can delete future handover notes in their store" on public.handover_notes;
 create policy "Users can read handover notes in their store" on public.handover_notes for select to authenticated using (public.can_access_store(store_id));
 create policy "Users can create handover notes in their store" on public.handover_notes for insert to authenticated with check (public.can_access_store(store_id) and created_by = auth.uid());
 create policy "Users can delete future handover notes in their store" on public.handover_notes for delete to authenticated using (public.can_access_store(store_id) and handover_date > (now() at time zone 'Asia/Seoul')::date);
 
 drop policy if exists "Authenticated users can manage weekly store closures" on public.weekly_store_closures;
+drop policy if exists "Admins can manage weekly store closures in their store" on public.weekly_store_closures;
 create policy "Admins can manage weekly store closures in their store" on public.weekly_store_closures for all to authenticated
 using (public.can_admin_store(store_id))
 with check (public.can_admin_store(store_id) and created_by = auth.uid());
 
 drop policy if exists "Authenticated users can manage store closure dates" on public.store_closure_dates;
+drop policy if exists "Admins can manage store closure dates in their store" on public.store_closure_dates;
 create policy "Admins can manage store closure dates in their store" on public.store_closure_dates for all to authenticated
 using (public.can_admin_store(store_id))
 with check (public.can_admin_store(store_id) and created_by = auth.uid());
 
 drop policy if exists "Authenticated users can read receipt deletions" on public.dashboard_receipt_deletions;
+drop policy if exists "Users can read receipt deletions in their store" on public.dashboard_receipt_deletions;
 create policy "Users can read receipt deletions in their store" on public.dashboard_receipt_deletions for select to authenticated
 using (public.can_access_store(store_id));
 

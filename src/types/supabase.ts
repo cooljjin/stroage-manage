@@ -83,6 +83,7 @@ export type Database = {
           category: Category;
           supplier_name: string | null;
           storage_type: string | null;
+          default_location: Location;
           unit_name: string | null;
           unit_weight_enabled: boolean;
           unit_weight: number | null;
@@ -111,6 +112,7 @@ export type Database = {
           category: Category;
           supplier_name?: string | null;
           storage_type?: string | null;
+          default_location?: Location;
           unit_name?: string | null;
           unit_weight_enabled?: boolean;
           unit_weight?: number | null;
@@ -138,6 +140,7 @@ export type Database = {
           category?: Category;
           supplier_name?: string | null;
           storage_type?: string | null;
+          default_location?: Location;
           unit_name?: string | null;
           unit_weight_enabled?: boolean;
           unit_weight?: number | null;
@@ -848,6 +851,16 @@ export type Database = {
       restore_latest_dashboard_receipt_deletion: {
         Args: Record<PropertyKey, never>;
         Returns: string;
+      };
+      resolve_store_staff_names: {
+        Args: {
+          target_store_id: string;
+          user_ids: string[];
+        };
+        Returns: {
+          user_id: string;
+          display_name: string;
+        }[];
       };
       create_store_invite: {
         Args: {

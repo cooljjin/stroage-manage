@@ -46,12 +46,21 @@ check (stock_status in ('충분', '절반 이하', '발주 필요') or stock_sta
 update public.products
 set unit_weight = null,
     unit_weight_unit = null
-where unit_weight_enabled = false;
+where unit_weight_enabled is not true;
+
+update public.products
+set unit_weight_enabled = false,
+    unit_weight = null,
+    unit_weight_unit = null
+where unit_weight_enabled is true
+  and (unit_weight is null or unit_weight <= 0);
+
 update public.products
 set unit_weight_unit = 'g'
-where unit_weight_enabled = true
+where unit_weight_enabled is true
   and unit_weight is not null
-  and unit_weight_unit is null;
+  and unit_weight > 0
+  and (unit_weight_unit is null or unit_weight_unit not in ('g', 'kg'));
 alter table public.products drop constraint if exists products_unit_weight_check;
 alter table public.products add constraint products_unit_weight_check
 check (
@@ -98,9 +107,23 @@ create table if not exists public.product_barcodes (
   created_at timestamptz not null default now()
 );
 
-insert into public.suppliers (name)
-values ('쿠팡'), ('쿠팡 프레시')
-on conflict (name) do nothing;
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'suppliers'
+      and column_name = 'store_id'
+  ) then
+    insert into public.suppliers (name)
+    select seed.name
+    from (values ('쿠팡'), ('쿠팡 프레시')) as seed(name)
+    where not exists (
+      select 1 from public.suppliers where suppliers.name = seed.name
+    );
+  end if;
+end $$;
 
 create or replace function public.is_admin(user_id uuid)
 returns boolean
@@ -110,9 +133,23 @@ stable
 set search_path = public
 as 'select exists (select 1 from public.profiles where id = user_id and is_admin = true)';
 
-insert into public.categories (name)
-values ('원두'), ('우유'), ('시럽'), ('베이커리'), ('아이스크림'), ('소모품'), ('음료'), ('기타')
-on conflict (name) do nothing;
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'categories'
+      and column_name = 'store_id'
+  ) then
+    insert into public.categories (name)
+    select seed.name
+    from (values ('원두'), ('우유'), ('시럽'), ('베이커리'), ('아이스크림'), ('소모품'), ('음료'), ('기타')) as seed(name)
+    where not exists (
+      select 1 from public.categories where categories.name = seed.name
+    );
+  end if;
+end $$;
 
 update public.categories
 set sort_order = case name
