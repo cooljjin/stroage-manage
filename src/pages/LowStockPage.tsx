@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { ScanLine, Search, X } from "lucide-react";
+import { CheckCircle2, ClipboardList, ScanLine, Search, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
@@ -9,11 +9,13 @@ import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventor
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
-import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
+import type { AppRoute, InventoryItem, ProductSupplier, ProfileRole } from "../types/domain";
+import type { Database } from "../types/supabase";
 
 type Props = {
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
+  currentRole: ProfileRole;
 };
 
 type FreshReceivingUndoEntry = {
@@ -23,6 +25,8 @@ type FreshReceivingUndoEntry = {
   urgentOrderRequested: boolean;
   urgentOrderQuantity: number | null;
 };
+
+type ConfirmedOrderItem = Database["public"]["Tables"]["confirmed_order_items"]["Row"];
 
 const FRESH_SCANNER_ID = "fresh-product-scanner";
 const PRODUCT_BARCODE_FORMATS = [
@@ -52,7 +56,15 @@ function getBarcodeCandidates(barcode: string): string[] {
   return [...candidates];
 }
 
-export function LowStockPage({ navigate, currentStoreId }: Props) {
+function todayDateValue(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
@@ -70,8 +82,13 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
   const [freshScannerActive, setFreshScannerActive] = useState(false);
   const [freshScanMessage, setFreshScanMessage] = useState("");
   const [pendingFreshBarcode, setPendingFreshBarcode] = useState("");
+  const [confirmedItems, setConfirmedItems] = useState<ConfirmedOrderItem[]>([]);
+  const [confirmedModalOpen, setConfirmedModalOpen] = useState(false);
+  const [loadingConfirmed, setLoadingConfirmed] = useState(false);
+  const [savingConfirmation, setSavingConfirmation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const freshScannerRef = useRef<Html5Qrcode | null>(null);
   const freshBarcodeHandlingRef = useRef(false);
 
@@ -146,6 +163,10 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
   const suppliersByName = useMemo(() => {
     return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
   }, [suppliers]);
+
+  const confirmedOrderDate = todayDateValue();
+  const canConfirmOrderItems = currentRole !== "staff";
+  const confirmCheckedItems = useMemo(() => lowStockItems.filter((item) => item.order_completed), [lowStockItems]);
 
   const stopFreshScanner = useCallback(async () => {
     if (freshScannerRef.current?.isScanning) {
@@ -340,9 +361,10 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     setSavingFresh(true);
     setError("");
 
-    const changedItems = items.filter(
-      (item) => item.fresh_order_selected !== selectedFreshIds.has(item.id) || item.urgent_order_requested !== selectedUrgentIds.has(item.id)
-    );
+    const changedItems = items.filter((item) => {
+      const selected = selectedFreshIds.has(item.id);
+      return item.fresh_order_selected !== selected || item.urgent_order_requested !== selectedUrgentIds.has(item.id) || (selected && !item.order_completed);
+    });
 
     const results = await Promise.all(
       changedItems.map((item) => {
@@ -352,7 +374,8 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
             fresh_order_selected: selected,
             fresh_order_selected_at: selected ? new Date().toISOString() : null,
             urgent_order_requested: urgent,
-            urgent_order_quantity: urgent ? item.urgent_order_quantity : null
+            urgent_order_quantity: urgent ? item.urgent_order_quantity : null,
+            order_completed: selected ? true : item.order_completed
           })
           .eq("store_id", currentStoreId)
           .eq("id", item.id);
@@ -371,7 +394,8 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
             fresh_order_selected: selectedFreshIds.has(item.id),
             fresh_order_selected_at: selectedFreshIds.has(item.id) ? item.fresh_order_selected_at ?? new Date().toISOString() : null,
             urgent_order_requested: selectedUrgentIds.has(item.id),
-            urgent_order_quantity: selectedUrgentIds.has(item.id) ? item.urgent_order_quantity : null
+            urgent_order_quantity: selectedUrgentIds.has(item.id) ? item.urgent_order_quantity : null,
+            order_completed: selectedFreshIds.has(item.id) ? true : item.order_completed
           })
         )
       );
@@ -379,6 +403,88 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
     }
 
     setSavingFresh(false);
+  }
+
+  async function loadConfirmedItems() {
+    setLoadingConfirmed(true);
+    setError("");
+    const { data, error: loadError } = await Services.DatabaseService.select("confirmed_order_items", "*")
+      .eq("store_id", currentStoreId)
+      .eq("order_date", confirmedOrderDate)
+      .order("urgent_order_requested", { ascending: false })
+      .order("product_name", { ascending: true });
+
+    if (loadError) {
+      setError(loadError.message);
+    } else {
+      setConfirmedItems((data ?? []) as ConfirmedOrderItem[]);
+    }
+    setLoadingConfirmed(false);
+  }
+
+  async function openConfirmedModal() {
+    setConfirmedModalOpen(true);
+    await loadConfirmedItems();
+  }
+
+  async function confirmTodayOrderItems() {
+    if (!canConfirmOrderItems) {
+      setError("관리자만 발주 품목을 확정할 수 있습니다.");
+      return;
+    }
+    if (confirmCheckedItems.length === 0) {
+      setError("확정할 품목을 먼저 컨펌 체크하세요.");
+      return;
+    }
+
+    const ok = window.confirm(`컨펌 체크한 ${confirmCheckedItems.length}개 품목을 오늘 발주 품목으로 확정할까요?\n기존 당일 확정 목록은 선택한 품목으로 교체됩니다.`);
+    if (!ok) return;
+
+    setSavingConfirmation(true);
+    setError("");
+    setMessage("");
+
+    const { error: deleteError } = await Services.DatabaseService.delete("confirmed_order_items")
+      .eq("store_id", currentStoreId)
+      .eq("order_date", confirmedOrderDate);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      setSavingConfirmation(false);
+      return;
+    }
+
+    const confirmedAt = new Date().toISOString();
+    const rows = confirmCheckedItems.map((item) => ({
+      store_id: currentStoreId,
+      order_date: confirmedOrderDate,
+      product_id: item.id,
+      product_name: item.name,
+      category: item.category || "기타",
+      supplier_name: item.supplier_name,
+      total_stock: item.receipt_check_only ? null : item.total_stock,
+      minimum_stock: item.receipt_check_only ? null : item.minimum_stock,
+      is_low_stock: !item.receipt_check_only && item.is_low_stock,
+      fresh_order_selected: item.fresh_order_selected,
+      urgent_order_requested: item.urgent_order_requested,
+      urgent_order_quantity: item.urgent_order_quantity,
+      order_completed: item.order_completed,
+      confirmed_at: confirmedAt
+    }));
+
+    const { error: insertError } = await Services.DatabaseService.insert("confirmed_order_items", rows);
+    if (insertError) {
+      setError(insertError.message);
+    } else {
+      setConfirmedItems(rows.map((row, index) => ({
+        id: `${row.product_id}-${index}`,
+        confirmed_by: null,
+        created_at: confirmedAt,
+        ...row
+      })));
+      setMessage(`오늘 발주 품목 ${rows.length}개를 확정했습니다.`);
+    }
+    setSavingConfirmation(false);
   }
 
   async function deleteUrgentOrder(item: InventoryItem) {
@@ -536,6 +642,25 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
             >
               발주품목 추가
             </button>
+            {canConfirmOrderItems ? (
+              <button
+                type="button"
+                disabled={savingConfirmation || loading || confirmCheckedItems.length === 0}
+                onClick={() => void confirmTodayOrderItems()}
+                className="touch-button inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+              >
+                <CheckCircle2 size={18} />
+                {savingConfirmation ? "확정 중" : "컴펌하기"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void openConfirmedModal()}
+              className="touch-button inline-flex items-center gap-1 rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 dark:text-brand-100"
+            >
+              <ClipboardList size={18} />
+              확정품목 확인하기
+            </button>
             <button
               type="button"
               disabled={freshReceivingUndoStack.length === 0 || undoingFreshReceiving}
@@ -560,6 +685,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
         </div>
       ) : null}
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
+      {message ? <div className="mt-2"><StatusMessage type="success">{message}</StatusMessage></div> : null}
 
       {!loading && !error ? (
         <>
@@ -598,13 +724,13 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
                   </div>
                   <div className="flex min-w-[154px] flex-wrap items-end justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                     <label className="flex flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300">
-                      발주 완료
+                      컨펌
                       <input
                         type="checkbox"
                         checked={item.order_completed}
                         disabled={updatingOrderIds.has(item.id)}
                         onChange={(event) => void toggleOrderCompleted(item, event.target.checked)}
-                        aria-label={`${item.name} 발주 완료`}
+                        aria-label={`${item.name} 컨펌`}
                         className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
                       />
                     </label>
@@ -645,7 +771,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
                   <th className="px-3 py-3">상품명</th>
                   <th className="w-16 px-2 py-3 text-right">총재고</th>
                   <th className="w-16 px-2 py-3 text-right">최소</th>
-                  <th className="w-[92px] px-2 py-3 text-center">발주완료</th>
+                  <th className="w-[92px] px-2 py-3 text-center">컨펌</th>
                   <th className="w-[96px] px-2 py-3 text-center">입고완료</th>
                   <th className="w-[122px] px-2 py-3 text-center">발주</th>
                 </tr>
@@ -684,7 +810,7 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
                         checked={item.order_completed}
                         disabled={updatingOrderIds.has(item.id)}
                         onChange={(event) => void toggleOrderCompleted(item, event.target.checked)}
-                        aria-label={`${item.name} 발주 완료`}
+                        aria-label={`${item.name} 컨펌`}
                         className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
                       />
                       {item.urgent_order_requested ? (
@@ -898,6 +1024,71 @@ export function LowStockPage({ navigate, currentStoreId }: Props) {
                     type="button"
                     onClick={() => void closeFreshModal()}
                     disabled={savingFresh}
+                    className="touch-button w-full rounded-md border border-slate-300 px-4 font-bold dark:border-slate-700"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {confirmedModalOpen ? (
+            <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-4 py-6">
+              <div className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-bold">확정품목 확인하기</h2>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{confirmedOrderDate} 확정 발주 품목</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmedModalOpen(false)}
+                    className="icon-button touch-button shrink-0"
+                    aria-label="확정품목 닫기"
+                    title="닫기"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  {loadingConfirmed ? <StatusMessage>확정 품목을 불러오는 중...</StatusMessage> : null}
+                  {!loadingConfirmed && confirmedItems.length === 0 ? <StatusMessage>오늘 확정된 품목이 없습니다.</StatusMessage> : null}
+                  {!loadingConfirmed && confirmedItems.length > 0 ? (
+                    <div className="space-y-2">
+                      {confirmedItems.map((item) => (
+                        <div key={item.id} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="min-w-0 flex-1 break-words font-bold">{item.product_name}</span>
+                            {item.urgent_order_requested ? (
+                              <span className="rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">
+                                {item.urgent_order_quantity ? `긴급 ${item.urgent_order_quantity}개` : "긴급"}
+                              </span>
+                            ) : null}
+                            {item.fresh_order_selected ? (
+                              <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">추가</span>
+                            ) : null}
+                            {item.is_low_stock ? (
+                              <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">부족</span>
+                            ) : null}
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            <span>카테고리: {item.category}</span>
+                            <span>발주처: {item.supplier_name || "미지정"}</span>
+                            <span>총재고: {item.total_stock === null ? "-" : formatInventoryQuantity(item.total_stock)}</span>
+                            <span>최소: {item.minimum_stock ?? "-"}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="border-t border-slate-200 p-3 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmedModalOpen(false)}
                     className="touch-button w-full rounded-md border border-slate-300 px-4 font-bold dark:border-slate-700"
                   >
                     닫기

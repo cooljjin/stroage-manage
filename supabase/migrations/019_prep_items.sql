@@ -1,6 +1,6 @@
 alter table public.inventory_logs drop constraint if exists inventory_logs_action_check;
 alter table public.inventory_logs add constraint inventory_logs_action_check
-check (action in ('입고', '출고', '이동', '조정', '프랩 제조', '프랩 소진', '프랩 폐기'));
+check (action in ('입고', '출고', '이동', '조정', '메모', '프랩 제조', '프랩 소진', '프랩 폐기'));
 
 create table if not exists public.prep_items (
   id uuid primary key default gen_random_uuid(),
@@ -288,12 +288,14 @@ begin
 end;
 $$;
 
+drop function if exists public.record_prep_operation(uuid, text, numeric);
+
 create or replace function public.record_prep_operation(
   target_prep_item_id uuid,
   operation_type text,
   operation_quantity numeric
 )
-returns uuid
+returns table(log_id uuid, warning_message text)
 language plpgsql
 security definer
 set search_path = public
@@ -539,7 +541,8 @@ begin
         and is_completed = false
     );
 
-    return inserted_log_id;
+    return query select inserted_log_id, null::text;
+    return;
   end if;
 
   if prep_inventory.store_qty < operation_quantity then
@@ -617,7 +620,7 @@ begin
   )
   returning id into inserted_log_id;
 
-  return inserted_log_id;
+  return query select inserted_log_id, null::text;
 end;
 $$;
 

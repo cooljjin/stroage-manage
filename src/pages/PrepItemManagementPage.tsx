@@ -38,6 +38,10 @@ function isVolumeUnit(unit: string | null | undefined): boolean {
   return unit === "ml" || unit === "L";
 }
 
+function isCountUnit(unit: string | null | undefined): boolean {
+  return unit === "개";
+}
+
 function getEffectiveProductUnit(product: Product | null | undefined): string | null {
   if (!product?.unit_weight_enabled || product.unit_weight === null || product.unit_weight === undefined) return null;
   const usesProcessedWeight = product.processing_required && product.processed_unit_weight !== null && product.processed_unit_weight !== undefined;
@@ -50,6 +54,7 @@ function getProductUnitBaseAmount(product: Product | null | undefined): number |
   const unitAmount = Number(usesProcessedWeight ? product.processed_unit_weight : product.unit_weight);
   if (!Number.isFinite(unitAmount) || unitAmount <= 0) return null;
   const unit = usesProcessedWeight ? product.processed_unit_weight_unit : product.unit_weight_unit;
+  if (isCountUnit(unit)) return unitAmount;
   return unit === "kg" || unit === "L" ? unitAmount * 1000 : unitAmount;
 }
 
@@ -96,6 +101,7 @@ function getUsagePlaceholder(unit: PrepUsageUnit): string {
 function availableUsageUnits(product: Product | null | undefined): PrepUsageUnit[] {
   const unit = getEffectiveProductUnit(product);
   if (!unit || !getProductUnitBaseAmount(product)) return prepUsageUnits;
+  if (isCountUnit(unit)) return ["개"];
   return isVolumeUnit(unit) ? volumeUsageUnits : weightUsageUnits;
 }
 
@@ -106,6 +112,7 @@ function keepCurrentUnitAvailable(units: PrepUsageUnit[], currentUnit: PrepUsage
 function formatProductUnitWeight(product: Product): string {
   if (!product.unit_weight_enabled || product.unit_weight === null || product.unit_weight === undefined) return "단위당 무게 미설정";
   const unit = getEffectiveProductUnit(product);
+  if (isCountUnit(unit)) return `단위당 낱개 ${formatAmountQuantity(Number(product.unit_weight))}개`;
   const label = isVolumeUnit(unit) ? "부피" : "무게";
   if (product.processing_required && product.processed_unit_weight !== null && product.processed_unit_weight !== undefined) {
     return `손질 후 단위당 ${label} ${formatAmountQuantity(Number(product.processed_unit_weight))}${product.processed_unit_weight_unit ?? "g"}`;

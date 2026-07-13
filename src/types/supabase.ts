@@ -184,6 +184,64 @@ export type Database = {
         };
         Relationships: [];
       };
+      confirmed_order_items: {
+        Row: {
+          id: string;
+          store_id: string;
+          order_date: string;
+          product_id: string;
+          product_name: string;
+          category: string;
+          supplier_name: string | null;
+          total_stock: number | null;
+          minimum_stock: number | null;
+          is_low_stock: boolean;
+          fresh_order_selected: boolean;
+          urgent_order_requested: boolean;
+          urgent_order_quantity: number | null;
+          order_completed: boolean;
+          confirmed_by: string | null;
+          confirmed_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          order_date: string;
+          product_id: string;
+          product_name: string;
+          category?: string;
+          supplier_name?: string | null;
+          total_stock?: number | null;
+          minimum_stock?: number | null;
+          is_low_stock?: boolean;
+          fresh_order_selected?: boolean;
+          urgent_order_requested?: boolean;
+          urgent_order_quantity?: number | null;
+          order_completed?: boolean;
+          confirmed_by?: string | null;
+          confirmed_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          store_id?: string;
+          order_date?: string;
+          product_id?: string;
+          product_name?: string;
+          category?: string;
+          supplier_name?: string | null;
+          total_stock?: number | null;
+          minimum_stock?: number | null;
+          is_low_stock?: boolean;
+          fresh_order_selected?: boolean;
+          urgent_order_requested?: boolean;
+          urgent_order_quantity?: number | null;
+          order_completed?: boolean;
+          confirmed_by?: string | null;
+          confirmed_at?: string;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
           id: string;

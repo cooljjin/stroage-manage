@@ -599,7 +599,7 @@ export default function App() {
               <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
             )}
             {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} currentRole={profileRole} />}
             {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "group-order" && (

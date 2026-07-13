@@ -19,14 +19,17 @@ type Props = {
 const STORAGE_TYPES: StorageType[] = ["냉장", "냉동", "상온"];
 const WEIGHT_UNITS: UnitWeightUnit[] = ["g", "kg"];
 const VOLUME_UNITS: UnitWeightUnit[] = ["ml", "L"];
+const COUNT_UNITS: UnitWeightUnit[] = ["개"];
 
-type UnitMeasureType = "weight" | "volume";
+type UnitMeasureType = "weight" | "volume" | "count";
 
 function getUnitMeasureType(unit: UnitWeightUnit | null | undefined): UnitMeasureType {
+  if (unit === "개") return "count";
   return unit === "ml" || unit === "L" ? "volume" : "weight";
 }
 
 function unitOptionsForType(type: UnitMeasureType): UnitWeightUnit[] {
+  if (type === "count") return COUNT_UNITS;
   return type === "volume" ? VOLUME_UNITS : WEIGHT_UNITS;
 }
 
@@ -156,13 +159,17 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
   }, [loadProduct]);
 
   const unitMeasureType = getUnitMeasureType(unitWeightUnit);
-  const unitMeasureLabel = unitMeasureType === "volume" ? "부피" : "무게";
+  const unitMeasureLabel = unitMeasureType === "count" ? "낱개" : unitMeasureType === "volume" ? "부피" : "무게";
   const unitOptions = unitOptionsForType(unitMeasureType);
 
   function setUnitMeasureType(nextType: UnitMeasureType) {
-    const nextDefaultUnit = nextType === "volume" ? "ml" : "g";
+    const nextDefaultUnit = nextType === "count" ? "개" : nextType === "volume" ? "ml" : "g";
     setUnitWeightUnit(nextDefaultUnit);
     setProcessedUnitWeightUnit(nextDefaultUnit);
+    if (nextType === "count") {
+      setProcessingRequired(false);
+      setProcessedUnitWeight("");
+    }
   }
 
   function getExitRoute(): AppRoute {
@@ -186,7 +193,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     const nextMinimumStock = receiptCheckOnly ? 0 : Number(minimumStock || 0);
     const parsedUnitWeight = Number(unitWeight || 0);
     const nextUnitWeight = unitWeightEnabled ? parsedUnitWeight : null;
-    const nextProcessingRequired = unitWeightEnabled && processingRequired;
+    const nextProcessingRequired = unitWeightEnabled && unitMeasureType !== "count" && processingRequired;
     const parsedProcessedUnitWeight = Number(processedUnitWeight || 0);
     const nextProcessedUnitWeight = nextProcessingRequired ? parsedProcessedUnitWeight : null;
 
@@ -199,7 +206,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
       return;
     }
     if (unitWeightEnabled && (!Number.isFinite(parsedUnitWeight) || parsedUnitWeight <= 0)) {
-      setError("단위당 무게/부피는 0보다 큰 숫자로 입력해 주세요.");
+      setError("단위당 무게/부피/낱개는 0보다 큰 숫자로 입력해 주세요.");
       return;
     }
     if (nextProcessingRequired && (!Number.isFinite(parsedProcessedUnitWeight) || parsedProcessedUnitWeight <= 0)) {
@@ -421,14 +428,14 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
                 onChange={(event) => setUnitWeightEnabled(event.target.checked)}
                 className="h-5 w-5 shrink-0 accent-brand-600"
               />
-              <span className="min-w-0 text-sm font-bold">단위당 무게 사용</span>
+              <span className="min-w-0 text-sm font-bold">상품당 단위</span>
             </label>
             <p className="mt-1 pl-8 text-xs font-semibold text-slate-500 dark:text-slate-400">자동재고파악을 위해 입력하는 정보입니다</p>
             <div className="mt-2 min-w-0">
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                 <span className="block text-sm font-semibold">단위당</span>
-                <div className="grid grid-cols-2 gap-1">
-                  {(["weight", "volume"] as UnitMeasureType[]).map((type) => (
+                <div className="grid grid-cols-3 gap-1">
+                  {(["weight", "volume", "count"] as UnitMeasureType[]).map((type) => (
                     <button
                       key={type}
                       type="button"
@@ -439,7 +446,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
                       }`}
                       aria-pressed={unitMeasureType === type}
                     >
-                      {type === "volume" ? "부피" : "무게"}
+                      {type === "count" ? "낱개" : type === "volume" ? "부피" : "무게"}
                     </button>
                   ))}
                 </div>
@@ -455,6 +462,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
                   disabled={!unitWeightEnabled}
                   onChange={(event) => setUnitWeight(event.target.value)}
                   aria-label={`단위당 ${unitMeasureLabel}`}
+                  placeholder={unitMeasureType === "count" ? "예: 20" : undefined}
                 />
                 <div className="grid grid-cols-2 gap-1">
                   {unitOptions.map((weightUnit) => (
@@ -479,13 +487,16 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
                 <input
                   type="checkbox"
                   checked={processingRequired}
-                  disabled={!unitWeightEnabled}
+                  disabled={!unitWeightEnabled || unitMeasureType === "count"}
                   onChange={(event) => setProcessingRequired(event.target.checked)}
                   className="h-5 w-5 shrink-0 accent-brand-600 disabled:opacity-45"
                 />
                 <span className="min-w-0 text-sm font-bold text-slate-900 dark:text-slate-100">손질 필요 품목</span>
               </label>
-              {processingRequired ? (
+              {unitMeasureType === "count" ? (
+                <p className="mt-2 pl-8 text-xs font-semibold text-slate-500 dark:text-slate-400">낱개 기준에서는 손질 후 무게/부피 입력을 사용하지 않습니다.</p>
+              ) : null}
+              {processingRequired && unitMeasureType !== "count" ? (
                 <div className="mt-3 min-w-0">
                   <span className="mb-1 block text-sm font-semibold">손질 후 단위당 {unitMeasureLabel}</span>
                   <div className="grid grid-cols-[minmax(0,1fr)_112px] gap-2">
