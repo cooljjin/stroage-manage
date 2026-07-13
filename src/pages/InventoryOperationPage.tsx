@@ -918,7 +918,9 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                   onPointerCancel={clearDefaultLocationPressTimer}
                   onContextMenu={(event) => event.preventDefault()}
                   disabled={defaultLocationSaving}
-                  className={`${location === name ? "primary-button" : "secondary-button"} min-h-10 px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
+                  draggable={false}
+                  className={`${location === name ? "primary-button" : "secondary-button"} min-h-10 select-none px-3 py-1.5 text-sm touch-manipulation disabled:cursor-not-allowed disabled:opacity-60`}
+                  style={{ WebkitUserSelect: "none", userSelect: "none" }}
                   title="길게 누르면 기본값으로 저장"
                 >
                   {name}
