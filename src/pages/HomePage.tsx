@@ -309,14 +309,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   }
 
   async function deleteTodo(todo: DashboardTodo) {
-    if (dashboardView !== "tomorrow" || !nextBusinessDate) return;
+    if (!selectedDate) return;
     if (!window.confirm(`"${todo.content}" 할 일을 삭제할까요?`)) return;
 
     setDeletingIds((current) => new Set(current).add(todo.id));
     setError("");
     const { error: deleteError } = await Services.DatabaseService.delete("dashboard_todos")
       .eq("id", todo.id)
-      .eq("task_date", nextBusinessDate);
+      .eq("task_date", selectedDate);
 
     if (deleteError) {
       setError(deleteError.message);
@@ -503,11 +503,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             icon={ClipboardCheck}
             title="To do list"
             badge={`${completedCount}/${todos.length}`}
-            action={!isToday ? (
+            action={(
               <button type="button" onClick={() => setShowTodoForm((value) => !value)} className="touch-button grid place-items-center text-brand-700 dark:text-brand-100" aria-label="할 일 추가">
                 {showTodoForm ? <X size={19} /> : <Plus size={19} />}
               </button>
-            ) : undefined}
+            )}
           />
           {showTodoForm ? (
             <form onSubmit={addTodo} className="grid grid-cols-[1fr_auto] gap-1.5 border-b border-slate-100 p-2 dark:border-slate-800">
@@ -535,18 +535,16 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   />
                   <span className={`min-w-0 flex-1 text-sm font-semibold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
                 </label>
-                {!isToday ? (
-                  <button
-                    type="button"
-                    disabled={deletingIds.has(todo.id)}
-                    onClick={() => void deleteTodo(todo)}
-                    className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
-                    aria-label={`${todo.content} 삭제`}
-                    title="삭제"
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  disabled={deletingIds.has(todo.id)}
+                  onClick={() => void deleteTodo(todo)}
+                  className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                  aria-label={`${todo.content} 삭제`}
+                  title="삭제"
+                >
+                  <Trash2 size={17} />
+                </button>
               </AnimatedListItem>
             ))}
           </AnimatedList>

@@ -164,6 +164,10 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
     return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
   }, [suppliers]);
 
+  const itemsById = useMemo(() => {
+    return new Map(items.map((item) => [item.id, item]));
+  }, [items]);
+
   const confirmedOrderDate = todayDateValue();
   const canConfirmOrderItems = currentRole !== "staff";
   const confirmCheckedItems = useMemo(() => lowStockItems.filter((item) => item.order_completed), [lowStockItems]);
@@ -1057,30 +1061,46 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                   {!loadingConfirmed && confirmedItems.length === 0 ? <StatusMessage>오늘 확정된 품목이 없습니다.</StatusMessage> : null}
                   {!loadingConfirmed && confirmedItems.length > 0 ? (
                     <div className="space-y-2">
-                      {confirmedItems.map((item) => (
-                        <div key={item.id} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="min-w-0 flex-1 break-words font-bold">{item.product_name}</span>
-                            {item.urgent_order_requested ? (
-                              <span className="rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">
-                                {item.urgent_order_quantity ? `긴급 ${item.urgent_order_quantity}개` : "긴급"}
-                              </span>
-                            ) : null}
-                            {item.fresh_order_selected ? (
-                              <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">추가</span>
-                            ) : null}
-                            {item.is_low_stock ? (
-                              <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">부족</span>
-                            ) : null}
+                      {confirmedItems.map((item) => {
+                        const product = itemsById.get(item.product_id);
+
+                        return (
+                          <div key={item.id} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+                            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="min-w-0 flex-1 break-words font-bold">{item.product_name}</span>
+                                  {item.urgent_order_requested ? (
+                                    <span className="rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">
+                                      {item.urgent_order_quantity ? `긴급 ${item.urgent_order_quantity}개` : "긴급"}
+                                    </span>
+                                  ) : null}
+                                  {item.fresh_order_selected ? (
+                                    <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">추가</span>
+                                  ) : null}
+                                  {item.is_low_stock ? (
+                                    <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">부족</span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                  <span>카테고리: {item.category}</span>
+                                  <span>발주처: {item.supplier_name || "미지정"}</span>
+                                  <span>총재고: {item.total_stock === null ? "-" : formatInventoryQuantity(item.total_stock)}</span>
+                                  <span>최소: {item.minimum_stock ?? "-"}</span>
+                                </div>
+                              </div>
+                              {product ? (
+                                <ProductOrderAction
+                                  item={product}
+                                  supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
+                                  quantity={orderQuantities[item.product_id] ?? ""}
+                                  onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.product_id]: quantity }))}
+                                />
+                              ) : null}
+                            </div>
                           </div>
-                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                            <span>카테고리: {item.category}</span>
-                            <span>발주처: {item.supplier_name || "미지정"}</span>
-                            <span>총재고: {item.total_stock === null ? "-" : formatInventoryQuantity(item.total_stock)}</span>
-                            <span>최소: {item.minimum_stock ?? "-"}</span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
