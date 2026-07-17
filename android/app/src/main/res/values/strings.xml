@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">매장 재고관리</string>
-    <string name="title_activity_main">매장 재고관리</string>
+    <string name="app_name">Stockly</string>
+    <string name="title_activity_main">Stockly</string>
     <string name="package_name">com.jinkim.storeinventory.poc</string>
     <string name="custom_url_scheme">com.jinkim.storeinventory.poc</string>
 </resources>

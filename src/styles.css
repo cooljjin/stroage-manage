@@ -54,6 +54,10 @@
     transform: scale(0.97);
   }
 
+  .touch-button.no-press-scale:not(:disabled):active {
+    transform: translateZ(0);
+  }
+
   .icon-button {
     display: inline-flex;
     align-items: center;

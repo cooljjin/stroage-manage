@@ -667,7 +667,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
             <button
               type="button"
               onClick={openFreshModal}
-              className="touch-button rounded-md bg-emerald-600 px-3 text-sm font-bold text-white"
+              className="touch-button rounded-md bg-brand-600 px-3 text-sm font-bold text-white"
             >
               발주품목 추가
             </button>
@@ -694,7 +694,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
               type="button"
               disabled={freshReceivingUndoStack.length === 0 || undoingFreshReceiving}
               onClick={() => void undoFreshReceiving()}
-              className="touch-button rounded-md border border-emerald-600 px-3 text-sm font-bold text-emerald-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:opacity-60 dark:text-emerald-200 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+              className="touch-button rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:opacity-60 dark:text-brand-100 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
             >
               {undoingFreshReceiving ? "되돌리는 중" : `입고완료 되돌리기 (${freshReceivingUndoStack.length})`}
             </button>
@@ -725,7 +725,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                 onClick={() => navigate({ name: "operation", productId: item.id })}
                 className={`cursor-pointer rounded-md border p-3 ${
                   item.fresh_order_selected
-                    ? "border-emerald-300 bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950"
+                    ? "border-brand-200 bg-brand-50 dark:border-brand-800 dark:bg-brand-950"
                     : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
                 }`}
               >
@@ -737,7 +737,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                     </span>
                   ) : null}
                   {item.fresh_order_selected ? (
-                    <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">추가</span>
+                    <span className="rounded-full bg-brand-600 px-2 py-1 text-xs font-bold text-white">추가</span>
                   ) : null}
                 </div>
                 <div className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2 text-sm">
@@ -767,7 +767,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                       type="button"
                       disabled={completingFreshIds.has(item.id)}
                       onClick={() => handleReceiptComplete(item)}
-                      className="min-h-9 whitespace-nowrap rounded-md bg-emerald-600 px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                      className="min-h-9 whitespace-nowrap rounded-md bg-brand-600 px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
                     >
                       입고 완료
                     </button>
@@ -812,7 +812,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                     onClick={() => navigate({ name: "operation", productId: item.id })}
                     className={`cursor-pointer border-t ${
                       item.fresh_order_selected
-                        ? "border-emerald-200 bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950"
+                        ? "border-brand-200 bg-brand-50 dark:border-brand-800 dark:bg-brand-950"
                         : "border-slate-100 dark:border-slate-900"
                     }`}
                   >
@@ -825,7 +825,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                           </span>
                         ) : null}
                         {item.fresh_order_selected ? (
-                          <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">추가</span>
+                          <span className="shrink-0 rounded-full bg-brand-600 px-2 py-1 text-xs font-bold text-white">추가</span>
                         ) : null}
                       </div>
                     </td>
@@ -858,7 +858,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                         type="button"
                         disabled={completingFreshIds.has(item.id)}
                         onClick={() => handleReceiptComplete(item)}
-                        className="min-h-9 w-full rounded-md bg-emerald-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                        className="min-h-9 w-full rounded-md bg-brand-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
                       >
                         입고 완료
                       </button>
@@ -891,7 +891,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                     type="button"
                     disabled={savingFresh}
                     onClick={() => void saveFreshProducts()}
-                    className="touch-button shrink-0 rounded-md bg-emerald-600 px-4 text-sm font-bold text-white disabled:opacity-50"
+                    className="touch-button shrink-0 rounded-md bg-brand-600 px-4 text-sm font-bold text-white disabled:opacity-50"
                   >
                     {savingFresh ? "저장 중" : "저장"}
                   </button>
@@ -922,7 +922,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                     <button
                       type="button"
                       onClick={() => (freshScannerActive ? void stopFreshScanner() : void startFreshScanner())}
-                      className={`touch-button icon-button ${freshScannerActive ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600 dark:text-white" : ""}`}
+                      className={`touch-button icon-button ${freshScannerActive ? "border-brand-600 bg-brand-600 text-white dark:bg-brand-600 dark:text-white" : ""}`}
                       aria-label={freshScannerActive ? "바코드 스캔 중지" : "바코드 스캔"}
                       title={freshScannerActive ? "스캔 중지" : "바코드 스캔"}
                     >
@@ -942,7 +942,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                       <StatusMessage type={freshScanMessage.includes("아닙니다") || freshScanMessage.includes("실패") ? "error" : "info"}>{freshScanMessage}</StatusMessage>
                     </div>
                   ) : null}
-                  <p className="mt-2 text-right text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                  <p className="mt-2 text-right text-xs font-bold text-brand-700 dark:text-brand-100">
                     {selectedFreshIds.size}개 선택
                   </p>
                 </div>
@@ -959,7 +959,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                             key={item.id}
                             className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 ${
                               selected
-                                ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                                ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
                                 : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                             }`}
                           >
@@ -968,7 +968,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                                 type="checkbox"
                                 checked={selected}
                                 onChange={() => toggleFreshProduct(item.id)}
-                                className="h-6 w-6 rounded border-slate-300 accent-emerald-600"
+                                className="h-6 w-6 rounded border-slate-300 accent-brand-600"
                               />
                             </label>
                             <span className="min-w-0 flex-1 break-words font-bold">{item.name}</span>
@@ -1012,7 +1012,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                                       key={item.id}
                                       className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 ${
                                         selected
-                                          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                                          ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
                                           : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
                                       }`}
                                     >
@@ -1021,7 +1021,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                                           type="checkbox"
                                           checked={selected}
                                           onChange={() => toggleFreshProduct(item.id)}
-                                          className="h-6 w-6 rounded border-slate-300 accent-emerald-600"
+                                          className="h-6 w-6 rounded border-slate-300 accent-brand-600"
                                         />
                                       </label>
                                       <span className="min-w-0 flex-1 break-words font-bold">{item.name}</span>
@@ -1147,7 +1147,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                                     </span>
                                   ) : null}
                                   {item.fresh_order_selected ? (
-                                    <span className="rounded-full bg-emerald-600 px-2 py-1 text-xs font-bold text-white">추가</span>
+                                    <span className="rounded-full bg-brand-600 px-2 py-1 text-xs font-bold text-white">추가</span>
                                   ) : null}
                                   {item.is_low_stock ? (
                                     <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">부족</span>
@@ -1206,7 +1206,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                   <button
                     type="button"
                     onClick={() => void goToRegisterFreshBarcode()}
-                    className="touch-button rounded-md bg-emerald-600 px-4 font-bold text-white"
+                    className="touch-button rounded-md bg-brand-600 px-4 font-bold text-white"
                   >
                     예
                   </button>

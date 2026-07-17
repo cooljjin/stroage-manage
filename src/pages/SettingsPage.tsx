@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronRight, Link2, MessageCircle, Plus, Search, Trash2, Unlink, UserRound } from "lucide-react";
+import { CalendarDays, ChevronRight, Link2, LogOut, MessageCircle, Moon, Plus, Search, Sun, Trash2, Unlink, UserRound } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { getSeoulDateValue, WEEKDAYS } from "../lib/businessCalendar";
@@ -69,9 +69,12 @@ function authErrorMessage(message: string) {
 
 type Props = {
   currentRole: ProfileRole;
+  darkMode: boolean;
+  onToggleDarkMode: () => void;
+  onLogout: () => void;
 };
 
-export function SettingsPage({ currentRole }: Props) {
+export function SettingsPage({ currentRole, darkMode, onToggleDarkMode, onLogout }: Props) {
   const todayValue = useMemo(() => getSeoulDateValue(), []);
   const canManageStoreClosures = currentRole !== "staff";
   const [weeklyClosures, setWeeklyClosures] = useState<WeeklyStoreClosure[]>([]);
@@ -290,6 +293,40 @@ export function SettingsPage({ currentRole }: Props) {
         <div className="space-y-4">
           <div className="panel overflow-hidden">
             <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100">
+                {darkMode ? <Moon size={21} /> : <Sun size={21} />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-extrabold">앱 설정</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">화면 모드를 관리합니다.</p>
+              </div>
+              <ChevronRight className="text-slate-400" size={18} />
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-extrabold">다크모드</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{darkMode ? "어두운 화면을 사용 중입니다." : "밝은 화면을 사용 중입니다."}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onToggleDarkMode}
+                  aria-pressed={darkMode}
+                  className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${darkMode ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}
+                >
+                  <span className={`absolute top-1 grid h-6 w-6 place-items-center rounded-full bg-white text-slate-700 shadow-sm transition-transform ${darkMode ? "translate-x-7" : "translate-x-1"}`}>
+                    {darkMode ? <Moon size={14} /> : <Sun size={14} />}
+                  </span>
+                  <span className="sr-only">다크모드 전환</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <div className="panel overflow-hidden">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-100">
                 <UserRound size={21} />
               </span>
@@ -461,6 +498,15 @@ export function SettingsPage({ currentRole }: Props) {
               </div>
             </div>
           ) : null}
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="touch-button inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-4 text-sm font-bold text-red-700 hover:bg-red-50 dark:border-red-900 dark:bg-slate-950 dark:text-red-300 dark:hover:bg-red-950"
+          >
+            <LogOut size={17} />
+            로그아웃
+          </button>
 
           <div className="pb-2 text-center text-xs font-semibold text-slate-400 dark:text-slate-500">
             버전 {APP_VERSION}

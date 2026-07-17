@@ -98,38 +98,12 @@ export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
   }
 
   return (
-    <main className="min-h-dvh bg-[#f7f8ff] px-4 py-6 text-slate-950 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto grid min-h-[calc(100dvh-3rem)] max-w-6xl overflow-hidden rounded-[1.75rem] border border-white/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative flex min-h-[340px] flex-col justify-between overflow-hidden bg-[#070f35] px-6 py-8 text-white sm:px-10 lg:min-h-0 lg:px-12 lg:py-12">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(103,91,255,0.55),transparent_34%),radial-gradient(circle_at_82%_72%,rgba(14,165,233,0.24),transparent_32%)]" />
-          <div className="absolute -left-24 bottom-16 h-56 w-56 rounded-full border border-white/10" />
-          <div className="absolute -right-20 top-20 h-64 w-64 rounded-full border border-white/10" />
-
-          <div className="relative">
-            <div className="inline-flex rounded-2xl bg-white p-4 shadow-[0_18px_50px_rgba(36,42,255,0.26)]">
-              <img src="/stockly-logo.png" alt="Stockly" className="h-auto w-56 object-contain sm:w-72 lg:w-80" />
-            </div>
-            <p className="mt-8 max-w-lg text-3xl font-black leading-tight tracking-normal sm:text-4xl">
-              매장 재고와 발주 흐름을 한 화면에서 관리하세요.
-            </p>
-            <p className="mt-4 max-w-md text-base font-semibold leading-7 text-blue-100">
-              입고, 출고, 부족 재고, 매장별 운영 데이터를 빠르게 동기화하는 재고관리 솔루션입니다.
-            </p>
-          </div>
-
-          <div className="relative mt-10 grid grid-cols-3 gap-3 text-sm">
-            {["재고 확인", "발주 준비", "매장 동기화"].map((item) => (
-              <div key={item} className="rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-center font-bold text-white/90 backdrop-blur">
-                {item}
-              </div>
-            ))}
-          </div>
-        </section>
-
+    <main className="grid min-h-dvh place-items-center bg-[#f7f8ff] px-4 py-6 text-slate-950 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
+      <div className="w-full max-w-xl overflow-hidden rounded-[1.75rem] border border-white/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950">
         <section className="flex items-center justify-center px-5 py-8 sm:px-10 lg:px-12">
           <form onSubmit={handleSubmit} className="w-full max-w-md">
             <div className="mb-8">
-              <img src="/stockly-logo.png" alt="Stockly" className="mb-6 h-auto w-44 object-contain lg:hidden" />
+              <img src="/stockly-logo.png" alt="Stockly" className="mb-6 h-auto w-44 object-contain" />
               <p className="text-sm font-extrabold text-brand-600 dark:text-brand-200">Stockly 계정</p>
               <h1 className="mt-2 text-3xl font-black tracking-normal text-[#081238] dark:text-white">
                 {mode === "login" ? "로그인" : "회원가입"}

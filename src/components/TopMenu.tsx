@@ -1,4 +1,5 @@
-import { Calculator, ClipboardCheck, CookingPot, Menu, Package, Settings, Store, Tags, Truck, Users, X } from "lucide-react";
+import { Calculator, ClipboardCheck, CookingPot, Package, Settings, Store, Tags, Truck, Users } from "lucide-react";
+import { StocklyMenuButton } from "./StocklyMenuButton";
 import type { ProfileRole, RouteName } from "../types/domain";
 
 type Props = {
@@ -16,15 +17,7 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
 
   return (
     <div className="relative">
-      <button
-        type="button"
-        onClick={() => onOpenChange(!open)}
-        className="touch-button icon-button"
-        aria-label={open ? "메뉴 닫기" : "메뉴 열기"}
-        title="메뉴"
-      >
-        {open ? <X size={21} /> : <Menu size={21} />}
-      </button>
+      <StocklyMenuButton open={open} onClick={() => onOpenChange(!open)} />
 
       {open ? (
         <div className="absolute left-0 top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950">

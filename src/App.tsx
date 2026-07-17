@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { App as CapacitorApp, type URLOpenListenerEvent } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
-import { ArrowLeft, KeyRound, Moon, Plus, Shield, Sun } from "lucide-react";
+import { ArrowLeft, KeyRound, Plus } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { TopMenu } from "./components/TopMenu";
@@ -537,34 +537,9 @@ export default function App() {
       <OfflineBanner />
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-0">
             <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
-            <img src="/stockly-logo.png" alt="Stockly" className="h-8 w-auto min-w-0 object-contain sm:h-9" />
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {profileRole !== "staff" ? (
-              <button
-                type="button"
-                onClick={() => navigate({ name: profileRole === "master" ? "master-stores" : "staff-management" }, { resetHistory: true })}
-                className="touch-button inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-brand-600 px-2 text-sm font-bold text-brand-700 dark:text-brand-100 sm:px-3"
-              >
-                <Shield size={18} />
-                <span className="hidden sm:inline">{profileRole === "master" ? "마스터 페이지" : "관리자 페이지"}</span>
-                <span className="sm:hidden">{profileRole === "master" ? "마스터" : "관리자"}</span>
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setDarkMode((value) => !value)}
-              className="touch-button icon-button"
-              aria-label="다크모드 전환"
-              title="다크모드"
-            >
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <button type="button" onClick={handleLogout} className="touch-button whitespace-nowrap rounded-md border border-slate-300 px-2 text-sm font-semibold dark:border-slate-700 sm:px-3">
-              로그아웃
-            </button>
+            <img src="/stockly-logo.png" alt="Stockly" className="-ml-1 h-12 w-auto min-w-0 object-contain sm:h-14" />
           </div>
         </div>
       </header>
@@ -627,7 +602,7 @@ export default function App() {
             {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
             {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
-            {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} />}
+            {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
             {permittedRoute.name === "staff-management" && <StaffManagementPage />}
             {permittedRoute.name === "master-stores" && <MasterStoresPage />}
             {permittedRoute.name === "master-users" && <MasterUsersPage />}

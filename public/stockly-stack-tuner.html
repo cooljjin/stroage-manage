@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stockly Stack Tuner</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(340px, 1fr) minmax(360px, 460px);
+        gap: 24px;
+        min-height: 100dvh;
+        padding: 24px;
+      }
+
+      .preview-panel,
+      .control-panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: white;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      }
+
+      .preview-panel {
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .stage-wrap {
+        display: grid;
+        gap: 18px;
+        place-items: center;
+      }
+
+      .stage {
+        position: relative;
+        width: 320px;
+        height: 320px;
+        border-radius: 24px;
+        background:
+          linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+          linear-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+          #ffffff;
+        background-size: 20px 20px;
+        box-shadow: inset 0 0 0 1px #e2e8f0;
+        touch-action: none;
+        user-select: none;
+      }
+
+      .icon-box {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: var(--icon-size);
+        height: var(--icon-size);
+        transform: translate(-50%, -50%);
+        overflow: visible;
+      }
+
+      .layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        cursor: grab;
+        transform-origin: var(--origin);
+        filter: drop-shadow(0 10px 12px rgba(36, 42, 255, 0.12));
+      }
+
+      .layer:active {
+        cursor: grabbing;
+      }
+
+      .layer.active {
+        outline: 2px solid #5757ff;
+        outline-offset: 8px;
+      }
+
+      .button-preview {
+        display: inline-grid;
+        min-width: 44px;
+        min-height: 44px;
+        place-items: center;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      .control-panel {
+        overflow: hidden;
+      }
+
+      header,
+      .section {
+        padding: 16px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      header p,
+      .hint {
+        margin: 6px 0 0;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.45;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 84px 1fr 64px;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: #5757ff;
+      }
+
+      input[type="number"] {
+        width: 64px;
+        min-height: 34px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 4px 8px;
+        font: inherit;
+      }
+
+      .tabs,
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button {
+        min-height: 38px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: white;
+        color: #0f172a;
+        padding: 0 12px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 850;
+        cursor: pointer;
+      }
+
+      button.active,
+      button.primary {
+        border-color: #5757ff;
+        background: #5757ff;
+        color: white;
+      }
+
+      pre {
+        max-height: 300px;
+        margin: 0;
+        overflow: auto;
+        border-radius: 8px;
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+
+      .toast {
+        min-height: 20px;
+        color: #5757ff;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      @media (max-width: 860px) {
+        main {
+          grid-template-columns: 1fr;
+          padding: 12px;
+        }
+
+        .stage {
+          width: min(320px, calc(100vw - 56px));
+          height: min(320px, calc(100vw - 56px));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="preview-panel">
+        <div class="stage-wrap">
+          <div class="stage" id="stage">
+            <div class="icon-box" id="iconBox">
+              <img class="layer" data-layer="bottom" src="/stockly-stack-bottom.png" alt="" draggable="false" />
+              <img class="layer" data-layer="middle" src="/stockly-stack-middle.png" alt="" draggable="false" />
+              <img class="layer" data-layer="top" src="/stockly-stack-top.png" alt="" draggable="false" />
+            </div>
+          </div>
+          <div class="button-preview">
+            <div class="icon-box" id="smallIconBox">
+              <img class="layer" data-small-layer="bottom" src="/stockly-stack-bottom.png" alt="" draggable="false" />
+              <img class="layer" data-small-layer="middle" src="/stockly-stack-middle.png" alt="" draggable="false" />
+              <img class="layer" data-small-layer="top" src="/stockly-stack-top.png" alt="" draggable="false" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="control-panel">
+        <header>
+          <h1>Stockly Stack Tuner</h1>
+          <p>레이어를 마우스로 드래그하거나 값을 직접 조정하세요. 복사한 snippet을 <strong>StocklyStackIcon.tsx</strong>에 반영하면 됩니다.</p>
+        </header>
+
+        <section class="section">
+          <div class="tabs" id="stateTabs">
+            <button type="button" data-state="closed" class="active">닫힌 상태</button>
+            <button type="button" data-state="open">열린 상태</button>
+          </div>
+          <p class="hint">현재 선택한 상태의 위치/회전/스케일 값을 조정합니다.</p>
+        </section>
+
+        <section class="section">
+          <div class="tabs" id="layerTabs">
+            <button type="button" data-layer-tab="top">상단</button>
+            <button type="button" data-layer-tab="middle">중단</button>
+            <button type="button" data-layer-tab="bottom" class="active">하단</button>
+          </div>
+
+          <div class="row">
+            <label for="xInput">x</label>
+            <input id="xRange" type="range" min="-40" max="40" step="1" />
+            <input id="xInput" type="number" step="1" />
+          </div>
+          <div class="row">
+            <label for="yInput">y</label>
+            <input id="yRange" type="range" min="-40" max="40" step="1" />
+            <input id="yInput" type="number" step="1" />
+          </div>
+          <div class="row">
+            <label for="rotateInput">rotate</label>
+            <input id="rotateRange" type="range" min="-12" max="12" step="0.5" />
+            <input id="rotateInput" type="number" step="0.5" />
+          </div>
+          <div class="row">
+            <label for="scaleInput">scale</label>
+            <input id="scaleRange" type="range" min="0.7" max="1.4" step="0.01" />
+            <input id="scaleInput" type="number" step="0.01" />
+          </div>
+          <div class="row">
+            <label for="sizeInput">icon size</label>
+            <input id="sizeRange" type="range" min="28" max="80" step="1" />
+            <input id="sizeInput" type="number" step="1" />
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="actions">
+            <button type="button" id="resetButton">초기값</button>
+            <button type="button" id="copyJsonButton">JSON 복사</button>
+            <button type="button" id="copySnippetButton" class="primary">TS snippet 복사</button>
+          </div>
+          <p class="toast" id="toast"></p>
+        </section>
+
+        <section class="section">
+          <pre id="output"></pre>
+        </section>
+      </aside>
+    </main>
+
+    <script>
+      const defaults = {
+        iconSize: 36,
+        closed: {
+          bottom: { x: 0, y: 4, rotate: 0, scale: 1 },
+          middle: { x: 0, y: 0, rotate: 0, scale: 1 },
+          top: { x: 0, y: -4, rotate: 0, scale: 1 }
+        },
+        open: {
+          bottom: { x: 0, y: 9, rotate: 2, scale: 1.01 },
+          middle: { x: 0, y: 0, rotate: 0, scale: 1.03 },
+          top: { x: 0, y: -9, rotate: -2, scale: 1 }
+        }
+      };
+
+      let config = structuredClone(defaults);
+      let selectedState = "closed";
+      let selectedLayer = "bottom";
+      let drag = null;
+
+      const stage = document.querySelector("#stage");
+      const iconBox = document.querySelector("#iconBox");
+      const smallIconBox = document.querySelector("#smallIconBox");
+      const output = document.querySelector("#output");
+      const toast = document.querySelector("#toast");
+      const controls = {
+        x: [document.querySelector("#xRange"), document.querySelector("#xInput")],
+        y: [document.querySelector("#yRange"), document.querySelector("#yInput")],
+        rotate: [document.querySelector("#rotateRange"), document.querySelector("#rotateInput")],
+        scale: [document.querySelector("#scaleRange"), document.querySelector("#scaleInput")],
+        iconSize: [document.querySelector("#sizeRange"), document.querySelector("#sizeInput")]
+      };
+
+      function transformFor(values) {
+        return `translate(${values.x}px, ${values.y}px) rotate(${values.rotate}deg) scale(${values.scale})`;
+      }
+
+      function animateObjectFor(layer) {
+        const values = config[selectedState][layer];
+        const parts = [];
+        if (values.x !== 0) parts.push(`x: ${values.x}`);
+        parts.push(`y: ${values.y}`);
+        if (values.rotate !== 0) parts.push(`rotate: ${values.rotate}`);
+        if (values.scale !== 1) parts.push(`scale: ${Number(values.scale.toFixed(2))}`);
+        return `{ ${parts.join(", ")} }`;
+      }
+
+      function snippet() {
+        return `// StocklyMenuButton.tsx
+<StocklyStackIcon open={open} className="h-[${config.iconSize}px] w-[${config.iconSize}px]" />
+
+// StocklyStackIcon.tsx animate values
+bottom: animate={open ? ${objectFor("open", "bottom")} : ${objectFor("closed", "bottom")}}
+middle: animate={open ? ${objectFor("open", "middle")} : ${objectFor("closed", "middle")}}
+top: animate={open ? ${objectFor("open", "top")} : ${objectFor("closed", "top")}}`;
+      }
+
+      function objectFor(state, layer) {
+        const values = config[state][layer];
+        const parts = [];
+        if (values.x !== 0) parts.push(`x: ${values.x}`);
+        parts.push(`y: ${values.y}`);
+        if (values.rotate !== 0) parts.push(`rotate: ${values.rotate}`);
+        if (values.scale !== 1) parts.push(`scale: ${Number(values.scale.toFixed(2))}`);
+        return `{ ${parts.join(", ")} }`;
+      }
+
+      function render() {
+        iconBox.style.setProperty("--icon-size", `${config.iconSize * 5}px`);
+        smallIconBox.style.setProperty("--icon-size", `${config.iconSize}px`);
+
+        for (const layer of ["bottom", "middle", "top"]) {
+          const values = config[selectedState][layer];
+          document.querySelector(`[data-layer="${layer}"]`).style.transform = transformFor({ ...values, x: values.x * 5, y: values.y * 5 });
+          document.querySelector(`[data-layer="${layer}"]`).style.setProperty("--origin", layer === "bottom" ? "50% 68%" : layer === "middle" ? "50% 58%" : "50% 46%");
+          document.querySelector(`[data-layer="${layer}"]`).classList.toggle("active", layer === selectedLayer);
+          document.querySelector(`[data-small-layer="${layer}"]`).style.transform = transformFor(values);
+          document.querySelector(`[data-small-layer="${layer}"]`).style.setProperty("--origin", layer === "bottom" ? "50% 68%" : layer === "middle" ? "50% 58%" : "50% 46%");
+        }
+
+        const values = config[selectedState][selectedLayer];
+        for (const key of ["x", "y", "rotate", "scale"]) {
+          for (const input of controls[key]) input.value = values[key];
+        }
+        for (const input of controls.iconSize) input.value = config.iconSize;
+        output.textContent = snippet();
+      }
+
+      function updateValue(key, value) {
+        if (key === "iconSize") {
+          config.iconSize = Number(value);
+        } else {
+          config[selectedState][selectedLayer][key] = Number(value);
+        }
+        render();
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(() => {
+          toast.textContent = "";
+        }, 1500);
+      }
+
+      for (const key of Object.keys(controls)) {
+        for (const input of controls[key]) {
+          input.addEventListener("input", (event) => updateValue(key, event.target.value));
+        }
+      }
+
+      document.querySelector("#stateTabs").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-state]");
+        if (!button) return;
+        selectedState = button.dataset.state;
+        document.querySelectorAll("[data-state]").forEach((item) => item.classList.toggle("active", item === button));
+        render();
+      });
+
+      document.querySelector("#layerTabs").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-layer-tab]");
+        if (!button) return;
+        selectedLayer = button.dataset.layerTab;
+        document.querySelectorAll("[data-layer-tab]").forEach((item) => item.classList.toggle("active", item === button));
+        render();
+      });
+
+      stage.addEventListener("pointerdown", (event) => {
+        const layer = event.target.closest("[data-layer]");
+        if (!layer) return;
+        selectedLayer = layer.dataset.layer;
+        document.querySelectorAll("[data-layer-tab]").forEach((item) => item.classList.toggle("active", item.dataset.layerTab === selectedLayer));
+        const values = config[selectedState][selectedLayer];
+        drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: values.x, y: values.y };
+        stage.setPointerCapture(event.pointerId);
+        render();
+      });
+
+      stage.addEventListener("pointermove", (event) => {
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        config[selectedState][selectedLayer].x = Math.round(drag.x + (event.clientX - drag.startX) / 5);
+        config[selectedState][selectedLayer].y = Math.round(drag.y + (event.clientY - drag.startY) / 5);
+        render();
+      });
+
+      stage.addEventListener("pointerup", (event) => {
+        if (drag?.pointerId === event.pointerId) drag = null;
+      });
+
+      document.querySelector("#resetButton").addEventListener("click", () => {
+        config = structuredClone(defaults);
+        render();
+      });
+
+      document.querySelector("#copyJsonButton").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+        showToast("JSON copied");
+      });
+
+      document.querySelector("#copySnippetButton").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(snippet());
+        showToast("TS snippet copied");
+      });
+
+      render();
+    </script>
+  </body>
+</html>

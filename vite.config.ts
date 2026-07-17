@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.png"],
       manifest: {
-        name: "매장 재고관리",
-        short_name: "재고관리",
+        name: "Stockly",
+        short_name: "Stockly",
         description: "카페 및 F&B 매장용 모바일 우선 재고관리 앱",
         theme_color: "#5757FF",
         background_color: "#f8fafc",
