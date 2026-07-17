@@ -141,12 +141,12 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
           ))}
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[0.9fr_1.4fr_1fr_0.9fr]">
-          <label className="block">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-[0.9fr_1.4fr_1fr_0.9fr]">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">기준일</span>
-            <input className="field" type="date" value={baseDate} onChange={(event) => setBaseDate(event.target.value)} />
+            <input className="field min-w-0 max-w-full" type="date" value={baseDate} onChange={(event) => setBaseDate(event.target.value)} />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">상품</span>
             <span className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -158,7 +158,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
               />
             </span>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">직원</span>
             <select className="field" value={staffId} onChange={(event) => setStaffId(event.target.value)}>
               <option value="all">전체 직원</option>
@@ -169,7 +169,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">구분</span>
             <select className="field" value={logKind} onChange={(event) => setLogKind(event.target.value as LogKind)}>
               <option value="all">전체</option>

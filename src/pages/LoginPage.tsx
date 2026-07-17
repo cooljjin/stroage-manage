@@ -103,7 +103,7 @@ export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
         <section className="flex items-center justify-center px-5 py-8 sm:px-10 lg:px-12">
           <form onSubmit={handleSubmit} className="w-full max-w-md">
             <div className="mb-8">
-              <img src="/stockly-logo.png" alt="Stockly" className="mb-6 h-auto w-44 object-contain" />
+              <img src="/stockly-login-logo.png" alt="Stockly" className="mb-6 h-auto w-44 object-contain" />
               <p className="text-sm font-extrabold text-brand-600 dark:text-brand-200">Stockly 계정</p>
               <h1 className="mt-2 text-3xl font-black tracking-normal text-[#081238] dark:text-white">
                 {mode === "login" ? "로그인" : "회원가입"}

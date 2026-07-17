@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stockly Animation Tuner</title>
+    <style>
+      :root {
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #0f172a;
+        background: #f8fafc;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(360px, 1fr) minmax(380px, 500px);
+        gap: 20px;
+        min-height: 100dvh;
+        padding: 20px;
+      }
+
+      .panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      }
+
+      .preview {
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .preview-stack {
+        display: grid;
+        gap: 22px;
+        place-items: center;
+      }
+
+      .stage {
+        display: grid;
+        width: min(520px, calc(100vw - 60px));
+        min-height: 360px;
+        place-items: center;
+        border-radius: 16px;
+        background:
+          linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+          linear-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+          #ffffff;
+        background-size: 24px 24px;
+        box-shadow: inset 0 0 0 1px #e2e8f0;
+      }
+
+      .menu-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--button-size);
+        height: var(--button-size);
+        border: 0;
+        border-radius: 8px;
+        background: var(--button-bg);
+        transform: translateY(calc(var(--button-y) + var(--press-y))) rotate(var(--press-rotate)) scale(var(--press-scale));
+        transition:
+          transform var(--press-duration) var(--press-easing),
+          background-color var(--press-duration) var(--press-easing);
+      }
+
+      .menu-button.pressed {
+        background: var(--press-bg);
+      }
+
+      .icon {
+        position: relative;
+        width: var(--icon-size);
+        height: var(--icon-size);
+        overflow: visible;
+      }
+
+      .layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        transform-origin: var(--origin);
+        transition:
+          transform var(--duration) var(--easing),
+          opacity var(--duration) var(--easing),
+          filter var(--duration) var(--easing);
+        filter: blur(var(--layer-blur)) drop-shadow(0 var(--shadow-y) var(--shadow-blur) rgba(36, 42, 255, var(--shadow-opacity)));
+      }
+
+      .header {
+        padding: 16px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .hint {
+        margin: 6px 0 0;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.45;
+      }
+
+      .controls {
+        max-height: calc(100dvh - 40px);
+        overflow: auto;
+      }
+
+      .section {
+        padding: 16px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 104px 1fr 72px;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .tabs,
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .preset-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      button {
+        min-height: 38px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        color: #0f172a;
+        padding: 0 12px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 850;
+        cursor: pointer;
+      }
+
+      button.active,
+      button.primary {
+        border-color: #5757ff;
+        background: #5757ff;
+        color: white;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: #5757ff;
+      }
+
+      input[type="number"],
+      input[type="text"] {
+        width: 72px;
+        min-height: 34px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 4px 8px;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      input[type="text"] {
+        width: 100%;
+      }
+
+      pre {
+        max-height: 340px;
+        margin: 0;
+        overflow: auto;
+        border-radius: 8px;
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+
+      .toast {
+        min-height: 18px;
+        color: #5757ff;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      @media (max-width: 920px) {
+        main {
+          grid-template-columns: 1fr;
+          padding: 12px;
+        }
+
+        .controls {
+          max-height: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel preview">
+        <div class="preview-stack">
+          <div class="stage">
+            <button class="menu-button" type="button" id="previewButton" aria-label="preview">
+              <span class="icon">
+                <img class="layer" data-layer="bottom" src="/stockly-stack-bottom.png" alt="" draggable="false" />
+                <img class="layer" data-layer="middle" src="/stockly-stack-middle.png" alt="" draggable="false" />
+                <img class="layer" data-layer="top" src="/stockly-stack-top.png" alt="" draggable="false" />
+              </span>
+            </button>
+          </div>
+          <div class="actions">
+            <button type="button" id="toggleButton" class="primary">열림/닫힘 토글</button>
+            <button type="button" id="playButton">자동 반복</button>
+            <button type="button" id="pulseButton">한 번 재생</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel controls">
+        <div class="header">
+          <h1>Stockly Animation Tuner</h1>
+          <p class="hint">위치, 크기, 애니메이션 타이밍, 그림자, 버튼 배경을 조정하고 TS snippet을 복사하세요.</p>
+        </div>
+
+        <section class="section">
+          <div class="tabs" id="stateTabs">
+            <button type="button" data-state="closed" class="active">닫힌 상태</button>
+            <button type="button" data-state="open">열린 상태</button>
+          </div>
+          <p class="hint">선택한 상태의 레이어 값을 조정합니다. 미리보기 토글은 실제 전환감을 확인하는 용도입니다.</p>
+        </section>
+
+        <section class="section">
+          <div class="tabs" id="layerTabs">
+            <button type="button" data-layer-tab="top">상단</button>
+            <button type="button" data-layer-tab="middle">중단</button>
+            <button type="button" data-layer-tab="bottom" class="active">하단</button>
+          </div>
+          <div class="row"><label>x</label><input id="xRange" type="range" min="-40" max="40" step="1" /><input id="xInput" type="number" step="1" /></div>
+          <div class="row"><label>y</label><input id="yRange" type="range" min="-40" max="40" step="1" /><input id="yInput" type="number" step="1" /></div>
+          <div class="row"><label>rotate</label><input id="rotateRange" type="range" min="-16" max="16" step="0.5" /><input id="rotateInput" type="number" step="0.5" /></div>
+          <div class="row"><label>scale</label><input id="scaleRange" type="range" min="0.7" max="1.4" step="0.01" /><input id="scaleInput" type="number" step="0.01" /></div>
+          <div class="row"><label>opacity</label><input id="opacityRange" type="range" min="0" max="1" step="0.01" /><input id="opacityInput" type="number" step="0.01" /></div>
+          <div class="row"><label>blur</label><input id="blurRange" type="range" min="0" max="8" step="0.1" /><input id="blurInput" type="number" step="0.1" /></div>
+          <div class="row"><label>delay ms</label><input id="delayRange" type="range" min="0" max="300" step="10" /><input id="delayInput" type="number" step="10" /></div>
+        </section>
+
+        <section class="section">
+          <div class="row"><label>icon size</label><input id="iconSizeRange" type="range" min="24" max="64" step="1" /><input id="iconSizeInput" type="number" step="1" /></div>
+          <div class="row"><label>button size</label><input id="buttonSizeRange" type="range" min="32" max="72" step="1" /><input id="buttonSizeInput" type="number" step="1" /></div>
+          <div class="row"><label>button y</label><input id="buttonYRange" type="range" min="-12" max="20" step="0.5" /><input id="buttonYInput" type="number" step="0.5" /></div>
+          <div class="row"><label>button bg</label><input id="buttonBgInput" type="text" /><input id="buttonBgOpacityInput" type="number" min="0" max="1" step="0.05" /></div>
+        </section>
+
+        <section class="section">
+          <div class="tabs">
+            <button type="button" id="pressPreviewButton">press 미리보기</button>
+          </div>
+          <p class="hint">왼쪽 미리보기 버튼을 직접 누르거나 이 버튼을 눌러 press 상태를 확인하세요.</p>
+          <div class="row"><label>press scale</label><input id="pressScaleRange" type="range" min="0.82" max="1.08" step="0.01" /><input id="pressScaleInput" type="number" step="0.01" /></div>
+          <div class="row"><label>press y</label><input id="pressYRange" type="range" min="-10" max="10" step="0.5" /><input id="pressYInput" type="number" step="0.5" /></div>
+          <div class="row"><label>press rotate</label><input id="pressRotateRange" type="range" min="-8" max="8" step="0.5" /><input id="pressRotateInput" type="number" step="0.5" /></div>
+          <div class="row"><label>press ms</label><input id="pressDurationRange" type="range" min="40" max="240" step="10" /><input id="pressDurationInput" type="number" step="10" /></div>
+          <div class="row"><label>press easing</label><input id="pressEasingInput" type="text" /><input id="dummyPressEasingValue" type="number" disabled /></div>
+          <div class="row"><label>press bg</label><input id="pressBgInput" type="text" /><input id="pressBgOpacityInput" type="number" min="0" max="1" step="0.05" /></div>
+        </section>
+
+        <section class="section">
+          <div class="tabs" id="transitionTabs">
+            <button type="button" data-transition="spring" class="active">spring</button>
+            <button type="button" data-transition="tween">tween</button>
+          </div>
+          <div class="preset-grid">
+            <button type="button" data-preset="quick">빠르게</button>
+            <button type="button" data-preset="soft">부드럽게</button>
+            <button type="button" data-preset="bouncy">탄성</button>
+            <button type="button" data-preset="stagger">순차 펼침</button>
+          </div>
+          <div class="row"><label>duration ms</label><input id="durationRange" type="range" min="80" max="700" step="10" /><input id="durationInput" type="number" step="10" /></div>
+          <div class="row"><label>repeat ms</label><input id="repeatMsRange" type="range" min="400" max="2400" step="50" /><input id="repeatMsInput" type="number" step="50" /></div>
+          <div class="row"><label>easing</label><input id="easingInput" type="text" /><input id="dummyEasingValue" type="number" disabled /></div>
+          <div class="row"><label>stiffness</label><input id="stiffnessRange" type="range" min="120" max="900" step="10" /><input id="stiffnessInput" type="number" step="10" /></div>
+          <div class="row"><label>damping</label><input id="dampingRange" type="range" min="12" max="60" step="1" /><input id="dampingInput" type="number" step="1" /></div>
+          <div class="row"><label>mass</label><input id="massRange" type="range" min="0.2" max="1.8" step="0.05" /><input id="massInput" type="number" step="0.05" /></div>
+        </section>
+
+        <section class="section">
+          <div class="row"><label>shadow y</label><input id="shadowYRange" type="range" min="0" max="28" step="1" /><input id="shadowYInput" type="number" step="1" /></div>
+          <div class="row"><label>shadow blur</label><input id="shadowBlurRange" type="range" min="0" max="36" step="1" /><input id="shadowBlurInput" type="number" step="1" /></div>
+          <div class="row"><label>shadow alpha</label><input id="shadowOpacityRange" type="range" min="0" max="0.5" step="0.01" /><input id="shadowOpacityInput" type="number" step="0.01" /></div>
+        </section>
+
+        <section class="section">
+          <div class="actions">
+            <button type="button" id="resetButton">초기값</button>
+            <button type="button" id="copyJsonButton">JSON 복사</button>
+            <button type="button" id="copySnippetButton" class="primary">TS snippet 복사</button>
+          </div>
+          <p class="toast" id="toast"></p>
+        </section>
+
+        <section class="section">
+          <pre id="output"></pre>
+        </section>
+      </aside>
+    </main>
+
+    <script>
+      const defaults = {
+        iconSize: 36,
+        buttonSize: 40,
+        buttonY: 6,
+        buttonBg: "#f1f1ff",
+        buttonBgOpacity: 0,
+        press: {
+          scale: 1,
+          y: 0,
+          rotate: 0,
+          duration: 90,
+          easing: "ease-out",
+          bg: "#f1f1ff",
+          bgOpacity: 0.35
+        },
+        duration: 220,
+        repeatMs: 900,
+        easing: "cubic-bezier(.2,.8,.2,1)",
+        transition: { type: "spring", stiffness: 520, damping: 34, mass: 0.65 },
+        effects: { shadowY: 10, shadowBlur: 12, shadowOpacity: 0.12 },
+        closed: {
+          bottom: { x: -1, y: -2, rotate: 0, scale: 1.04, opacity: 1, blur: 0, delay: 0 },
+          middle: { x: 0, y: -7, rotate: 0, scale: 1, opacity: 1, blur: 0, delay: 0 },
+          top: { x: -1, y: -9, rotate: 0, scale: 1, opacity: 1, blur: 0, delay: 0 }
+        },
+        open: {
+          bottom: { x: -1, y: 5, rotate: 0, scale: 1.04, opacity: 1, blur: 0, delay: 0 },
+          middle: { x: 0, y: -6, rotate: 0, scale: 1.03, opacity: 1, blur: 0, delay: 0 },
+          top: { x: -1, y: -12, rotate: 0, scale: 1, opacity: 1, blur: 0, delay: 0 }
+        }
+      };
+
+      let config = structuredClone(defaults);
+      let selectedState = "closed";
+      let previewState = "closed";
+      let selectedLayer = "bottom";
+      let autoTimer = 0;
+      let isPressing = false;
+
+      const root = document.documentElement;
+      const output = document.querySelector("#output");
+      const toast = document.querySelector("#toast");
+      const control = (name) => [document.querySelector(`#${name}Range`), document.querySelector(`#${name}Input`)];
+      const controls = {
+        x: control("x"),
+        y: control("y"),
+        rotate: control("rotate"),
+        scale: control("scale"),
+        opacity: control("opacity"),
+        blur: control("blur"),
+        delay: control("delay"),
+        iconSize: control("iconSize"),
+        buttonSize: control("buttonSize"),
+        buttonY: control("buttonY"),
+        pressScale: control("pressScale"),
+        pressY: control("pressY"),
+        pressRotate: control("pressRotate"),
+        pressDuration: control("pressDuration"),
+        duration: control("duration"),
+        repeatMs: control("repeatMs"),
+        stiffness: control("stiffness"),
+        damping: control("damping"),
+        mass: control("mass"),
+        shadowY: control("shadowY"),
+        shadowBlur: control("shadowBlur"),
+        shadowOpacity: control("shadowOpacity")
+      };
+
+      function hexToRgb(hex) {
+        const value = hex.replace("#", "").trim();
+        if (value.length !== 6) return [241, 241, 255];
+        return [parseInt(value.slice(0, 2), 16), parseInt(value.slice(2, 4), 16), parseInt(value.slice(4, 6), 16)];
+      }
+
+      function transform(values) {
+        return `translate(${values.x}px, ${values.y}px) rotate(${values.rotate}deg) scale(${values.scale})`;
+      }
+
+      function objectFor(state, layer) {
+        const values = config[state][layer];
+        const parts = [];
+        if (values.x !== 0) parts.push(`x: ${values.x}`);
+        parts.push(`y: ${values.y}`);
+        if (values.rotate !== 0) parts.push(`rotate: ${values.rotate}`);
+        if (values.scale !== 1) parts.push(`scale: ${Number(values.scale.toFixed(2))}`);
+        if (values.opacity !== 1) parts.push(`opacity: ${Number(values.opacity.toFixed(2))}`);
+        if (values.blur !== 0) parts.push(`filter: "blur(${Number(values.blur.toFixed(1))}px)"`);
+        return `{ ${parts.join(", ")} }`;
+      }
+
+      function snippet() {
+        const pressClass = config.press.scale === 1 && config.press.y === 0 && config.press.rotate === 0
+          ? ""
+          : `
+whileTap={{ scale: ${Number(config.press.scale.toFixed(2))}, y: ${config.press.y}, rotate: ${config.press.rotate} }}
+transition={{ duration: ${Number((config.press.duration / 1000).toFixed(2))}, ease: "${config.press.easing}" }}`;
+        const transitionSnippet = config.transition.type === "spring"
+          ? `const springTransition = {
+  type: "spring",
+  stiffness: ${config.transition.stiffness},
+  damping: ${config.transition.damping},
+  mass: ${Number(config.transition.mass.toFixed(2))}
+} as const;`
+          : `const tweenTransition = {
+  type: "tween",
+  duration: ${Number((config.duration / 1000).toFixed(2))},
+  ease: "${config.easing}"
+} as const;`;
+
+        return `// StocklyMenuButton.tsx
+className={\`no-press-scale inline-flex h-[${config.buttonSize}px] w-[${config.buttonSize}px] translate-y-[${config.buttonY}px] shrink-0 items-center justify-center rounded-md bg-transparent \${open ? "bg-brand-50 dark:bg-brand-950" : ""}\`}
+${pressClass || "// press animation disabled"}
+<StocklyStackIcon open={open} className="h-[${config.iconSize}px] w-[${config.iconSize}px]" />
+
+// StocklyStackIcon.tsx
+${transitionSnippet}
+
+bottom animate={open ? ${objectFor("open", "bottom")} : ${objectFor("closed", "bottom")}}
+middle animate={open ? ${objectFor("open", "middle")} : ${objectFor("closed", "middle")}}
+top animate={open ? ${objectFor("open", "top")} : ${objectFor("closed", "top")}}
+
+bottom transition={{ ...${config.transition.type === "spring" ? "springTransition" : "tweenTransition"}, delay: ${Number((config[previewState].bottom.delay / 1000).toFixed(2))} }}
+middle transition={{ ...${config.transition.type === "spring" ? "springTransition" : "tweenTransition"}, delay: ${Number((config[previewState].middle.delay / 1000).toFixed(2))} }}
+top transition={{ ...${config.transition.type === "spring" ? "springTransition" : "tweenTransition"}, delay: ${Number((config[previewState].top.delay / 1000).toFixed(2))} }}
+
+// Optional CSS preview values
+pressBg: rgba(${hexToRgb(config.press.bg).join(", ")}, ${config.press.bgOpacity})
+duration: ${config.duration}ms
+repeat: ${config.repeatMs}ms
+easing: ${config.easing}
+dropShadow: 0 ${config.effects.shadowY}px ${config.effects.shadowBlur}px rgba(36, 42, 255, ${Number(config.effects.shadowOpacity.toFixed(2))})`;
+      }
+
+      function render() {
+        const [r, g, b] = hexToRgb(config.buttonBg);
+        const [pressR, pressG, pressB] = hexToRgb(config.press.bg);
+        root.style.setProperty("--icon-size", `${config.iconSize}px`);
+        root.style.setProperty("--button-size", `${config.buttonSize}px`);
+        root.style.setProperty("--button-y", `${config.buttonY}px`);
+        root.style.setProperty("--button-bg", `rgba(${r}, ${g}, ${b}, ${config.buttonBgOpacity})`);
+        root.style.setProperty("--press-scale", isPressing ? config.press.scale : 1);
+        root.style.setProperty("--press-y", `${isPressing ? config.press.y : 0}px`);
+        root.style.setProperty("--press-rotate", `${isPressing ? config.press.rotate : 0}deg`);
+        root.style.setProperty("--press-duration", `${config.press.duration}ms`);
+        root.style.setProperty("--press-easing", config.press.easing);
+        root.style.setProperty("--press-bg", `rgba(${pressR}, ${pressG}, ${pressB}, ${config.press.bgOpacity})`);
+        document.querySelector("#previewButton").classList.toggle("pressed", isPressing);
+        root.style.setProperty("--duration", `${config.duration}ms`);
+        root.style.setProperty("--easing", config.easing);
+        root.style.setProperty("--shadow-y", `${config.effects.shadowY}px`);
+        root.style.setProperty("--shadow-blur", `${config.effects.shadowBlur}px`);
+        root.style.setProperty("--shadow-opacity", config.effects.shadowOpacity);
+
+        for (const layer of ["bottom", "middle", "top"]) {
+          const element = document.querySelector(`[data-layer="${layer}"]`);
+          const layerValues = config[previewState][layer];
+          element.style.transform = transform(layerValues);
+          element.style.opacity = layerValues.opacity;
+          element.style.transitionDelay = `${layerValues.delay}ms`;
+          element.style.setProperty("--layer-blur", `${layerValues.blur}px`);
+          element.style.setProperty("--origin", layer === "bottom" ? "50% 68%" : layer === "middle" ? "50% 58%" : "50% 46%");
+        }
+
+        const values = config[selectedState][selectedLayer];
+        for (const key of ["x", "y", "rotate", "scale", "opacity", "blur", "delay"]) {
+          controls[key].forEach((input) => input.value = values[key]);
+        }
+        controls.iconSize.forEach((input) => input.value = config.iconSize);
+        controls.buttonSize.forEach((input) => input.value = config.buttonSize);
+        controls.buttonY.forEach((input) => input.value = config.buttonY);
+        controls.pressScale.forEach((input) => input.value = config.press.scale);
+        controls.pressY.forEach((input) => input.value = config.press.y);
+        controls.pressRotate.forEach((input) => input.value = config.press.rotate);
+        controls.pressDuration.forEach((input) => input.value = config.press.duration);
+        controls.duration.forEach((input) => input.value = config.duration);
+        controls.repeatMs.forEach((input) => input.value = config.repeatMs);
+        controls.stiffness.forEach((input) => input.value = config.transition.stiffness);
+        controls.damping.forEach((input) => input.value = config.transition.damping);
+        controls.mass.forEach((input) => input.value = config.transition.mass);
+        controls.shadowY.forEach((input) => input.value = config.effects.shadowY);
+        controls.shadowBlur.forEach((input) => input.value = config.effects.shadowBlur);
+        controls.shadowOpacity.forEach((input) => input.value = config.effects.shadowOpacity);
+        document.querySelector("#easingInput").value = config.easing;
+        document.querySelector("#pressEasingInput").value = config.press.easing;
+        document.querySelector("#buttonBgInput").value = config.buttonBg;
+        document.querySelector("#buttonBgOpacityInput").value = config.buttonBgOpacity;
+        document.querySelector("#pressBgInput").value = config.press.bg;
+        document.querySelector("#pressBgOpacityInput").value = config.press.bgOpacity;
+        document.querySelectorAll("[data-transition]").forEach((item) => item.classList.toggle("active", item.dataset.transition === config.transition.type));
+        output.textContent = snippet();
+      }
+
+      function updateValue(key, value) {
+        const number = Number(value);
+        if (["x", "y", "rotate", "scale", "opacity", "blur", "delay"].includes(key)) config[selectedState][selectedLayer][key] = number;
+        else if (key.startsWith("press")) {
+          const pressKey = key.replace("press", "");
+          config.press[pressKey.charAt(0).toLowerCase() + pressKey.slice(1)] = number;
+        }
+        else if (["stiffness", "damping", "mass"].includes(key)) config.transition[key] = number;
+        else if (["shadowY", "shadowBlur", "shadowOpacity"].includes(key)) config.effects[key] = number;
+        else config[key] = number;
+        render();
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(() => toast.textContent = "", 1400);
+      }
+
+      for (const [key, pair] of Object.entries(controls)) {
+        pair.forEach((input) => input.addEventListener("input", (event) => updateValue(key, event.target.value)));
+      }
+
+      document.querySelector("#easingInput").addEventListener("input", (event) => {
+        config.easing = event.target.value;
+        render();
+      });
+      document.querySelector("#pressEasingInput").addEventListener("input", (event) => {
+        config.press.easing = event.target.value;
+        render();
+      });
+      document.querySelector("#buttonBgInput").addEventListener("input", (event) => {
+        config.buttonBg = event.target.value;
+        render();
+      });
+      document.querySelector("#buttonBgOpacityInput").addEventListener("input", (event) => {
+        config.buttonBgOpacity = Number(event.target.value);
+        render();
+      });
+      document.querySelector("#pressBgInput").addEventListener("input", (event) => {
+        config.press.bg = event.target.value;
+        render();
+      });
+      document.querySelector("#pressBgOpacityInput").addEventListener("input", (event) => {
+        config.press.bgOpacity = Number(event.target.value);
+        render();
+      });
+
+      function setPressing(value) {
+        isPressing = value;
+        render();
+      }
+
+      document.querySelector("#previewButton").addEventListener("pointerdown", () => setPressing(true));
+      document.querySelector("#previewButton").addEventListener("pointerup", () => setPressing(false));
+      document.querySelector("#previewButton").addEventListener("pointerleave", () => setPressing(false));
+      document.querySelector("#previewButton").addEventListener("pointercancel", () => setPressing(false));
+
+      document.querySelector("#pressPreviewButton").addEventListener("pointerdown", () => setPressing(true));
+      document.querySelector("#pressPreviewButton").addEventListener("pointerup", () => setPressing(false));
+      document.querySelector("#pressPreviewButton").addEventListener("pointerleave", () => setPressing(false));
+      document.querySelector("#pressPreviewButton").addEventListener("pointercancel", () => setPressing(false));
+
+      document.querySelector("#transitionTabs").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-transition]");
+        if (!button) return;
+        config.transition.type = button.dataset.transition;
+        render();
+      });
+
+      document.querySelectorAll("[data-preset]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const preset = button.dataset.preset;
+          if (preset === "quick") {
+            config.transition.type = "tween";
+            config.duration = 150;
+            config.easing = "cubic-bezier(.2,0,0,1)";
+            config.repeatMs = 650;
+            for (const state of ["closed", "open"]) {
+              for (const layer of ["bottom", "middle", "top"]) config[state][layer].delay = 0;
+            }
+          }
+          if (preset === "soft") {
+            config.transition.type = "tween";
+            config.duration = 280;
+            config.easing = "cubic-bezier(.2,.8,.2,1)";
+            config.repeatMs = 1000;
+            for (const state of ["closed", "open"]) {
+              for (const layer of ["bottom", "middle", "top"]) config[state][layer].delay = 0;
+            }
+          }
+          if (preset === "bouncy") {
+            config.transition.type = "spring";
+            config.transition.stiffness = 640;
+            config.transition.damping = 24;
+            config.transition.mass = 0.6;
+            config.duration = 260;
+            config.repeatMs = 1050;
+            for (const state of ["closed", "open"]) {
+              for (const layer of ["bottom", "middle", "top"]) config[state][layer].delay = 0;
+            }
+          }
+          if (preset === "stagger") {
+            config.transition.type = "tween";
+            config.duration = 240;
+            config.easing = "cubic-bezier(.16,1,.3,1)";
+            config.repeatMs = 1150;
+            config.open.bottom.delay = 0;
+            config.open.middle.delay = 40;
+            config.open.top.delay = 80;
+            config.closed.top.delay = 0;
+            config.closed.middle.delay = 35;
+            config.closed.bottom.delay = 70;
+          }
+          render();
+        });
+      });
+
+      document.querySelector("#stateTabs").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-state]");
+        if (!button) return;
+        selectedState = button.dataset.state;
+        document.querySelectorAll("[data-state]").forEach((item) => item.classList.toggle("active", item === button));
+        render();
+      });
+
+      document.querySelector("#layerTabs").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-layer-tab]");
+        if (!button) return;
+        selectedLayer = button.dataset.layerTab;
+        document.querySelectorAll("[data-layer-tab]").forEach((item) => item.classList.toggle("active", item === button));
+        render();
+      });
+
+      document.querySelector("#toggleButton").addEventListener("click", () => {
+        previewState = previewState === "closed" ? "open" : "closed";
+        render();
+      });
+
+      document.querySelector("#pulseButton").addEventListener("click", () => {
+        previewState = "closed";
+        render();
+        window.setTimeout(() => {
+          previewState = "open";
+          render();
+        }, 80);
+      });
+
+      document.querySelector("#playButton").addEventListener("click", (event) => {
+        if (autoTimer) {
+          window.clearInterval(autoTimer);
+          autoTimer = 0;
+          event.currentTarget.classList.remove("active");
+          return;
+        }
+        event.currentTarget.classList.add("active");
+        autoTimer = window.setInterval(() => {
+          previewState = previewState === "closed" ? "open" : "closed";
+          render();
+        }, Math.max(260, config.repeatMs));
+      });
+
+      document.querySelector("#resetButton").addEventListener("click", () => {
+        config = structuredClone(defaults);
+        previewState = "closed";
+        render();
+      });
+
+      document.querySelector("#copyJsonButton").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+        showToast("JSON copied");
+      });
+
+      document.querySelector("#copySnippetButton").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(snippet());
+        showToast("TS snippet copied");
+      });
+
+      render();
+    </script>
+  </body>
+</html>

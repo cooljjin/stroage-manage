@@ -1,4 +1,4 @@
-import { Calculator, ClipboardCheck, CookingPot, Package, Settings, Store, Tags, Truck, Users } from "lucide-react";
+import { Calculator, ClipboardCheck, CookingPot, ListTodo, Package, Settings, Store, Tags, Truck, Users } from "lucide-react";
 import { StocklyMenuButton } from "./StocklyMenuButton";
 import type { ProfileRole, RouteName } from "../types/domain";
 
@@ -87,6 +87,14 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
           >
             <ClipboardCheck size={19} />
             개별관리 품목
+          </button>
+          <button
+            type="button"
+            onClick={() => go("todo-routines")}
+            className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+          >
+            <ListTodo size={19} />
+            To do list
           </button>
           {role !== "staff" ? <div className="my-1 border-t border-slate-100 dark:border-slate-800" /> : null}
           {role !== "staff" ? (

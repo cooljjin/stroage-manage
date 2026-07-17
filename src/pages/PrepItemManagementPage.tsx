@@ -157,6 +157,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [shelfLifeEnabled, setShelfLifeEnabled] = useState(true);
   const [shelfLifeDays, setShelfLifeDays] = useState("3");
   const [sortOrder, setSortOrder] = useState("");
   const [ingredientDrafts, setIngredientDrafts] = useState<IngredientDraft[]>([{ ...emptyIngredientDraft }]);
@@ -177,6 +178,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     if (!restoreDraft) return;
     setEditingId(restoreDraft.editingId);
     setName(restoreDraft.name);
+    setShelfLifeEnabled(restoreDraft.shelfLifeEnabled ?? true);
     setShelfLifeDays(restoreDraft.shelfLifeDays);
     setSortOrder(restoreDraft.sortOrder);
     setIngredientDrafts(
@@ -236,6 +238,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
   function resetForm() {
     setEditingId(null);
     setName("");
+    setShelfLifeEnabled(true);
     setShelfLifeDays("3");
     setSortOrder(String((prepItems[prepItems.length - 1]?.sort_order ?? 0) + 1));
     setIngredientDrafts([{ ...emptyIngredientDraft }]);
@@ -246,6 +249,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
   function startEdit(item: PrepItemWithDetails) {
     setEditingId(item.id);
     setName(item.name);
+    setShelfLifeEnabled(item.shelf_life_enabled ?? true);
     setShelfLifeDays(String(item.shelf_life_days));
     setSortOrder(String(item.sort_order));
     setIngredientDrafts(
@@ -312,6 +316,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     return {
       editingId,
       name,
+      shelfLifeEnabled,
       shelfLifeDays,
       sortOrder,
       ingredientDrafts: ingredientDrafts.map((draft) => ({ ...draft }))
@@ -321,7 +326,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
   async function savePrepItem(event: FormEvent) {
     event.preventDefault();
     const nextName = name.trim();
-    const nextShelfLifeDays = Number(shelfLifeDays);
+    const nextShelfLifeDays = shelfLifeEnabled ? Number(shelfLifeDays) : 1;
     const nextSortOrder = Number(sortOrder || prepItems.length + 1);
     const ingredients: { product_id: string | null; ingredient_name: string | null; ingredient_unit: PrepUsageUnit | null; quantity_per_unit: number; sort_order: number }[] = [];
 
@@ -349,7 +354,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
       setError("프랩 품목명은 비워둘 수 없습니다.");
       return;
     }
-    if (!Number.isInteger(nextShelfLifeDays) || nextShelfLifeDays < 1) {
+    if (shelfLifeEnabled && (!Number.isInteger(nextShelfLifeDays) || nextShelfLifeDays < 1)) {
       setError("유통기한은 1일 이상 정수로 입력해 주세요.");
       return;
     }
@@ -367,6 +372,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     const { data: savedItem, error: saveError } = await Services.DatabaseService.rpc("save_prep_item", {
       target_prep_item_id: editingId,
       item_name: nextName,
+      item_shelf_life_enabled: shelfLifeEnabled,
       item_shelf_life_days: nextShelfLifeDays,
       item_sort_order: nextSortOrder,
       ingredient_rows: ingredients as Json,
@@ -489,10 +495,27 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
             <span className="mb-1 block text-sm font-semibold">프랩 품목명</span>
             <input className="field" value={name} onChange={(event) => setName(event.target.value)} placeholder="품목명" required />
           </label>
-          <label className="block min-w-0">
-            <span className="mb-1 block text-sm font-semibold">유통기한</span>
-            <input className="field" type="number" min={1} step={1} value={shelfLifeDays} onChange={(event) => setShelfLifeDays(event.target.value)} />
-          </label>
+          <div className="block min-w-0">
+            <label className="mb-1 flex min-h-6 items-center gap-2 text-sm font-semibold">
+              <input
+                type="checkbox"
+                checked={shelfLifeEnabled}
+                onChange={(event) => setShelfLifeEnabled(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              유통기한 사용
+            </label>
+            <input
+              className="field"
+              type="number"
+              min={1}
+              step={1}
+              value={shelfLifeDays}
+              onChange={(event) => setShelfLifeDays(event.target.value)}
+              disabled={!shelfLifeEnabled}
+              aria-label="유통기한 일수"
+            />
+          </div>
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">표시 순서</span>
             <input className="field" type="number" min={1} step={1} value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} placeholder="자동" />
@@ -680,7 +703,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
                     </span>
                   </div>
                   <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                    현재 {formatInventoryQuantity(item.stock)}개 · 유통기한 {item.shelf_life_days}일 · 순서 {index + 1}
+                    현재 {formatInventoryQuantity(item.stock)}개 · {(item.shelf_life_enabled ?? true) ? `유통기한 ${item.shelf_life_days}일` : "유통기한 없음"} · 순서 {index + 1}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {item.ingredients.map((ingredient) => {

@@ -8,7 +8,8 @@ import * as Services from "../services";
 import type { AppRoute, GroupOrderRouteDraft, Location, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
 
 type Props = {
-  productId: string;
+  productId?: string;
+  barcode?: string;
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
   returnTo?: "prep-items" | "group-order" | "group-order-recipes";
@@ -57,14 +58,15 @@ function formatProductUpdateError(message: string) {
   return message;
 }
 
-export function ProductEditPage({ productId, navigate, currentStoreId, returnTo, prepDraft, groupOrderDraft }: Props) {
+export function ProductEditPage({ productId, barcode: initialBarcode = "", navigate, currentStoreId, returnTo, prepDraft, groupOrderDraft }: Props) {
+  const isRegisterMode = !productId;
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [units, setUnits] = useState<ProductUnit[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [name, setName] = useState("");
-  const [barcode, setBarcode] = useState("");
+  const [barcode, setBarcode] = useState(initialBarcode);
   const [category, setCategory] = useState("기타");
   const [supplierName, setSupplierName] = useState("");
   const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
@@ -92,25 +94,48 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     setError("");
     setMessage("");
 
-    const [categoryResult, supplierResult, unitResult, productResult, productsResult] = await Promise.all([
+    const [categoryResult, supplierResult, unitResult, productsResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => fallbackSuppliers()),
       loadProductUnits({ activeOnly: true }).catch(() => fallbackProductUnits()),
-      Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).eq("id", productId).single(),
       Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).order("name", { ascending: true })
     ]);
 
-    const { data, error: loadError } = productResult;
-    if (loadError || productsResult.error) {
-      setError(loadError?.message ?? productsResult.error?.message ?? "상품 정보를 불러오지 못했습니다.");
+    if (productsResult.error) {
+      setError(productsResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const nextCategories = categoryResult.length > 0 ? categoryResult : fallbackCategories();
+    const nextSuppliers = supplierResult.length > 0 ? supplierResult : fallbackSuppliers();
+    const nextUnits = unitResult.length > 0 ? unitResult : fallbackProductUnits();
+    setProducts((productsResult.data ?? []) as Product[]);
+
+    if (isRegisterMode) {
+      setProduct(null);
+      setCategories(nextCategories);
+      setSuppliers(nextSuppliers);
+      setUnits(nextUnits);
+      setBarcode(initialBarcode);
+      setCategory((current) => (nextCategories.some((item) => item.name === current) ? current : nextCategories.find((item) => item.name === "기타")?.name ?? nextCategories[0]?.name ?? "기타"));
+      setSupplierName((current) => (current && nextSuppliers.some((item) => item.name === current) ? current : ""));
+      setUnitName((current) => (current && nextUnits.some((item) => item.name === current) ? current : nextUnits.find((item) => item.name === "낱개")?.name ?? nextUnits[0]?.name ?? ""));
+      setLoading(false);
+      return;
+    }
+
+    const { data, error: loadError } = await Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).eq("id", productId).single();
+    if (loadError) {
+      setError(loadError.message);
     } else {
       const nextProduct = data as Product;
-      const nextCategories = categoryResult.some((item) => item.name === nextProduct.category)
-        ? categoryResult
-        : [...categoryResult, { id: nextProduct.category, name: nextProduct.category, is_active: true, sort_order: categoryResult.length + 1, created_at: new Date(0).toISOString() }];
-      const nextSuppliers = nextProduct.supplier_name && !supplierResult.some((item) => item.name === nextProduct.supplier_name)
+      const categoriesWithProduct = nextCategories.some((item) => item.name === nextProduct.category)
+        ? nextCategories
+        : [...nextCategories, { id: nextProduct.category, name: nextProduct.category, is_active: true, sort_order: nextCategories.length + 1, created_at: new Date(0).toISOString() }];
+      const suppliersWithProduct = nextProduct.supplier_name && !nextSuppliers.some((item) => item.name === nextProduct.supplier_name)
         ? [
-            ...supplierResult,
+            ...nextSuppliers,
             {
               id: nextProduct.supplier_name,
               name: nextProduct.supplier_name,
@@ -121,16 +146,15 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
               created_at: new Date(0).toISOString()
             }
           ]
-        : supplierResult;
-      const nextUnits = nextProduct.unit_name && !unitResult.some((item) => item.name === nextProduct.unit_name)
-        ? [...unitResult, { id: nextProduct.unit_name, name: nextProduct.unit_name, is_active: true, sort_order: unitResult.length + 1, created_at: new Date(0).toISOString() }]
-        : unitResult;
+        : nextSuppliers;
+      const unitsWithProduct = nextProduct.unit_name && !nextUnits.some((item) => item.name === nextProduct.unit_name)
+        ? [...nextUnits, { id: nextProduct.unit_name, name: nextProduct.unit_name, is_active: true, sort_order: nextUnits.length + 1, created_at: new Date(0).toISOString() }]
+        : nextUnits;
 
       setProduct(nextProduct);
-      setCategories(nextCategories);
-      setSuppliers(nextSuppliers);
-      setUnits(nextUnits);
-      setProducts((productsResult.data ?? []) as Product[]);
+      setCategories(categoriesWithProduct);
+      setSuppliers(suppliersWithProduct);
+      setUnits(unitsWithProduct);
       setName(nextProduct.name);
       setBarcode(nextProduct.barcode ?? "");
       setCategory(nextProduct.category);
@@ -152,7 +176,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     }
 
     setLoading(false);
-  }, [currentStoreId, productId]);
+  }, [currentStoreId, initialBarcode, isRegisterMode, productId]);
 
   useEffect(() => {
     void loadProduct();
@@ -173,6 +197,9 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
   }
 
   function getExitRoute(): AppRoute {
+    if (isRegisterMode) {
+      return { name: "scan" };
+    }
     if (returnTo === "prep-items") {
       return { name: "prep-items", prepDraft };
     }
@@ -182,12 +209,12 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     if (returnTo === "group-order-recipes") {
       return { name: "group-order-recipes", groupOrderDraft };
     }
-    return { name: "operation", productId };
+    return { name: "operation", productId: productId ?? "" };
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!product) return;
+    if (!isRegisterMode && !product) return;
 
     const nextName = name.trim();
     const nextMinimumStock = receiptCheckOnly ? 0 : Number(minimumStock || 0);
@@ -216,7 +243,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
 
     setSaving(true);
     setError("");
-    const { error: updateError } = await Services.DatabaseService.update("products", {
+    const productValues = {
         name: nextName,
         barcode: barcode.trim() || null,
         category,
@@ -232,10 +259,79 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
         processed_unit_weight_unit: nextProcessingRequired ? processedUnitWeightUnit : null,
         minimum_stock: nextMinimumStock,
         receipt_check_only: receiptCheckOnly,
-        status_enabled: receiptCheckOnly ? false : product.status_enabled,
-        stock_status: receiptCheckOnly ? null : product.stock_status,
+        status_enabled: receiptCheckOnly ? false : product?.status_enabled ?? false,
+        stock_status: receiptCheckOnly ? null : product?.stock_status ?? null,
         product_url: productUrl.trim() || null
-      })
+      };
+
+    if (isRegisterMode) {
+      const nextBarcode = barcode.trim() || null;
+      if (nextBarcode) {
+        const { data: existingProduct, error: existingError } = await Services.DatabaseService.select("products", "id, name, is_active")
+          .eq("store_id", currentStoreId)
+          .eq("barcode", nextBarcode)
+          .maybeSingle();
+
+        if (existingError) {
+          setError(existingError.message);
+          setSaving(false);
+          return;
+        }
+
+        if (existingProduct?.is_active) {
+          navigate({ name: "operation", productId: existingProduct.id });
+          setSaving(false);
+          return;
+        }
+
+        if (existingProduct) {
+          const { data: restoredProduct, error: restoreError } = await Services.DatabaseService.update("products", {
+              ...productValues,
+              is_active: true
+            })
+            .eq("store_id", currentStoreId)
+            .eq("id", existingProduct.id)
+            .select()
+            .single();
+
+          if (restoreError) {
+            setError(formatProductUpdateError(restoreError.message));
+          } else {
+            const { error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: restoredProduct.id, store_id: currentStoreId }, { onConflict: "product_id" });
+            if (inventoryError) {
+              setError(inventoryError.message);
+            } else {
+              navigate({ name: "operation", productId: restoredProduct.id });
+            }
+          }
+
+          setSaving(false);
+          return;
+        }
+      }
+
+      const { data: insertedProduct, error: insertError } = await Services.DatabaseService.insert("products", {
+          store_id: currentStoreId,
+          ...productValues
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        setError(insertError.code === "23505" ? "이미 같은 바코드로 등록된 품목이 있습니다." : formatProductUpdateError(insertError.message));
+      } else {
+        const { error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: insertedProduct.id, store_id: currentStoreId }, { onConflict: "product_id" });
+        if (inventoryError) {
+          setError(inventoryError.message);
+        } else {
+          navigate({ name: "operation", productId: insertedProduct.id });
+        }
+      }
+      setSaving(false);
+      return;
+    }
+
+    const { error: updateError } = await Services.DatabaseService.update("products", productValues)
       .eq("store_id", currentStoreId)
       .eq("id", productId);
 
@@ -268,7 +364,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     navigate({ name: "inventory" });
   }
 
-  const mergeCandidates = product
+  const mergeCandidates = product && !isRegisterMode
     ? products
         .filter((candidate) => candidate.id !== product.id && candidate.is_active !== false)
         .filter((candidate) => {
@@ -310,14 +406,14 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
     setMessage("상품을 병합했습니다.");
   }
 
-  if (loading) return <StatusMessage>상품 정보를 불러오는 중...</StatusMessage>;
-  if (!product) return <StatusMessage type="error">상품을 찾을 수 없습니다.</StatusMessage>;
+  if (loading) return <StatusMessage>{isRegisterMode ? "상품 등록 화면을 준비하는 중..." : "상품 정보를 불러오는 중..."}</StatusMessage>;
+  if (!isRegisterMode && !product) return <StatusMessage type="error">상품을 찾을 수 없습니다.</StatusMessage>;
 
   return (
     <section className="min-w-0">
       <PageTitle
-        title="상품 수정"
-        description={product.name}
+        title={isRegisterMode ? "상품 등록" : "상품 수정"}
+        description={isRegisterMode ? "미등록 상품을 등록한 뒤 바로 재고 작업으로 이동합니다." : product?.name}
         action={<button className="secondary-button px-3" type="button" onClick={() => navigate(getExitRoute())}>취소</button>}
       />
 
@@ -557,12 +653,12 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
             취소
           </button>
           <button type="submit" disabled={saving || !name.trim()} className="primary-button">
-            {saving ? "저장 중..." : "저장"}
+            {saving ? "저장 중..." : isRegisterMode ? "상품 등록" : "저장"}
           </button>
         </div>
       </form>
 
-      <div className="panel mt-4 w-full max-w-2xl p-4">
+      {!isRegisterMode ? <div className="panel mt-4 w-full max-w-2xl p-4">
         <h2 className="text-base font-bold">상품 병합</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">중복 상품을 현재 상품으로 합치고, 선택한 상품은 비활성화합니다.</p>
 
@@ -594,9 +690,9 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
         ) : mergeSearch.trim() ? (
           <p className="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">병합할 품목이 없습니다.</p>
         ) : null}
-      </div>
+      </div> : null}
 
-      <div className="mt-4 w-full max-w-2xl">
+      {!isRegisterMode ? <div className="mt-4 w-full max-w-2xl">
         <button
           type="button"
           disabled={deleting}
@@ -605,7 +701,7 @@ export function ProductEditPage({ productId, navigate, currentStoreId, returnTo,
         >
           {deleting ? "삭제 중..." : "품목 삭제"}
         </button>
-      </div>
+      </div> : null}
     </section>
   );
 }

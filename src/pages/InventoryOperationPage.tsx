@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { ArrowLeft, ArrowLeftRight, Check, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
+import { getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
@@ -76,6 +77,19 @@ function formatMemoSaveError(message: string) {
     return "메모 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 inventory_logs 액션 허용값 업데이트를 요청해 주세요.";
   }
   return message;
+}
+
+async function completeStaleInventoryTodo(productId: string, storeId: string, userId: string) {
+  const todayValue = getSeoulDateValue();
+  await Services.DatabaseService.update("dashboard_todos", {
+      is_completed: true,
+      completed_at: new Date().toISOString(),
+      completed_by: userId
+    })
+    .eq("store_id", storeId)
+    .eq("task_date", todayValue)
+    .eq("stale_inventory_product_id", productId)
+    .eq("is_completed", false);
 }
 
 export function InventoryOperationPage({ productId, navigate, canGoBack = false, onBack, currentStoreId }: Props) {
@@ -578,11 +592,19 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setReceiptSaving(true);
     setError("");
     setSuccess("");
+    const { data: userData } = await Services.AuthService.getUser();
+    if (!userData.user) {
+      setError("로그인이 필요합니다.");
+      setReceiptSaving(false);
+      return;
+    }
+
     const { errorMessage } = await recordReceiptCheckOnly(item.id, currentStoreId, receiptQuantityValue);
 
     if (errorMessage) {
       setError(errorMessage);
     } else {
+      await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
       setSuccess(`입고완료 ${formatInventoryQuantity(receiptQuantityValue)}개를 기록했습니다.`);
       setReceiptQuantity("1");
       await loadLatestInventoryCheck();
@@ -692,12 +714,13 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     if (logError) {
       setError(logError.message);
     } else {
-      if (action === "입고" && (item.fresh_order_selected || item.urgent_order_requested)) {
+      if (action === "입고" && (item.fresh_order_selected || item.urgent_order_requested || item.order_completed)) {
         const { error: freshCompleteError } = await Services.DatabaseService.update("products", {
             fresh_order_selected: false,
             fresh_order_selected_at: null,
             urgent_order_requested: false,
-            urgent_order_quantity: null
+            urgent_order_quantity: null,
+            order_completed: false
           })
           .eq("store_id", currentStoreId)
           .eq("id", item.id);
@@ -710,6 +733,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       }
       setSuccess("저장되었습니다.");
       setQuantity("");
+      await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
       await loadProduct();
       await loadLatestInventoryCheck();
     }

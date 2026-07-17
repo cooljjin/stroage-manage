@@ -24,6 +24,7 @@ export type RouteName =
   | "low-stock"
   | "status-items"
   | "logs"
+  | "todo-routines"
   | "group-order"
   | "group-order-recipes"
   | "prep-items"
@@ -161,6 +162,7 @@ export type PrepItem = {
   store_id: string;
   product_id: string;
   name: string;
+  shelf_life_enabled: boolean;
   shelf_life_days: number;
   sort_order: number;
   is_active: boolean;
@@ -225,6 +227,7 @@ export type GroupOrderEventItem = {
 export type PrepItemRouteDraft = {
   editingId: string | null;
   name: string;
+  shelfLifeEnabled: boolean;
   shelfLifeDays: string;
   sortOrder: string;
   ingredientDrafts: {
@@ -294,13 +297,42 @@ export type InventoryLogWithStaff = InventoryLog & {
 
 export type DashboardTodo = {
   id: string;
+  store_id: string;
   task_date: string;
   content: string;
   is_completed: boolean;
   completed_at: string | null;
   completed_by: string | null;
+  routine_id: string | null;
+  stale_inventory_product_id: string | null;
   created_by: string;
   created_at: string;
+};
+
+export type TodoRoutineScheduleType = "once" | "weekly" | "monthly";
+
+export type TodoRoutine = {
+  id: string;
+  store_id: string;
+  content: string;
+  schedule_type: TodoRoutineScheduleType;
+  target_date: string | null;
+  weekday: number | null;
+  month_day: number | null;
+  starts_on: string;
+  ends_on: string | null;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InventoryCheckTodoSetting = {
+  store_id: string;
+  is_enabled: boolean;
+  threshold_days: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type HandoverNote = {

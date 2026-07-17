@@ -6,7 +6,7 @@ import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
-import { recordReceiptCheckOnly } from "../lib/receiptCheck";
+import { recordReceiptCheckOnly, recordReceiptCompletion } from "../lib/receiptCheck";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, InventoryItem, ProductSupplier, ProfileRole } from "../types/domain";
@@ -24,6 +24,8 @@ type FreshReceivingUndoEntry = {
   freshOrderSelectedAt: string | null;
   urgentOrderRequested: boolean;
   urgentOrderQuantity: number | null;
+  orderCompleted: boolean;
+  receiptLogId: string | null;
 };
 
 type ConfirmedOrderItem = Database["public"]["Tables"]["confirmed_order_items"]["Row"];
@@ -559,25 +561,12 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
     setError("");
     setCompletingFreshIds((current) => new Set(current).add(item.id));
 
-    let updateErrorMessage = item.receipt_check_only
-      ? (await recordReceiptCheckOnly(item.id, currentStoreId)).errorMessage
-      : "";
+    const receiptResult = item.receipt_check_only
+      ? await recordReceiptCheckOnly(item.id, currentStoreId)
+      : await recordReceiptCompletion(item.id, currentStoreId);
 
-    if (!updateErrorMessage) {
-      updateErrorMessage = (
-        await Services.DatabaseService.update("products", {
-            fresh_order_selected: false,
-            fresh_order_selected_at: null,
-            urgent_order_requested: false,
-            urgent_order_quantity: null
-          })
-          .eq("store_id", currentStoreId)
-          .eq("id", item.id)
-      ).error?.message ?? "";
-    }
-
-    if (updateErrorMessage) {
-      setError(updateErrorMessage);
+    if (receiptResult.errorMessage) {
+      setError(receiptResult.errorMessage);
     } else {
       setFreshReceivingUndoStack((current) => [
         ...current,
@@ -586,7 +575,9 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
           freshOrderSelected: item.fresh_order_selected,
           freshOrderSelectedAt: item.fresh_order_selected_at,
           urgentOrderRequested: item.urgent_order_requested,
-          urgentOrderQuantity: item.urgent_order_quantity
+          urgentOrderQuantity: item.urgent_order_quantity,
+          orderCompleted: item.order_completed,
+          receiptLogId: receiptResult.logId
         }
       ]);
       setItems((current) =>
@@ -597,7 +588,8 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                 fresh_order_selected: false,
                 fresh_order_selected_at: null,
                 urgent_order_requested: false,
-                urgent_order_quantity: null
+                urgent_order_quantity: null,
+                order_completed: false
               }
             : product
         )
@@ -612,7 +604,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   }
 
   function handleReceiptComplete(item: InventoryItem) {
-    if (item.fresh_order_selected || item.receipt_check_only) {
+    if (item.fresh_order_selected || item.receipt_check_only || item.order_completed) {
       void completeFreshReceiving(item);
       return;
     }
@@ -626,33 +618,59 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
     setError("");
     setUndoingFreshReceiving(true);
 
+    const { data: userData } = await Services.AuthService.getUser();
+    if (!userData.user) {
+      setError("로그인이 필요합니다.");
+      setUndoingFreshReceiving(false);
+      return;
+    }
+
     const { error: updateError } = await Services.DatabaseService.update("products", {
         fresh_order_selected: previous.freshOrderSelected,
         fresh_order_selected_at: previous.freshOrderSelectedAt,
         urgent_order_requested: previous.urgentOrderRequested,
-        urgent_order_quantity: previous.urgentOrderQuantity
+        urgent_order_quantity: previous.urgentOrderQuantity,
+        order_completed: previous.orderCompleted
       })
       .eq("store_id", currentStoreId)
       .eq("id", previous.productId);
 
     if (updateError) {
       setError(updateError.message);
-    } else {
-      setItems((current) =>
-        current.map((product) =>
-          product.id === previous.productId
-            ? {
-                ...product,
-                fresh_order_selected: previous.freshOrderSelected,
-                fresh_order_selected_at: previous.freshOrderSelectedAt,
-                urgent_order_requested: previous.urgentOrderRequested,
-                urgent_order_quantity: previous.urgentOrderQuantity
-              }
-            : product
-        )
-      );
-      setFreshReceivingUndoStack((current) => current.slice(0, -1));
+      setUndoingFreshReceiving(false);
+      return;
     }
+
+    if (previous.receiptLogId) {
+      const { error: logUndoError } = await Services.DatabaseService.update("inventory_logs", {
+          reverted_at: new Date().toISOString(),
+          reverted_by: userData.user.id
+        })
+        .eq("store_id", currentStoreId)
+        .eq("id", previous.receiptLogId);
+
+      if (logUndoError) {
+        setError(logUndoError.message);
+        setUndoingFreshReceiving(false);
+        return;
+      }
+    }
+
+    setItems((current) =>
+      current.map((product) =>
+        product.id === previous.productId
+          ? {
+              ...product,
+              fresh_order_selected: previous.freshOrderSelected,
+              fresh_order_selected_at: previous.freshOrderSelectedAt,
+              urgent_order_requested: previous.urgentOrderRequested,
+              urgent_order_quantity: previous.urgentOrderQuantity,
+              order_completed: previous.orderCompleted
+            }
+          : product
+      )
+    );
+    setFreshReceivingUndoStack((current) => current.slice(0, -1));
 
     setUndoingFreshReceiving(false);
   }

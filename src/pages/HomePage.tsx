@@ -1,13 +1,13 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
 import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { PressableButton } from "../components/PressableButton";
 import { StatusMessage } from "../components/StatusMessage";
-import { getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
+import { addDateValueDays, getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
-import { formatInventoryQuantity } from "../lib/inventory";
+import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import * as Services from "../services";
-import type { AppRoute, DashboardTodo, HandoverNote, InventoryLog, Product, StaffProfile } from "../types/domain";
+import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryItem, InventoryLog, Product, StaffProfile, TodoRoutine } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -20,6 +20,12 @@ type ReceiptItem = {
   quantity: number | null;
   lastReceivedAt: string | null;
   receiptCheckOnly: boolean;
+  status: "expected" | "completed";
+};
+type ConfirmedOrderReceipt = {
+  product_id: string;
+  product_name: string;
+  confirmed_at: string;
 };
 
 type DashboardView = "today" | "tomorrow";
@@ -39,6 +45,52 @@ function getDayRange(date: Date) {
 
 function shortDateLabel(value: string) {
   return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(new Date(`${value}T00:00:00`));
+}
+
+function daysInMonth(dateValue: string) {
+  const [year, month] = dateValue.split("-").map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function isRoutineDue(routine: TodoRoutine, dateValue: string) {
+  if (!routine.is_active) return false;
+  if (dateValue < routine.starts_on) return false;
+  if (routine.ends_on && dateValue > routine.ends_on) return false;
+
+  const date = new Date(`${dateValue}T00:00:00`);
+  if (routine.schedule_type === "once") return routine.target_date === dateValue;
+  if (routine.schedule_type === "weekly") return routine.weekday === date.getDay();
+  if (routine.schedule_type === "monthly") return Math.min(routine.month_day ?? 1, daysInMonth(dateValue)) === date.getDate();
+  return false;
+}
+
+function buildInventoryCheckTodoContent(productName: string) {
+  return `${productName} 재고 파악하기`;
+}
+
+function isDuplicateStaleInventoryTodoError(message: string) {
+  return message.includes("dashboard_todos_store_date_stale_inventory_product_idx")
+    || (message.includes("duplicate key") && message.includes("stale_inventory_product_id"));
+}
+
+function isCurrentLowStockOrderItem(item: InventoryItem) {
+  return item.order_completed && (item.fresh_order_selected || item.urgent_order_requested || (!item.receipt_check_only && item.is_low_stock));
+}
+
+function getPreviousBusinessDate(
+  fromDate: string,
+  weeklyClosureDays: ReadonlySet<number>,
+  specificClosureDates: ReadonlySet<string>
+) {
+  for (let daysBack = 1; daysBack <= 366; daysBack += 1) {
+    const candidate = addDateValueDays(fromDate, -daysBack);
+    const weekday = new Date(`${candidate}T00:00:00Z`).getUTCDay();
+    if (!weeklyClosureDays.has(weekday) && !specificClosureDates.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error("이전 영업일을 계산할 수 없습니다. 휴무일 설정을 확인해 주세요.");
 }
 
 function SectionHeader({
@@ -76,8 +128,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [history, setHistory] = useState<HandoverNote[]>([]);
   const [profiles, setProfiles] = useState<Map<string, string>>(new Map());
   const [todoDraft, setTodoDraft] = useState("");
+  const [scheduledTodoDraft, setScheduledTodoDraft] = useState("");
+  const [scheduledTodoDate, setScheduledTodoDate] = useState(todayValue);
   const [handoverDraft, setHandoverDraft] = useState("");
   const [showTodoForm, setShowTodoForm] = useState(false);
+  const [showScheduledTodoDialog, setShowScheduledTodoDialog] = useState(false);
   const [showHandoverForm, setShowHandoverForm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -94,9 +149,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setLoading(true);
     setError("");
     setMessage("");
+    const closureLookupStart = addDateValueDays(todayValue, -31);
     const [weeklyClosureResult, specificClosureResult] = await Promise.all([
-      Services.DatabaseService.select("weekly_store_closures", "weekday"),
-      Services.DatabaseService.select("store_closure_dates", "closure_date").gte("closure_date", todayValue)
+      Services.DatabaseService.select("weekly_store_closures", "weekday").eq("store_id", currentStoreId),
+      Services.DatabaseService.select("store_closure_dates", "closure_date").eq("store_id", currentStoreId).gte("closure_date", closureLookupStart)
     ]);
     const closureError = weeklyClosureResult.error ?? specificClosureResult.error;
     if (closureError) {
@@ -109,12 +165,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       return;
     }
 
+    const weeklyClosureDays = new Set(((weeklyClosureResult.data ?? []) as Array<{ weekday: number }>).map((item) => item.weekday));
+    const specificClosureDates = new Set(((specificClosureResult.data ?? []) as Array<{ closure_date: string }>).map((item) => item.closure_date));
     let calculatedNextBusinessDate: string;
     try {
       calculatedNextBusinessDate = getNextBusinessDate(
         todayValue,
-        new Set(((weeklyClosureResult.data ?? []) as Array<{ weekday: number }>).map((item) => item.weekday)),
-        new Set(((specificClosureResult.data ?? []) as Array<{ closure_date: string }>).map((item) => item.closure_date))
+        weeklyClosureDays,
+        specificClosureDates
       );
     } catch (calendarError) {
       setError(calendarError instanceof Error ? calendarError.message : "내일 날짜를 계산하지 못했습니다.");
@@ -124,22 +182,193 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     setNextBusinessDate(calculatedNextBusinessDate);
     const dashboardDate = dashboardView === "today" ? todayValue : calculatedNextBusinessDate;
+    let previousBusinessDate = todayValue;
+    if (dashboardView === "tomorrow") {
+      try {
+        previousBusinessDate = getPreviousBusinessDate(dashboardDate, weeklyClosureDays, specificClosureDates);
+      } catch (calendarError) {
+        setError(calendarError instanceof Error ? calendarError.message : "이전 영업일을 계산하지 못했습니다.");
+        setLoading(false);
+        return;
+      }
+    }
     const range = getDayRange(new Date(`${dashboardDate}T00:00:00`));
-    const receiptQuery =
-      dashboardView === "today"
-        ? Services.DatabaseService.select("inventory_logs", "*, products(name, barcode, receipt_check_only)")
-            .eq("action", "입고")
-            .is("reverted_at", null)
-            .gte("created_at", range.start)
-            .lt("created_at", range.end)
-            .order("created_at", { ascending: false })
-        : Services.DatabaseService.select("products", "*")
-            .eq("is_active", true)
-            .eq("fresh_order_selected", true)
-            .order("name", { ascending: true });
+    let staleInventoryTodoEnabled = false;
+    const routineResult = await Services.DatabaseService.select("todo_routines", "*")
+      .eq("store_id", currentStoreId)
+      .eq("is_active", true);
 
-    const [receiptResult, todoResult, handoverResult, profileResult, receiptDeletionResult] = await Promise.all([
-      receiptQuery,
+    if (routineResult.error) {
+      setError(routineResult.error.message.includes("todo_routines") ? "To do list 루틴용 데이터베이스 업데이트가 필요합니다." : routineResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const dueRoutines = ((routineResult.data ?? []) as TodoRoutine[]).filter((routine) => isRoutineDue(routine, dashboardDate));
+    if (dueRoutines.length > 0) {
+      const { data: userData } = await Services.AuthService.getUser();
+      if (userData.user) {
+        const routineIds = dueRoutines.map((routine) => routine.id);
+        const existingTodoResult = await Services.DatabaseService.select("dashboard_todos", "routine_id")
+          .eq("store_id", currentStoreId)
+          .eq("task_date", dashboardDate)
+          .in("routine_id", routineIds);
+
+        if (existingTodoResult.error) {
+          setError(existingTodoResult.error.message);
+          setLoading(false);
+          return;
+        }
+
+        const existingRoutineIds = new Set(((existingTodoResult.data ?? []) as Array<{ routine_id: string | null }>).map((todo) => todo.routine_id).filter(Boolean));
+        const todosToCreate = dueRoutines
+          .filter((routine) => !existingRoutineIds.has(routine.id))
+          .map((routine) => ({
+            store_id: currentStoreId,
+            task_date: dashboardDate,
+            content: routine.content,
+            created_by: userData.user.id,
+            routine_id: routine.id
+          }));
+
+        if (todosToCreate.length > 0) {
+          const { error: materializeError } = await Services.DatabaseService.insert("dashboard_todos", todosToCreate);
+
+          if (materializeError) {
+            setError(materializeError.message);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+    }
+
+    if (dashboardDate === todayValue) {
+      const { data: settingData, error: settingError } = await Services.DatabaseService.select("inventory_check_todo_settings", "*")
+        .eq("store_id", currentStoreId)
+        .maybeSingle();
+
+      if (settingError) {
+        setError(
+          settingError.message.includes("inventory_check_todo_settings")
+            || settingError.message.includes("stale_inventory_product_id")
+            || settingError.message.includes("schema cache")
+            ? "오래된 재고 파악 To do 기능용 데이터베이스 업데이트가 필요합니다."
+            : settingError.message
+        );
+        setLoading(false);
+        return;
+      }
+
+      const inventoryCheckSetting = (settingData as InventoryCheckTodoSetting | null) ?? null;
+      staleInventoryTodoEnabled = inventoryCheckSetting?.is_enabled ?? false;
+      if (staleInventoryTodoEnabled) {
+        const thresholdDays = Math.max(1, Number(inventoryCheckSetting?.threshold_days || 1));
+        const cutoffDate = addDays(new Date(`${dashboardDate}T00:00:00`), -thresholdDays);
+        const cutoffIso = cutoffDate.toISOString();
+        const productResult = await Services.DatabaseService.select("products", "id, name")
+          .eq("store_id", currentStoreId)
+          .eq("is_active", true)
+          .eq("receipt_check_only", false)
+          .order("name", { ascending: true });
+
+        if (productResult.error) {
+          setError(productResult.error.message);
+          setLoading(false);
+          return;
+        }
+
+        const productsForCheck = (productResult.data ?? []) as Pick<Product, "id" | "name">[];
+        const productIds = productsForCheck.map((product) => product.id);
+
+        if (productIds.length > 0) {
+          const [logResult, existingTodoResult] = await Promise.all([
+            Services.DatabaseService.select("inventory_logs", "product_id, created_at")
+              .eq("store_id", currentStoreId)
+              .neq("action", "메모")
+              .is("reverted_at", null)
+              .in("product_id", productIds)
+              .order("created_at", { ascending: false }),
+            Services.DatabaseService.select("dashboard_todos", "stale_inventory_product_id")
+              .eq("store_id", currentStoreId)
+              .eq("task_date", dashboardDate)
+              .in("stale_inventory_product_id", productIds)
+          ]);
+
+          if (logResult.error || existingTodoResult.error) {
+            const staleTodoError = logResult.error ?? existingTodoResult.error;
+            setError(
+              staleTodoError?.message.includes("stale_inventory_product_id") || staleTodoError?.message.includes("schema cache")
+                ? "오래된 재고 파악 To do 기능용 데이터베이스 업데이트가 필요합니다."
+                : staleTodoError?.message ?? "오래된 재고 파악 항목을 확인하지 못했습니다."
+            );
+            setLoading(false);
+            return;
+          }
+
+          const latestLogByProductId = new Map<string, string>();
+          ((logResult.data ?? []) as Array<{ product_id: string; created_at: string }>).forEach((log) => {
+            if (!latestLogByProductId.has(log.product_id)) latestLogByProductId.set(log.product_id, log.created_at);
+          });
+          const existingProductIds = new Set(
+            ((existingTodoResult.data ?? []) as Array<{ stale_inventory_product_id: string | null }>)
+              .map((todo) => todo.stale_inventory_product_id)
+              .filter(Boolean) as string[]
+          );
+          const staleProducts = productsForCheck.filter((product) => {
+            if (existingProductIds.has(product.id)) return false;
+            const latestCheckedAt = latestLogByProductId.get(product.id);
+            return !latestCheckedAt || latestCheckedAt < cutoffIso;
+          });
+
+          if (staleProducts.length > 0) {
+            const { data: userData } = await Services.AuthService.getUser();
+            if (userData.user) {
+              const { error: insertStaleTodosError } = await Services.DatabaseService.insert(
+                "dashboard_todos",
+                staleProducts.map((product) => ({
+                  store_id: currentStoreId,
+                  task_date: dashboardDate,
+                  content: buildInventoryCheckTodoContent(product.name),
+                  created_by: userData.user.id,
+                  stale_inventory_product_id: product.id
+                }))
+              );
+
+              if (insertStaleTodosError && !isDuplicateStaleInventoryTodoError(insertStaleTodosError.message)) {
+                setError(insertStaleTodosError.message);
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const receiptLogQuery = Services.DatabaseService.select("inventory_logs", "*, products(name, barcode, receipt_check_only)")
+      .eq("store_id", currentStoreId)
+      .eq("action", "입고")
+      .is("reverted_at", null)
+      .gte("created_at", range.start)
+      .lt("created_at", range.end)
+      .order("created_at", { ascending: false });
+    const expectedReceiptQuery =
+      dashboardView === "today"
+        ? Services.DatabaseService.select("products", "*, inventory(*)")
+            .eq("store_id", currentStoreId)
+            .eq("is_active", true)
+            .eq("order_completed", true)
+            .order("name", { ascending: true })
+        : Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at")
+            .eq("store_id", currentStoreId)
+            .eq("order_date", previousBusinessDate)
+            .order("urgent_order_requested", { ascending: false })
+            .order("product_name", { ascending: true });
+
+    const [receiptLogResult, expectedReceiptResult, todoResult, handoverResult, profileResult, receiptDeletionResult] = await Promise.all([
+      receiptLogQuery,
+      expectedReceiptQuery,
       Services.DatabaseService.select("dashboard_todos", "*").eq("task_date", dashboardDate).order("created_at", { ascending: true }),
       Services.DatabaseService.select("handover_notes", "*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
       Services.DatabaseService.select("profiles", "*"),
@@ -152,7 +381,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         .maybeSingle()
     ]);
 
-    const firstError = receiptResult.error ?? todoResult.error ?? handoverResult.error ?? profileResult.error ?? receiptDeletionResult.error;
+    const firstError = receiptLogResult.error ?? expectedReceiptResult.error ?? todoResult.error ?? handoverResult.error ?? profileResult.error ?? receiptDeletionResult.error;
     if (firstError) {
       setError(
         firstError.message.includes("dashboard_todos")
@@ -163,36 +392,53 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       );
     }
 
-    if (!receiptResult.error) {
-      if (dashboardView === "today") {
-        const grouped = new Map<string, ReceiptItem>();
-        ((receiptResult.data ?? []) as unknown as InventoryLog[]).forEach((log) => {
-          const current = grouped.get(log.product_id);
-          const name = log.products?.name ?? "삭제된 상품";
-          const nextQuantity = log.quantity === null ? current?.quantity ?? null : (current?.quantity ?? 0) + log.quantity;
-          grouped.set(log.product_id, {
-            productId: log.product_id,
-            name,
-            quantity: nextQuantity,
-            lastReceivedAt: current?.lastReceivedAt ?? log.created_at,
-            receiptCheckOnly: current?.receiptCheckOnly ?? log.products?.receipt_check_only ?? false
-          });
+    if (!receiptLogResult.error && !expectedReceiptResult.error) {
+      const grouped = new Map<string, ReceiptItem>();
+      ((receiptLogResult.data ?? []) as unknown as InventoryLog[]).forEach((log) => {
+        const current = grouped.get(log.product_id);
+        const name = log.products?.name ?? "삭제된 상품";
+        const nextQuantity = log.quantity === null ? current?.quantity ?? null : (current?.quantity ?? 0) + log.quantity;
+        grouped.set(log.product_id, {
+          productId: log.product_id,
+          name,
+          quantity: nextQuantity,
+          lastReceivedAt: current?.lastReceivedAt ?? log.created_at,
+          receiptCheckOnly: current?.receiptCheckOnly ?? log.products?.receipt_check_only ?? false,
+          status: "completed"
         });
-        setReceipts(Array.from(grouped.values()));
+      });
+
+      if (dashboardView === "today") {
+        const expectedItems: ReceiptItem[] = ((expectedReceiptResult.data ?? []) as Parameters<typeof normalizeInventoryItem>[0][])
+          .map((product) => normalizeInventoryItem(product))
+          .filter((product) => isCurrentLowStockOrderItem(product) && !grouped.has(product.id))
+          .map<ReceiptItem>((product) => ({
+              productId: product.id,
+              name: product.name,
+              quantity: null,
+              lastReceivedAt: product.fresh_order_selected_at,
+              receiptCheckOnly: product.receipt_check_only,
+              status: "expected"
+          }));
+        setReceipts([...expectedItems, ...Array.from(grouped.values())]);
       } else {
         setReceipts(
-          ((receiptResult.data ?? []) as Product[]).map((product) => ({
-            productId: product.id,
-            name: product.name,
+          ((expectedReceiptResult.data ?? []) as ConfirmedOrderReceipt[]).map((product) => ({
+            productId: product.product_id,
+            name: product.product_name,
             quantity: null,
-            lastReceivedAt: product.fresh_order_selected_at,
-            receiptCheckOnly: product.receipt_check_only
+            lastReceivedAt: product.confirmed_at,
+            receiptCheckOnly: false,
+            status: "expected"
           }))
         );
       }
     }
 
-    if (!todoResult.error) setTodos((todoResult.data ?? []) as DashboardTodo[]);
+    if (!todoResult.error) {
+      const nextTodos = (todoResult.data ?? []) as DashboardTodo[];
+      setTodos(staleInventoryTodoEnabled ? nextTodos : nextTodos.filter((todo) => !todo.stale_inventory_product_id));
+    }
     if (!handoverResult.error) setHandovers((handoverResult.data ?? []) as HandoverNote[]);
     if (!profileResult.error) {
       setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
@@ -214,7 +460,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   }
 
   async function deleteTodayReceipt(item: ReceiptItem) {
-    if (!isToday) return;
+    if (!isToday || item.status !== "completed") return;
     const confirmMessage =
       item.quantity === null
         ? `${item.name}의 오늘 입고확인 기록을 삭제할까요?`
@@ -278,6 +524,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     }
 
     const { error: insertError } = await Services.DatabaseService.insert("dashboard_todos", {
+      store_id: currentStoreId,
       task_date: selectedDate,
       content,
       created_by: userData.user.id
@@ -288,6 +535,41 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       setTodoDraft("");
       setShowTodoForm(false);
       await loadDashboard();
+    }
+    setSaving(false);
+  }
+
+  async function addScheduledTodo(event: FormEvent) {
+    event.preventDefault();
+    const content = scheduledTodoDraft.trim();
+    if (!content || !scheduledTodoDate) return;
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+    const { data: userData } = await Services.AuthService.getUser();
+    if (!userData.user) {
+      setError("로그인이 필요합니다.");
+      setSaving(false);
+      return;
+    }
+
+    const { error: insertError } = await Services.DatabaseService.insert("dashboard_todos", {
+      store_id: currentStoreId,
+      task_date: scheduledTodoDate,
+      content,
+      created_by: userData.user.id
+    });
+
+    if (insertError) {
+      setError(insertError.message);
+    } else {
+      const addedDate = scheduledTodoDate;
+      setScheduledTodoDraft("");
+      setScheduledTodoDate(todayValue);
+      setShowScheduledTodoDialog(false);
+      await loadDashboard();
+      setMessage(`${shortDateLabel(addedDate)} To do list에 추가했습니다.`);
     }
     setSaving(false);
   }
@@ -409,8 +691,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   function changeDashboardView(nextView: DashboardView) {
     setDashboardView(nextView);
     setShowTodoForm(false);
+    setShowScheduledTodoDialog(false);
     setShowHandoverForm(false);
     setTodoDraft("");
+    setScheduledTodoDraft("");
     setHandoverDraft("");
     setError("");
   }
@@ -468,7 +752,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
             {!loading && receipts.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 입고된 품목이 없습니다." : "내일 입고예정 품목이 없습니다."}
+                {isToday ? "오늘 입고 예정이거나 완료된 품목이 없습니다." : "내일 입고예정 품목이 없습니다."}
               </div>
             ) : null}
             {receipts.map((item) => (
@@ -478,12 +762,21 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   onClick={() => navigate({ name: "operation", productId: item.productId })}
                   className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left hover:text-brand-700 dark:hover:text-brand-100"
                 >
+                  <span
+                    className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ${
+                      item.status === "completed"
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+                        : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                    }`}
+                  >
+                    {item.status === "completed" ? "입고완료" : "입고예정"}
+                  </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
-                  {item.lastReceivedAt && isToday ? <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span> : null}
+                  {item.lastReceivedAt && item.status === "completed" && isToday ? <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span> : null}
                   <ChevronRight className="shrink-0 text-slate-400" size={16} />
                 </PressableButton>
                 {item.quantity !== null ? <span className="shrink-0 text-xs font-bold text-brand-700 dark:text-brand-100">+{formatInventoryQuantity(item.quantity)}</span> : null}
-                {isToday ? (
+                {isToday && item.status === "completed" ? (
                   <PressableButton
                     type="button"
                     disabled={receiptDeletingIds.has(item.productId) || receiptActioning}
@@ -506,9 +799,24 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             title="To do list"
             badge={`${completedCount}/${todos.length}`}
             action={(
-              <PressableButton type="button" onClick={() => setShowTodoForm((value) => !value)} className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100" aria-label="할 일 추가">
-                {showTodoForm ? <X size={19} /> : <Plus size={19} />}
-              </PressableButton>
+              <div className="flex items-center gap-1">
+                <PressableButton
+                  type="button"
+                  onClick={() => {
+                    setScheduledTodoDate(selectedDate ?? todayValue);
+                    setShowScheduledTodoDialog(true);
+                    setShowTodoForm(false);
+                  }}
+                  className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100"
+                  aria-label="날짜 지정 할 일 추가"
+                  title="날짜 지정"
+                >
+                  <CalendarDays size={18} />
+                </PressableButton>
+                <PressableButton type="button" onClick={() => setShowTodoForm((value) => !value)} className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100" aria-label="할 일 추가">
+                  {showTodoForm ? <X size={19} /> : <Plus size={19} />}
+                </PressableButton>
+              </div>
             )}
           />
           {showTodoForm ? (
@@ -525,30 +833,45 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 {isToday ? "오늘 해야 할 일이 없습니다." : "내일 근무자를 위한 할 일이 없습니다."}
               </div>
             ) : null}
-            {todos.map((todo) => (
-              <AnimatedListItem key={todo.id} className="flex min-h-11 items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
-                <label className={`flex min-w-0 flex-1 items-center gap-2.5 ${isToday ? "cursor-pointer" : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={todo.is_completed}
-                    disabled={!isToday}
-                    onChange={() => void toggleTodo(todo)}
-                    className="h-5 w-5 shrink-0 accent-brand-600 disabled:cursor-default disabled:opacity-60"
-                  />
-                  <span className={`min-w-0 flex-1 text-sm font-semibold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
-                </label>
-                <PressableButton
-                  type="button"
-                  disabled={deletingIds.has(todo.id)}
-                  onClick={() => void deleteTodo(todo)}
-                  className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
-                  aria-label={`${todo.content} 삭제`}
-                  title="삭제"
-                >
-                  <Trash2 size={17} />
-                </PressableButton>
-              </AnimatedListItem>
-            ))}
+            {todos.map((todo) => {
+              const staleInventoryProductId = todo.stale_inventory_product_id;
+              return (
+                <AnimatedListItem key={todo.id} className="flex min-h-11 items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
+                  <label className={`${isToday ? "cursor-pointer" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={todo.is_completed}
+                      disabled={!isToday}
+                      onChange={() => void toggleTodo(todo)}
+                      className="h-5 w-5 shrink-0 accent-brand-600 disabled:cursor-default disabled:opacity-60"
+                      aria-label={`${todo.content} 완료`}
+                    />
+                  </label>
+                  {staleInventoryProductId ? (
+                    <PressableButton
+                      type="button"
+                      onClick={() => navigate({ name: "operation", productId: staleInventoryProductId })}
+                      className={`flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-1 text-left text-sm font-semibold hover:text-brand-700 dark:hover:text-brand-100 ${todo.is_completed ? "text-slate-400 line-through" : ""}`}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{todo.content}</span>
+                      <ChevronRight className="shrink-0 text-slate-400" size={15} />
+                    </PressableButton>
+                  ) : (
+                    <span className={`min-w-0 flex-1 text-sm font-semibold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
+                  )}
+                  <PressableButton
+                    type="button"
+                    disabled={deletingIds.has(todo.id)}
+                    onClick={() => void deleteTodo(todo)}
+                    className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                    aria-label={`${todo.content} 삭제`}
+                    title="삭제"
+                  >
+                    <Trash2 size={17} />
+                  </PressableButton>
+                </AnimatedListItem>
+              );
+            })}
           </AnimatedList>
         </article>
 
@@ -632,6 +955,36 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 ))}
               </AnimatedList>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showScheduledTodoDialog ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="날짜 지정 할 일 추가">
+          <div className="flex max-h-[82dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div>
+                <h2 className="font-extrabold">날짜 지정 할 일</h2>
+                <p className="text-xs text-slate-500">선택한 날짜의 홈 To do list에 추가합니다.</p>
+              </div>
+              <PressableButton type="button" onClick={() => setShowScheduledTodoDialog(false)} className="touch-button icon-button" aria-label="닫기">
+                <X size={20} />
+              </PressableButton>
+            </div>
+            <form onSubmit={addScheduledTodo} className="space-y-3 p-4">
+              <label className="block">
+                <span className="mb-1 block text-sm font-bold">날짜</span>
+                <input className="field" type="date" value={scheduledTodoDate} onChange={(event) => setScheduledTodoDate(event.target.value)} autoFocus />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-bold">할 일</span>
+                <input className="field" value={scheduledTodoDraft} onChange={(event) => setScheduledTodoDraft(event.target.value)} placeholder="할 일 입력" />
+              </label>
+              <button type="submit" disabled={saving || !scheduledTodoDraft.trim() || !scheduledTodoDate} className="primary-button inline-flex w-full items-center justify-center gap-2">
+                <Check size={18} />
+                {saving ? "저장 중..." : "추가"}
+              </button>
+            </form>
           </div>
         </div>
       ) : null}

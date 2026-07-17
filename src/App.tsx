@@ -12,13 +12,13 @@ import { SignupRequestPage } from "./pages/SignupRequestPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { HomePage } from "./pages/HomePage";
 import { ScanPage } from "./pages/ScanPage";
-import { ProductRegisterPage } from "./pages/ProductRegisterPage";
 import { ProductEditPage } from "./pages/ProductEditPage";
 import { InventoryOperationPage } from "./pages/InventoryOperationPage";
 import { InventoryListPage } from "./pages/InventoryListPage";
 import { LowStockPage } from "./pages/LowStockPage";
 import { StatusItemsPage } from "./pages/StatusItemsPage";
 import { LogsPage } from "./pages/LogsPage";
+import { TodoRoutinesPage } from "./pages/TodoRoutinesPage";
 import { GroupOrderCalculatorPage } from "./pages/GroupOrderCalculatorPage";
 import { PrepItemManagementPage } from "./pages/PrepItemManagementPage";
 import { PrepModePage } from "./pages/PrepModePage";
@@ -536,10 +536,10 @@ export default function App() {
     <div className="min-h-dvh overflow-x-clip bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <OfflineBanner />
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
+        <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 flex-1 items-center gap-0">
             <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
-            <img src="/stockly-logo.png" alt="Stockly" className="-ml-1 h-12 w-auto min-w-0 object-contain sm:h-14" />
+            <img src="/stockly-logo.png" alt="Stockly" className="-ml-1 h-10 w-auto min-w-0 object-contain sm:h-12" />
           </div>
         </div>
       </header>
@@ -561,7 +561,13 @@ export default function App() {
           <m.div key={routeKey(permittedRoute)} initial={routeMotionProps.initial} animate={routeMotionProps.animate} transition={routeMotionProps.transition}>
             {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
-            {permittedRoute.name === "register" && <ProductRegisterPage barcode={permittedRoute.barcode ?? ""} navigate={navigate} />}
+            {permittedRoute.name === "register" && (
+              <ProductEditPage
+                barcode={permittedRoute.barcode ?? ""}
+                navigate={navigate}
+                currentStoreId={profile.store_id}
+              />
+            )}
             {permittedRoute.name === "product-edit" && (
               <ProductEditPage
                 productId={permittedRoute.productId ?? ""}
@@ -579,6 +585,7 @@ export default function App() {
             {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} currentRole={profileRole} />}
             {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "todo-routines" && <TodoRoutinesPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "group-order" && (
               <GroupOrderCalculatorPage
                 mode="calculator"
