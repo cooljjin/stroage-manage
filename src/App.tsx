@@ -9,6 +9,7 @@ import { TopMenu } from "./components/TopMenu";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupRequestPage } from "./pages/SignupRequestPage";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { HomePage } from "./pages/HomePage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductRegisterPage } from "./pages/ProductRegisterPage";
@@ -79,7 +80,7 @@ function hasPendingScanBarcode() {
 }
 
 function initialRoute(): AppRoute {
-  return { name: "landing" };
+  return window.location.pathname === "/privacy" ? { name: "privacy" } : { name: "landing" };
 }
 
 function normalizeInviteCode(value: string | null) {
@@ -167,8 +168,8 @@ function routeKey(route: AppRoute) {
   return JSON.stringify(route);
 }
 
-function updateBrowserPath() {
-  window.history.replaceState(null, "", "/");
+function updateBrowserPath(nextRoute?: AppRoute) {
+  window.history.replaceState(null, "", nextRoute?.name === "privacy" ? "/privacy" : "/");
 }
 
 function maxWindowScrollY() {
@@ -203,7 +204,7 @@ export default function App() {
     const codeFromUrl = readInviteCodeFromUrl();
     if (codeFromUrl) {
       setInviteCode(savePendingInviteCode(codeFromUrl));
-      updateBrowserPath();
+      updateBrowserPath(route);
     }
 
     Services.AuthService.getSession().then(({ data }) => {
@@ -294,7 +295,7 @@ export default function App() {
       const homeRoute = consumeAccountLinkReturnRoute() ?? consumePostScanRoute() ?? defaultSignedInRoute();
       pendingScrollYRef.current = 0;
       setRoute(homeRoute);
-      updateBrowserPath();
+      updateBrowserPath(homeRoute);
     }
   }, [session, route.name]);
 
@@ -360,7 +361,7 @@ export default function App() {
 
     pendingScrollYRef.current = options.scrollY ?? 0;
     setRoute(next);
-    updateBrowserPath();
+    updateBrowserPath(next);
   }
 
   function goBack() {
@@ -371,7 +372,7 @@ export default function App() {
     setCanGoBack(routeHistoryRef.current.length > 0);
     pendingScrollYRef.current = previous.scrollY;
     setRoute(previous.route);
-    updateBrowserPath();
+    updateBrowserPath(previous.route);
   }
 
   async function handleLogout() {
@@ -436,6 +437,10 @@ export default function App() {
     }
 
     setConnectionLoading(false);
+  }
+
+  if (route.name === "privacy") {
+    return <PrivacyPolicyPage />;
   }
 
   if (authLoading) {

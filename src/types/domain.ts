@@ -14,6 +14,7 @@ export type RouteName =
   | "landing"
   | "login"
   | "signup-request"
+  | "privacy"
   | "home"
   | "scan"
   | "register"

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { CheckCircle2, ClipboardList, ScanLine, Search, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, ScanLine, Search, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
@@ -64,6 +64,15 @@ function todayDateValue(): string {
   return `${year}-${month}-${day}`;
 }
 
+function shiftDateValue(dateValue: string, dayOffset: number): string {
+  const date = new Date(`${dateValue}T00:00:00`);
+  date.setDate(date.getDate() + dayOffset);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
@@ -84,6 +93,8 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   const [pendingFreshBarcode, setPendingFreshBarcode] = useState("");
   const [confirmedItems, setConfirmedItems] = useState<ConfirmedOrderItem[]>([]);
   const [confirmedModalOpen, setConfirmedModalOpen] = useState(false);
+  const [confirmedOrderDate, setConfirmedOrderDate] = useState(() => todayDateValue());
+  const [confirmedCalendarOpen, setConfirmedCalendarOpen] = useState(false);
   const [loadingConfirmed, setLoadingConfirmed] = useState(false);
   const [savingConfirmation, setSavingConfirmation] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -168,7 +179,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
     return new Map(items.map((item) => [item.id, item]));
   }, [items]);
 
-  const confirmedOrderDate = todayDateValue();
+  const todayOrderDate = todayDateValue();
   const canConfirmOrderItems = currentRole !== "staff";
   const confirmCheckedItems = useMemo(() => lowStockItems.filter((item) => item.order_completed), [lowStockItems]);
 
@@ -409,12 +420,12 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
     setSavingFresh(false);
   }
 
-  async function loadConfirmedItems() {
+  async function loadConfirmedItems(orderDate = confirmedOrderDate) {
     setLoadingConfirmed(true);
     setError("");
     const { data, error: loadError } = await Services.DatabaseService.select("confirmed_order_items", "*")
       .eq("store_id", currentStoreId)
-      .eq("order_date", confirmedOrderDate)
+      .eq("order_date", orderDate)
       .order("urgent_order_requested", { ascending: false })
       .order("product_name", { ascending: true });
 
@@ -427,8 +438,22 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   }
 
   async function openConfirmedModal() {
+    const orderDate = todayDateValue();
+    setConfirmedOrderDate(orderDate);
+    setConfirmedCalendarOpen(false);
     setConfirmedModalOpen(true);
-    await loadConfirmedItems();
+    await loadConfirmedItems(orderDate);
+  }
+
+  async function changeConfirmedOrderDate(orderDate: string) {
+    setConfirmedOrderDate(orderDate);
+    await loadConfirmedItems(orderDate);
+  }
+
+  async function moveConfirmedOrderDate(dayOffset: number) {
+    const nextDate = shiftDateValue(confirmedOrderDate, dayOffset);
+    setConfirmedCalendarOpen(false);
+    await changeConfirmedOrderDate(nextDate);
   }
 
   async function confirmTodayOrderItems() {
@@ -450,7 +475,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
 
     const { error: deleteError } = await Services.DatabaseService.delete("confirmed_order_items")
       .eq("store_id", currentStoreId)
-      .eq("order_date", confirmedOrderDate);
+      .eq("order_date", todayOrderDate);
 
     if (deleteError) {
       setError(deleteError.message);
@@ -461,7 +486,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
     const confirmedAt = new Date().toISOString();
     const rows = confirmCheckedItems.map((item) => ({
       store_id: currentStoreId,
-      order_date: confirmedOrderDate,
+      order_date: todayOrderDate,
       product_id: item.id,
       product_name: item.name,
       category: item.category || "기타",
@@ -654,7 +679,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                 className="touch-button inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
               >
                 <CheckCircle2 size={18} />
-                {savingConfirmation ? "확정 중" : "컴펌하기"}
+                {savingConfirmation ? "확정 중" : "컨펌하기"}
               </button>
             ) : null}
             <button
@@ -1056,9 +1081,55 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                   </button>
                 </div>
 
+                <div className="border-b border-slate-200 p-3 dark:border-slate-800">
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void moveConfirmedOrderDate(-1)}
+                      disabled={loadingConfirmed}
+                      className="icon-button touch-button"
+                      aria-label="전날 확정품목 보기"
+                      title="전날"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <div className="min-w-0 rounded-md bg-slate-100 px-3 py-2 text-center text-sm font-bold tabular-nums text-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                      {confirmedOrderDate}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void moveConfirmedOrderDate(1)}
+                      disabled={loadingConfirmed}
+                      className="icon-button touch-button"
+                      aria-label="다음날 확정품목 보기"
+                      title="다음날"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmedCalendarOpen((value) => !value)}
+                      className="icon-button touch-button text-brand-700 dark:text-brand-100"
+                      aria-label="날짜 선택"
+                      title="날짜 선택"
+                    >
+                      <CalendarDays size={19} />
+                    </button>
+                  </div>
+                  {confirmedCalendarOpen ? (
+                    <input
+                      type="date"
+                      value={confirmedOrderDate}
+                      onChange={(event) => void changeConfirmedOrderDate(event.target.value)}
+                      className="field mt-2 w-full"
+                      aria-label="확정품목 조회 날짜"
+                    />
+                  ) : null}
+                </div>
+
                 <div className="min-h-0 flex-1 overflow-y-auto p-3">
                   {loadingConfirmed ? <StatusMessage>확정 품목을 불러오는 중...</StatusMessage> : null}
-                  {!loadingConfirmed && confirmedItems.length === 0 ? <StatusMessage>오늘 확정된 품목이 없습니다.</StatusMessage> : null}
+                  {!loadingConfirmed && confirmedItems.length === 0 ? <StatusMessage>선택한 날짜에 확정된 품목이 없습니다.</StatusMessage> : null}
                   {!loadingConfirmed && confirmedItems.length > 0 ? (
                     <div className="space-y-2">
                       {confirmedItems.map((item) => {
