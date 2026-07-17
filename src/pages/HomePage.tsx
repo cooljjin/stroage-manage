@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
 import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
+import { PressableButton } from "../components/PressableButton";
 import { StatusMessage } from "../components/StatusMessage";
 import { getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
@@ -423,11 +424,12 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         </div>
         <div className="grid grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
           {(["today", "tomorrow"] as DashboardView[]).map((view) => (
-            <button
+            <PressableButton
               key={view}
               type="button"
               onClick={() => changeDashboardView(view)}
               aria-pressed={dashboardView === view}
+              surfaceFeedback={dashboardView !== view}
               className={`min-h-9 rounded-md px-4 text-xs font-extrabold transition-colors ${
                 dashboardView === view
                   ? "bg-brand-600 text-white"
@@ -435,7 +437,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               }`}
             >
               {view === "today" ? "오늘" : "내일"}
-            </button>
+            </PressableButton>
           ))}
         </div>
       </div>
@@ -450,7 +452,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             title={isToday ? "금일 입고품목" : "내일 입고예정 품목"}
             badge={`${receipts.length}종`}
             action={isToday ? (
-              <button
+              <PressableButton
                 type="button"
                 disabled={!hasReceiptDeletion || receiptActioning}
                 onClick={() => void restoreLatestReceiptDeletion()}
@@ -459,7 +461,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 title="최근 삭제 되돌리기"
               >
                 <Undo2 size={18} />
-              </button>
+              </PressableButton>
             ) : undefined}
           />
           <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
@@ -471,18 +473,18 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             ) : null}
             {receipts.map((item) => (
               <AnimatedListItem key={item.productId} className="flex min-h-11 items-center gap-1 border-b border-slate-100 px-2 last:border-0 dark:border-slate-800">
-                <button
+                <PressableButton
                   type="button"
                   onClick={() => navigate({ name: "operation", productId: item.productId })}
-                  className="flex min-w-0 flex-1 items-center gap-2 px-1 text-left hover:text-brand-700 dark:hover:text-brand-100"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left hover:text-brand-700 dark:hover:text-brand-100"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
                   {item.lastReceivedAt && isToday ? <span className="shrink-0 text-[10px] text-slate-400">{formatDateTime(item.lastReceivedAt).slice(-5)}</span> : null}
                   <ChevronRight className="shrink-0 text-slate-400" size={16} />
-                </button>
+                </PressableButton>
                 {item.quantity !== null ? <span className="shrink-0 text-xs font-bold text-brand-700 dark:text-brand-100">+{formatInventoryQuantity(item.quantity)}</span> : null}
                 {isToday ? (
-                  <button
+                  <PressableButton
                     type="button"
                     disabled={receiptDeletingIds.has(item.productId) || receiptActioning}
                     onClick={() => void deleteTodayReceipt(item)}
@@ -491,7 +493,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     title="금일 입고 삭제"
                   >
                     <Trash2 size={17} />
-                  </button>
+                  </PressableButton>
                 ) : null}
               </AnimatedListItem>
             ))}
@@ -504,17 +506,17 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             title="To do list"
             badge={`${completedCount}/${todos.length}`}
             action={(
-              <button type="button" onClick={() => setShowTodoForm((value) => !value)} className="touch-button grid place-items-center text-brand-700 dark:text-brand-100" aria-label="할 일 추가">
+              <PressableButton type="button" onClick={() => setShowTodoForm((value) => !value)} className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100" aria-label="할 일 추가">
                 {showTodoForm ? <X size={19} /> : <Plus size={19} />}
-              </button>
+              </PressableButton>
             )}
           />
           {showTodoForm ? (
             <form onSubmit={addTodo} className="grid grid-cols-[1fr_auto] gap-1.5 border-b border-slate-100 p-2 dark:border-slate-800">
               <input className="field min-w-0 px-2 py-2 text-xs" value={todoDraft} onChange={(event) => setTodoDraft(event.target.value)} placeholder="할 일 입력" autoFocus />
-              <button className="grid min-h-10 min-w-10 place-items-center rounded-md bg-brand-600 text-white" type="submit" disabled={saving || !todoDraft.trim()} aria-label="저장">
+              <PressableButton className="grid min-h-10 min-w-10 place-items-center rounded-md bg-brand-600 text-white" type="submit" disabled={saving || !todoDraft.trim()} surfaceFeedback={false} aria-label="저장">
                 <Check size={18} />
-              </button>
+              </PressableButton>
             </form>
           ) : null}
           <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
@@ -531,11 +533,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     checked={todo.is_completed}
                     disabled={!isToday}
                     onChange={() => void toggleTodo(todo)}
-                    className="h-5 w-5 shrink-0 accent-teal-700 disabled:cursor-default disabled:opacity-60"
+                    className="h-5 w-5 shrink-0 accent-brand-600 disabled:cursor-default disabled:opacity-60"
                   />
                   <span className={`min-w-0 flex-1 text-sm font-semibold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
                 </label>
-                <button
+                <PressableButton
                   type="button"
                   disabled={deletingIds.has(todo.id)}
                   onClick={() => void deleteTodo(todo)}
@@ -544,7 +546,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   title="삭제"
                 >
                   <Trash2 size={17} />
-                </button>
+                </PressableButton>
               </AnimatedListItem>
             ))}
           </AnimatedList>
@@ -557,13 +559,13 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             badge={`${handovers.length}건`}
             action={
               <div className="flex items-center">
-                <button type="button" onClick={() => void openHistory()} className="touch-button grid place-items-center text-slate-500 dark:text-slate-300" aria-label="인수인계 히스토리">
+                <PressableButton type="button" onClick={() => void openHistory()} className="touch-button grid place-items-center rounded-md text-slate-500 dark:text-slate-300" aria-label="인수인계 히스토리">
                   <History size={18} />
-                </button>
+                </PressableButton>
                 {!isToday ? (
-                  <button type="button" onClick={() => setShowHandoverForm((value) => !value)} className="touch-button grid place-items-center text-brand-700 dark:text-brand-100" aria-label="인수인계 추가">
+                  <PressableButton type="button" onClick={() => setShowHandoverForm((value) => !value)} className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100" aria-label="인수인계 추가">
                     {showHandoverForm ? <X size={19} /> : <Plus size={19} />}
-                  </button>
+                  </PressableButton>
                 ) : null}
               </div>
             }
@@ -571,9 +573,9 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           {showHandoverForm ? (
             <form onSubmit={addHandover} className="border-b border-slate-100 p-2 dark:border-slate-800">
               <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="내일 근무자에게 전달할 내용을 입력하세요." autoFocus />
-              <button className="mt-1.5 min-h-10 w-full rounded-md bg-brand-600 px-3 text-xs font-bold text-white" type="submit" disabled={saving || !handoverDraft.trim()}>
+              <PressableButton className="mt-1.5 min-h-10 w-full rounded-md bg-brand-600 px-3 text-xs font-bold text-white" type="submit" disabled={saving || !handoverDraft.trim()} surfaceFeedback={false}>
                 내일 인수인계 저장
-              </button>
+              </PressableButton>
             </form>
           ) : null}
           <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
@@ -589,7 +591,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   <p className="mt-1 text-[10px] text-slate-400">{profiles.get(note.created_by) ?? "직원"} · {formatDateTime(note.created_at)}</p>
                 </div>
                 {!isToday ? (
-                  <button
+                  <PressableButton
                     type="button"
                     disabled={deletingIds.has(note.id)}
                     onClick={() => void deleteHandover(note)}
@@ -598,7 +600,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     title="삭제"
                   >
                     <Trash2 size={17} />
-                  </button>
+                  </PressableButton>
                 ) : null}
               </AnimatedListItem>
             ))}
@@ -614,7 +616,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 <h2 className="font-extrabold">인수인계 히스토리</h2>
                 <p className="text-xs text-slate-500">날짜별 전달 내용을 확인합니다.</p>
               </div>
-              <button type="button" onClick={() => setShowHistory(false)} className="touch-button icon-button" aria-label="닫기"><X size={20} /></button>
+              <PressableButton type="button" onClick={() => setShowHistory(false)} className="touch-button icon-button" aria-label="닫기"><X size={20} /></PressableButton>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {history.length === 0 ? <StatusMessage>저장된 인수인계가 없습니다.</StatusMessage> : null}

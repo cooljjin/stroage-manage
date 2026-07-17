@@ -414,7 +414,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
                     step={zoomRange.step}
                     value={zoom}
                     onChange={(event) => void changeZoom(Number(event.target.value))}
-                    className="min-w-0 flex-1 accent-teal-700"
+                    className="min-w-0 flex-1 accent-brand-600"
                     aria-label="카메라 확대"
                   />
                   <span className="w-10 text-right text-xs font-bold">{zoom.toFixed(1)}x</span>

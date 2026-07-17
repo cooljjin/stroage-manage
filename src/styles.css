@@ -79,8 +79,8 @@
   }
 
   .field:focus {
-    border-color: rgb(15 118 110);
-    box-shadow: 0 0 0 3px rgb(15 118 110 / 0.18);
+    border-color: #5757ff;
+    box-shadow: 0 0 0 3px rgb(87 87 255 / 0.18);
   }
 
   .dark .field {
@@ -92,10 +92,14 @@
   .primary-button {
     min-height: 52px;
     border-radius: 0.375rem;
-    background: rgb(15 118 110);
+    background: #5757ff;
     padding: 0.75rem 1rem;
     font-weight: 700;
     color: white;
+  }
+
+  .primary-button:not(:disabled):hover {
+    background: #4948f7;
   }
 
   .primary-button:disabled {

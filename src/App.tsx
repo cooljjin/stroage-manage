@@ -204,7 +204,7 @@ export default function App() {
     const codeFromUrl = readInviteCodeFromUrl();
     if (codeFromUrl) {
       setInviteCode(savePendingInviteCode(codeFromUrl));
-      updateBrowserPath(route);
+      updateBrowserPath(window.location.pathname === "/privacy" ? { name: "privacy" } : { name: "landing" });
     }
 
     Services.AuthService.getSession().then(({ data }) => {
@@ -461,7 +461,7 @@ export default function App() {
       return <SignupRequestPage onBack={() => navigate({ name: "landing" })} />;
     }
 
-    return <LandingPage onLogin={() => navigate({ name: "login" })} onSignupRequest={() => navigate({ name: "signup-request" })} />;
+    return <LandingPage onLogin={() => navigate({ name: "login" })} />;
   }
 
   if (profileLoading && !profile) {
@@ -539,10 +539,7 @@ export default function App() {
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-brand-700 dark:text-brand-100">통합 매장 재고관리 솔루션</p>
-              <p className="max-w-[220px] truncate text-sm text-slate-500 dark:text-slate-400">{session.user.email}</p>
-            </div>
+            <img src="/stockly-logo.png" alt="Stockly" className="h-8 w-auto min-w-0 object-contain sm:h-9" />
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {profileRole !== "staff" ? (
