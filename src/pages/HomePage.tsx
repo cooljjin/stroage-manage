@@ -5,9 +5,9 @@ import { PressableButton } from "../components/PressableButton";
 import { StatusMessage } from "../components/StatusMessage";
 import { addDateValueDays, getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
-import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryQuantity } from "../lib/inventory";
 import * as Services from "../services";
-import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryItem, InventoryLog, Product, StaffProfile, TodoRoutine } from "../types/domain";
+import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryLog, Product, StaffProfile, TodoRoutine } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -27,6 +27,12 @@ type ConfirmedOrderReceipt = {
   product_name: string;
   confirmed_at: string;
 };
+type ReceiptHistoryLog = InventoryLog & {
+  products?: {
+    name?: string | null;
+    receipt_check_only?: boolean | null;
+  } | null;
+};
 
 type DashboardView = "today" | "tomorrow";
 
@@ -45,6 +51,17 @@ function getDayRange(date: Date) {
 
 function shortDateLabel(value: string) {
   return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(new Date(`${value}T00:00:00`));
+}
+
+function HistoryReceiptIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9.8 4.2h7.4a2.6 2.6 0 0 1 2.6 2.6v11.4a2.6 2.6 0 0 1-2.6 2.6H7.6A2.6 2.6 0 0 1 5 18.2v-6.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M10.9 10.6h5.8M10.9 14.2h5.8M10.9 17.8h4.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="7.6" cy="7.1" r="4.7" fill="white" stroke="currentColor" strokeWidth="2.2" />
+      <path d="M7.6 4.7v2.8h2.2" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function daysInMonth(dateValue: string) {
@@ -73,10 +90,6 @@ function isDuplicateStaleInventoryTodoError(message: string) {
     || (message.includes("duplicate key") && message.includes("stale_inventory_product_id"));
 }
 
-function isCurrentLowStockOrderItem(item: InventoryItem) {
-  return item.order_completed && (item.fresh_order_selected || item.urgent_order_requested || (!item.receipt_check_only && item.is_low_stock));
-}
-
 function getPreviousBusinessDate(
   fromDate: string,
   weeklyClosureDays: ReadonlySet<number>,
@@ -91,6 +104,24 @@ function getPreviousBusinessDate(
   }
 
   throw new Error("이전 영업일을 계산할 수 없습니다. 휴무일 설정을 확인해 주세요.");
+}
+
+function buildCompletedReceipts(logs: ReceiptHistoryLog[]) {
+  const grouped = new Map<string, ReceiptItem>();
+  logs.forEach((log) => {
+    const current = grouped.get(log.product_id);
+    const name = log.products?.name ?? "삭제된 상품";
+    const nextQuantity = log.quantity === null ? current?.quantity ?? null : (current?.quantity ?? 0) + log.quantity;
+    grouped.set(log.product_id, {
+      productId: log.product_id,
+      name,
+      quantity: nextQuantity,
+      lastReceivedAt: current?.lastReceivedAt ?? log.created_at,
+      receiptCheckOnly: current?.receiptCheckOnly ?? log.products?.receipt_check_only ?? false,
+      status: "completed"
+    });
+  });
+  return Array.from(grouped.values());
 }
 
 function SectionHeader({
@@ -126,6 +157,12 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [todos, setTodos] = useState<DashboardTodo[]>([]);
   const [handovers, setHandovers] = useState<HandoverNote[]>([]);
   const [history, setHistory] = useState<HandoverNote[]>([]);
+  const [receiptHistoryDate, setReceiptHistoryDate] = useState(todayValue);
+  const [receiptHistoryExpected, setReceiptHistoryExpected] = useState<ReceiptItem[]>([]);
+  const [receiptHistoryCompleted, setReceiptHistoryCompleted] = useState<ReceiptItem[]>([]);
+  const [receiptHistoryOpen, setReceiptHistoryOpen] = useState(false);
+  const [receiptHistoryLoading, setReceiptHistoryLoading] = useState(false);
+  const [receiptHistoryError, setReceiptHistoryError] = useState("");
   const [profiles, setProfiles] = useState<Map<string, string>>(new Map());
   const [todoDraft, setTodoDraft] = useState("");
   const [scheduledTodoDraft, setScheduledTodoDraft] = useState("");
@@ -182,15 +219,13 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     setNextBusinessDate(calculatedNextBusinessDate);
     const dashboardDate = dashboardView === "today" ? todayValue : calculatedNextBusinessDate;
-    let previousBusinessDate = todayValue;
-    if (dashboardView === "tomorrow") {
-      try {
-        previousBusinessDate = getPreviousBusinessDate(dashboardDate, weeklyClosureDays, specificClosureDates);
-      } catch (calendarError) {
-        setError(calendarError instanceof Error ? calendarError.message : "이전 영업일을 계산하지 못했습니다.");
-        setLoading(false);
-        return;
-      }
+    let previousBusinessDate: string;
+    try {
+      previousBusinessDate = getPreviousBusinessDate(dashboardDate, weeklyClosureDays, specificClosureDates);
+    } catch (calendarError) {
+      setError(calendarError instanceof Error ? calendarError.message : "이전 영업일을 계산하지 못했습니다.");
+      setLoading(false);
+      return;
     }
     const range = getDayRange(new Date(`${dashboardDate}T00:00:00`));
     let staleInventoryTodoEnabled = false;
@@ -353,18 +388,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       .gte("created_at", range.start)
       .lt("created_at", range.end)
       .order("created_at", { ascending: false });
-    const expectedReceiptQuery =
-      dashboardView === "today"
-        ? Services.DatabaseService.select("products", "*, inventory(*)")
-            .eq("store_id", currentStoreId)
-            .eq("is_active", true)
-            .eq("order_completed", true)
-            .order("name", { ascending: true })
-        : Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at")
-            .eq("store_id", currentStoreId)
-            .eq("order_date", previousBusinessDate)
-            .order("urgent_order_requested", { ascending: false })
-            .order("product_name", { ascending: true });
+    const expectedReceiptQuery = Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at")
+      .eq("store_id", currentStoreId)
+      .eq("order_date", previousBusinessDate)
+      .order("urgent_order_requested", { ascending: false })
+      .order("product_name", { ascending: true });
 
     const [receiptLogResult, expectedReceiptResult, todoResult, handoverResult, profileResult, receiptDeletionResult] = await Promise.all([
       receiptLogQuery,
@@ -387,51 +415,29 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         firstError.message.includes("dashboard_todos")
           || firstError.message.includes("handover_notes")
           || firstError.message.includes("dashboard_receipt_deletions")
+          || firstError.message.includes("confirmed_order_items")
           ? "메인페이지용 데이터베이스 업데이트가 필요합니다."
           : firstError.message
       );
     }
 
     if (!receiptLogResult.error && !expectedReceiptResult.error) {
-      const grouped = new Map<string, ReceiptItem>();
-      ((receiptLogResult.data ?? []) as unknown as InventoryLog[]).forEach((log) => {
-        const current = grouped.get(log.product_id);
-        const name = log.products?.name ?? "삭제된 상품";
-        const nextQuantity = log.quantity === null ? current?.quantity ?? null : (current?.quantity ?? 0) + log.quantity;
-        grouped.set(log.product_id, {
-          productId: log.product_id,
-          name,
-          quantity: nextQuantity,
-          lastReceivedAt: current?.lastReceivedAt ?? log.created_at,
-          receiptCheckOnly: current?.receiptCheckOnly ?? log.products?.receipt_check_only ?? false,
-          status: "completed"
-        });
-      });
+      const completedItems = buildCompletedReceipts((receiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[]);
+      const completedProductIds = new Set(completedItems.map((item) => item.productId));
+
+      const expectedItems = ((expectedReceiptResult.data ?? []) as ConfirmedOrderReceipt[]).map((product) => ({
+        productId: product.product_id,
+        name: product.product_name,
+        quantity: null,
+        lastReceivedAt: product.confirmed_at,
+        receiptCheckOnly: false,
+        status: "expected" as const
+      }));
 
       if (dashboardView === "today") {
-        const expectedItems: ReceiptItem[] = ((expectedReceiptResult.data ?? []) as Parameters<typeof normalizeInventoryItem>[0][])
-          .map((product) => normalizeInventoryItem(product))
-          .filter((product) => isCurrentLowStockOrderItem(product) && !grouped.has(product.id))
-          .map<ReceiptItem>((product) => ({
-              productId: product.id,
-              name: product.name,
-              quantity: null,
-              lastReceivedAt: product.fresh_order_selected_at,
-              receiptCheckOnly: product.receipt_check_only,
-              status: "expected"
-          }));
-        setReceipts([...expectedItems, ...Array.from(grouped.values())]);
+        setReceipts([...expectedItems.filter((item) => !completedProductIds.has(item.productId)), ...completedItems]);
       } else {
-        setReceipts(
-          ((expectedReceiptResult.data ?? []) as ConfirmedOrderReceipt[]).map((product) => ({
-            productId: product.product_id,
-            name: product.product_name,
-            quantity: null,
-            lastReceivedAt: product.confirmed_at,
-            receiptCheckOnly: false,
-            status: "expected"
-          }))
-        );
+        setReceipts(expectedItems);
       }
     }
 
@@ -685,6 +691,82 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     }
   }
 
+  async function loadReceiptHistory(targetDate = receiptHistoryDate) {
+    setReceiptHistoryLoading(true);
+    setReceiptHistoryError("");
+
+    const closureLookupStart = addDateValueDays(targetDate, -366);
+    const [weeklyClosureResult, specificClosureResult] = await Promise.all([
+      Services.DatabaseService.select("weekly_store_closures", "weekday").eq("store_id", currentStoreId),
+      Services.DatabaseService.select("store_closure_dates", "closure_date").eq("store_id", currentStoreId).gte("closure_date", closureLookupStart)
+    ]);
+    const closureError = weeklyClosureResult.error ?? specificClosureResult.error;
+    if (closureError) {
+      setReceiptHistoryError(
+        closureError.message.includes("weekly_store_closures") || closureError.message.includes("store_closure_dates")
+          ? "휴무일용 데이터베이스 업데이트가 필요합니다."
+          : closureError.message
+      );
+      setReceiptHistoryLoading(false);
+      return;
+    }
+
+    const weeklyClosureDays = new Set(((weeklyClosureResult.data ?? []) as Array<{ weekday: number }>).map((item) => item.weekday));
+    const specificClosureDates = new Set(((specificClosureResult.data ?? []) as Array<{ closure_date: string }>).map((item) => item.closure_date));
+    let previousBusinessDate: string;
+    try {
+      previousBusinessDate = getPreviousBusinessDate(targetDate, weeklyClosureDays, specificClosureDates);
+    } catch (calendarError) {
+      setReceiptHistoryError(calendarError instanceof Error ? calendarError.message : "이전 영업일을 계산하지 못했습니다.");
+      setReceiptHistoryLoading(false);
+      return;
+    }
+
+    const range = getDayRange(new Date(`${targetDate}T00:00:00`));
+    const [expectedResult, completedResult] = await Promise.all([
+      Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at")
+        .eq("store_id", currentStoreId)
+        .eq("order_date", previousBusinessDate)
+        .order("urgent_order_requested", { ascending: false })
+        .order("product_name", { ascending: true }),
+      Services.DatabaseService.select("inventory_logs", "*, products(name, receipt_check_only)")
+        .eq("store_id", currentStoreId)
+        .eq("action", "입고")
+        .is("reverted_at", null)
+        .gte("created_at", range.start)
+        .lt("created_at", range.end)
+        .order("created_at", { ascending: false })
+    ]);
+
+    const historyError = expectedResult.error ?? completedResult.error;
+    if (historyError) {
+      setReceiptHistoryError(
+        historyError.message.includes("confirmed_order_items") || historyError.message.includes("inventory_logs")
+          ? "입고 히스토리용 데이터베이스 업데이트가 필요합니다."
+          : historyError.message
+      );
+    } else {
+      setReceiptHistoryExpected(((expectedResult.data ?? []) as ConfirmedOrderReceipt[]).map((product) => ({
+        productId: product.product_id,
+        name: product.product_name,
+        quantity: null,
+        lastReceivedAt: product.confirmed_at,
+        receiptCheckOnly: false,
+        status: "expected"
+      })));
+      setReceiptHistoryCompleted(buildCompletedReceipts((completedResult.data ?? []) as unknown as ReceiptHistoryLog[]));
+    }
+
+    setReceiptHistoryLoading(false);
+  }
+
+  async function openReceiptHistory() {
+    const initialDate = selectedDate ?? nextBusinessDate ?? todayValue;
+    setReceiptHistoryDate(initialDate);
+    setReceiptHistoryOpen(true);
+    await loadReceiptHistory(initialDate);
+  }
+
   const completedCount = todos.filter((todo) => todo.is_completed).length;
   const isToday = dashboardView === "today";
 
@@ -713,7 +795,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               type="button"
               onClick={() => changeDashboardView(view)}
               aria-pressed={dashboardView === view}
-              surfaceFeedback={dashboardView !== view}
+              surfaceFeedback={false}
               className={`min-h-9 rounded-md px-4 text-xs font-extrabold transition-colors ${
                 dashboardView === view
                   ? "bg-brand-600 text-white"
@@ -736,17 +818,38 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             title={isToday ? "금일 입고품목" : "내일 입고예정 품목"}
             badge={`${receipts.length}종`}
             action={isToday ? (
+              <div className="flex items-center gap-1">
+                <PressableButton
+                  type="button"
+                  onClick={() => void openReceiptHistory()}
+                  className="touch-button grid shrink-0 place-items-center rounded-md text-brand-700 dark:text-brand-100"
+                  aria-label="입고 예정 및 완료 히스토리"
+                  title="입고 히스토리"
+                >
+                  <HistoryReceiptIcon size={19} />
+                </PressableButton>
+                <PressableButton
+                  type="button"
+                  disabled={!hasReceiptDeletion || receiptActioning}
+                  onClick={() => void restoreLatestReceiptDeletion()}
+                  className="touch-button grid shrink-0 place-items-center text-brand-700 disabled:cursor-default disabled:opacity-30 dark:text-brand-100"
+                  aria-label="최근 금일 입고 삭제 되돌리기"
+                  title="최근 삭제 되돌리기"
+                >
+                  <Undo2 size={18} />
+                </PressableButton>
+              </div>
+            ) : (
               <PressableButton
                 type="button"
-                disabled={!hasReceiptDeletion || receiptActioning}
-                onClick={() => void restoreLatestReceiptDeletion()}
-                className="touch-button grid shrink-0 place-items-center text-brand-700 disabled:cursor-default disabled:opacity-30 dark:text-brand-100"
-                aria-label="최근 금일 입고 삭제 되돌리기"
-                title="최근 삭제 되돌리기"
+                onClick={() => void openReceiptHistory()}
+                className="touch-button grid shrink-0 place-items-center rounded-md text-brand-700 dark:text-brand-100"
+                aria-label="입고 예정 및 완료 히스토리"
+                title="입고 히스토리"
               >
-                <Undo2 size={18} />
+                <HistoryReceiptIcon size={19} />
               </PressableButton>
-            ) : undefined}
+            )}
           />
           <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
@@ -954,6 +1057,97 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   </AnimatedListItem>
                 ))}
               </AnimatedList>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {receiptHistoryOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="입고 히스토리">
+          <div className="flex max-h-[86dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <HistoryReceiptIcon className="shrink-0 text-brand-700 dark:text-brand-100" size={21} />
+                  <h2 className="truncate font-extrabold">입고 히스토리</h2>
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">날짜별 입고 예정 품목과 실제 입고 품목을 확인합니다.</p>
+              </div>
+              <PressableButton type="button" onClick={() => setReceiptHistoryOpen(false)} className="touch-button icon-button shrink-0" aria-label="닫기">
+                <X size={20} />
+              </PressableButton>
+            </div>
+
+            <form
+              className="grid grid-cols-[1fr_auto] gap-2 border-b border-slate-100 p-3 dark:border-slate-800"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void loadReceiptHistory(receiptHistoryDate);
+              }}
+            >
+              <label className="min-w-0">
+                <span className="sr-only">조회 날짜</span>
+                <input className="field min-h-10" type="date" value={receiptHistoryDate} onChange={(event) => setReceiptHistoryDate(event.target.value)} />
+              </label>
+              <PressableButton type="submit" disabled={receiptHistoryLoading || !receiptHistoryDate} className="min-h-10 rounded-md bg-brand-600 px-4 text-xs font-extrabold text-white disabled:opacity-50" surfaceFeedback={false}>
+                조회
+              </PressableButton>
+            </form>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {receiptHistoryError ? <StatusMessage type="error">{receiptHistoryError}</StatusMessage> : null}
+              {receiptHistoryLoading ? <StatusMessage>입고 히스토리를 불러오는 중...</StatusMessage> : null}
+              {!receiptHistoryLoading && !receiptHistoryError ? (
+                <div className="space-y-3">
+                  <section>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-50">{shortDateLabel(receiptHistoryDate)} 입고 예정</h3>
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:bg-amber-950 dark:text-amber-200">{receiptHistoryExpected.length}종</span>
+                    </div>
+                    {receiptHistoryExpected.length === 0 ? (
+                      <StatusMessage>해당 날짜에 입고 예정으로 확정된 품목이 없습니다.</StatusMessage>
+                    ) : (
+                      <AnimatedList className="space-y-2">
+                        {receiptHistoryExpected.map((item) => (
+                          <AnimatedListItem key={`expected-${item.productId}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="min-w-0 truncate text-sm font-bold">{item.name}</span>
+                              <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-extrabold text-amber-700 dark:bg-amber-950 dark:text-amber-200">입고예정</span>
+                            </div>
+                          </AnimatedListItem>
+                        ))}
+                      </AnimatedList>
+                    )}
+                  </section>
+
+                  <section>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-50">{shortDateLabel(receiptHistoryDate)} 입고 완료</h3>
+                      <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-100">{receiptHistoryCompleted.length}종</span>
+                    </div>
+                    {receiptHistoryCompleted.length === 0 ? (
+                      <StatusMessage>해당 날짜에 실제 입고된 품목이 없습니다.</StatusMessage>
+                    ) : (
+                      <AnimatedList className="space-y-2">
+                        {receiptHistoryCompleted.map((item) => (
+                          <AnimatedListItem key={`completed-${item.productId}`} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">{item.name}</p>
+                                {item.lastReceivedAt ? <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(item.lastReceivedAt)}</p> : null}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                {item.quantity !== null ? <span className="text-xs font-extrabold text-brand-700 dark:text-brand-100">+{formatInventoryQuantity(item.quantity)}</span> : null}
+                                <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-extrabold text-brand-700 dark:bg-brand-950 dark:text-brand-100">입고완료</span>
+                              </div>
+                            </div>
+                          </AnimatedListItem>
+                        ))}
+                      </AnimatedList>
+                    )}
+                  </section>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
