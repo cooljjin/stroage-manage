@@ -177,7 +177,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [receiptActioning, setReceiptActioning] = useState(false);
   const [receiptDeletingIds, setReceiptDeletingIds] = useState<Set<string>>(new Set());
   const [hasReceiptDeletion, setHasReceiptDeletion] = useState(false);
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [todoActioningIds, setTodoActioningIds] = useState<Set<string>>(new Set());
+  const [deletingHandoverIds, setDeletingHandoverIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const selectedDate = dashboardView === "today" ? todayValue : nextBusinessDate;
@@ -397,7 +398,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     const [receiptLogResult, expectedReceiptResult, todoResult, handoverResult, profileResult, receiptDeletionResult] = await Promise.all([
       receiptLogQuery,
       expectedReceiptQuery,
-      Services.DatabaseService.select("dashboard_todos", "*").eq("task_date", dashboardDate).order("created_at", { ascending: true }),
+      Services.DatabaseService.select("dashboard_todos", "*")
+        .eq("store_id", currentStoreId)
+        .eq("task_date", dashboardDate)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true }),
       Services.DatabaseService.select("handover_notes", "*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
       Services.DatabaseService.select("profiles", "*"),
       Services.DatabaseService.select("dashboard_receipt_deletions", "id")
@@ -581,38 +586,58 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   }
 
   async function toggleTodo(todo: DashboardTodo) {
+    if (todoActioningIds.has(todo.id)) return;
     const nextCompleted = !todo.is_completed;
-    setTodos((current) => current.map((item) => (item.id === todo.id ? { ...item, is_completed: nextCompleted } : item)));
+    setTodoActioningIds((current) => new Set(current).add(todo.id));
+    setError("");
     const { data: userData } = await Services.AuthService.getUser();
-    const { error: updateError } = await Services.DatabaseService.update("dashboard_todos", {
+    const { data: updatedTodo, error: updateError } = await Services.DatabaseService.update("dashboard_todos", {
         is_completed: nextCompleted,
         completed_at: nextCompleted ? new Date().toISOString() : null,
         completed_by: nextCompleted ? userData.user?.id ?? null : null
       })
-      .eq("id", todo.id);
+      .eq("store_id", currentStoreId)
+      .eq("id", todo.id)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
-    if (updateError) {
-      setTodos((current) => current.map((item) => (item.id === todo.id ? todo : item)));
-      setError(updateError.message);
+    if (updateError || !updatedTodo) {
+      setError(updateError?.message ?? "할 일 완료 상태를 반영하지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+    } else {
+      setTodos((current) => current.map((item) => (item.id === todo.id ? { ...item, is_completed: nextCompleted } : item)));
     }
+    setTodoActioningIds((current) => {
+      const next = new Set(current);
+      next.delete(todo.id);
+      return next;
+    });
   }
 
   async function deleteTodo(todo: DashboardTodo) {
     if (!selectedDate) return;
     if (!window.confirm(`"${todo.content}" 할 일을 삭제할까요?`)) return;
 
-    setDeletingIds((current) => new Set(current).add(todo.id));
+    if (todoActioningIds.has(todo.id)) return;
+    setTodoActioningIds((current) => new Set(current).add(todo.id));
     setError("");
-    const { error: deleteError } = await Services.DatabaseService.delete("dashboard_todos")
+    const { data: deletedTodo, error: deleteError } = await Services.DatabaseService.update("dashboard_todos", {
+      deleted_at: new Date().toISOString(),
+      deleted_by: (await Services.AuthService.getUser()).data.user?.id ?? null
+    })
+      .eq("store_id", currentStoreId)
       .eq("id", todo.id)
-      .eq("task_date", selectedDate);
+      .eq("task_date", selectedDate)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
 
-    if (deleteError) {
-      setError(deleteError.message);
+    if (deleteError || !deletedTodo) {
+      setError(deleteError?.message ?? "할 일을 삭제하지 못했습니다. 새로고침 후 다시 시도해 주세요.");
     } else {
       setTodos((current) => current.filter((item) => item.id !== todo.id));
     }
-    setDeletingIds((current) => {
+    setTodoActioningIds((current) => {
       const next = new Set(current);
       next.delete(todo.id);
       return next;
@@ -653,7 +678,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     if (dashboardView !== "tomorrow" || !nextBusinessDate) return;
     if (!window.confirm("이 인수인계 내용을 삭제할까요?")) return;
 
-    setDeletingIds((current) => new Set(current).add(note.id));
+    setDeletingHandoverIds((current) => new Set(current).add(note.id));
     setError("");
     const { error: deleteError } = await Services.DatabaseService.delete("handover_notes")
       .eq("id", note.id)
@@ -665,7 +690,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     } else {
       setHandovers((current) => current.filter((item) => item.id !== note.id));
     }
-    setDeletingIds((current) => {
+    setDeletingHandoverIds((current) => {
       const next = new Set(current);
       next.delete(note.id);
       return next;
@@ -944,7 +969,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     <input
                       type="checkbox"
                       checked={todo.is_completed}
-                      disabled={!isToday}
+                      disabled={!isToday || todoActioningIds.has(todo.id)}
                       onChange={() => void toggleTodo(todo)}
                       className="h-5 w-5 shrink-0 accent-brand-600 disabled:cursor-default disabled:opacity-60"
                       aria-label={`${todo.content} 완료`}
@@ -964,7 +989,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   )}
                   <PressableButton
                     type="button"
-                    disabled={deletingIds.has(todo.id)}
+                    disabled={todoActioningIds.has(todo.id)}
                     onClick={() => void deleteTodo(todo)}
                     className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
                     aria-label={`${todo.content} 삭제`}
@@ -1019,7 +1044,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 {!isToday ? (
                   <PressableButton
                     type="button"
-                    disabled={deletingIds.has(note.id)}
+                    disabled={deletingHandoverIds.has(note.id)}
                     onClick={() => void deleteHandover(note)}
                     className="touch-button grid shrink-0 place-items-center self-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
                     aria-label="인수인계 삭제"

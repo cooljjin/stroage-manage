@@ -819,6 +819,8 @@ export type Database = {
           is_completed: boolean;
           completed_at: string | null;
           completed_by: string | null;
+          deleted_at: string | null;
+          deleted_by: string | null;
           routine_id: string | null;
           stale_inventory_product_id: string | null;
           created_by: string;
@@ -832,6 +834,8 @@ export type Database = {
           is_completed?: boolean;
           completed_at?: string | null;
           completed_by?: string | null;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
           routine_id?: string | null;
           stale_inventory_product_id?: string | null;
           created_by: string;
@@ -844,6 +848,8 @@ export type Database = {
           is_completed?: boolean;
           completed_at?: string | null;
           completed_by?: string | null;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
           routine_id?: string | null;
           stale_inventory_product_id?: string | null;
         };
