@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronRight, Link2, LogOut, MessageCircle, Moon, Plus, Search, Sun, Trash2, Unlink, UserRound } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
+import { AccountDeletionSection } from "../components/AccountDeletionSection";
 import { getSeoulDateValue, WEEKDAYS } from "../lib/businessCalendar";
 import * as Services from "../services";
 import type { UserIdentity } from "../services";
@@ -498,6 +499,8 @@ export function SettingsPage({ currentRole, darkMode, onToggleDarkMode, onLogout
               </div>
             </div>
           ) : null}
+
+          <AccountDeletionSection onLogout={onLogout} />
 
           <button
             type="button"

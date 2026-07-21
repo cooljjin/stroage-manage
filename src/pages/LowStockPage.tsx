@@ -75,10 +75,19 @@ function shiftDateValue(dateValue: string, dayOffset: number): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseRequiredQuantity(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const quantity = Number(trimmed);
+  return Number.isFinite(quantity) ? quantity : null;
+}
+
 export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
+  const [requiredQuantities, setRequiredQuantities] = useState<Record<string, string>>({});
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set());
   const [completingFreshIds, setCompletingFreshIds] = useState<Set<string>>(new Set());
   const [freshReceivingUndoStack, setFreshReceivingUndoStack] = useState<FreshReceivingUndoEntry[]>([]);
@@ -495,6 +504,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
       supplier_name: item.supplier_name,
       total_stock: item.receipt_check_only ? null : item.total_stock,
       minimum_stock: item.receipt_check_only ? null : item.minimum_stock,
+      required_quantity: parseRequiredQuantity(requiredQuantities[item.id] ?? ""),
       is_low_stock: !item.receipt_check_only && item.is_low_stock,
       fresh_order_selected: item.fresh_order_selected,
       urgent_order_requested: item.urgent_order_requested,
@@ -800,6 +810,19 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                       </button>
                     ) : null}
                   </div>
+                  <label className="col-span-full flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                    <span className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">필요 갯수</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={requiredQuantities[item.id] ?? ""}
+                      onChange={(event) => setRequiredQuantities((current) => ({ ...current, [item.id]: event.target.value }))}
+                      className="field h-9 min-w-0 flex-1 px-2 py-1 text-right text-sm tabular-nums"
+                      aria-label={`${item.name} 필요 갯수`}
+                    />
+                  </label>
                   <ProductOrderAction
                     item={item}
                     supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
@@ -820,6 +843,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                   <th className="w-16 px-2 py-3 text-right">최소</th>
                   <th className="w-[92px] px-2 py-3 text-center">컨펌</th>
                   <th className="w-[96px] px-2 py-3 text-center">입고완료</th>
+                  <th className="w-[104px] px-2 py-3 text-center">필요 갯수</th>
                   <th className="w-[122px] px-2 py-3 text-center">발주</th>
                 </tr>
               </thead>
@@ -880,6 +904,18 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                       >
                         입고 완료
                       </button>
+                    </td>
+                    <td className="px-2 py-2" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={requiredQuantities[item.id] ?? ""}
+                        onChange={(event) => setRequiredQuantities((current) => ({ ...current, [item.id]: event.target.value }))}
+                        className="field h-9 w-full px-2 py-1 text-right text-sm tabular-nums"
+                        aria-label={`${item.name} 필요 갯수`}
+                      />
                     </td>
                     <td className="px-2 py-2 text-center">
                       <ProductOrderAction
@@ -1176,6 +1212,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                                   <span>발주처: {item.supplier_name || "미지정"}</span>
                                   <span>총재고: {item.total_stock === null ? "-" : formatInventoryQuantity(item.total_stock)}</span>
                                   <span>최소: {item.minimum_stock ?? "-"}</span>
+                                  <span>필요 갯수: {item.required_quantity === null ? "-" : formatInventoryQuantity(item.required_quantity)}</span>
                                 </div>
                               </div>
                               {product ? (

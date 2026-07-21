@@ -113,13 +113,17 @@ export type StaffProfile = {
   invited_by: string | null;
   created_at: string;
   updated_at: string;
+  deletion_requested_at: string | null;
 };
 
 export type Store = {
   id: string;
   name: string;
   business_name: string | null;
-  status: "active" | "inactive";
+  status: "active" | "inactive" | "pending_deletion";
+  created_by: string | null;
+  deletion_requested_at: string | null;
+  purge_after: string | null;
   created_at: string;
   updated_at: string;
 };

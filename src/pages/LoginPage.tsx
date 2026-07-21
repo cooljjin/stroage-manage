@@ -9,7 +9,7 @@ const OAUTH_BUTTONS: Array<{
   provider: OAuthProvider;
   label: string;
   className: string;
-  icon: typeof Search;
+  icon: typeof Search | null;
 }> = [
   {
     provider: "google",
@@ -23,6 +23,12 @@ const OAUTH_BUTTONS: Array<{
     className: "border-[#FEE500] bg-[#FEE500] text-[#191919] hover:bg-[#f5dc00]",
     icon: MessageCircle
   },
+  {
+    provider: "apple",
+    label: "Apple로 계속하기",
+    className: "border-black bg-black text-white hover:bg-slate-800 dark:border-white dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200",
+    icon: null
+  }
 ];
 
 type Props = {
@@ -163,7 +169,7 @@ export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
                     disabled={loading || oauthLoading !== null}
                     className={`touch-button inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 text-sm font-extrabold disabled:cursor-not-allowed disabled:opacity-60 ${item.className}`}
                   >
-                    <Icon size={18} />
+                    {Icon ? <Icon size={18} /> : <span aria-hidden="true" className="text-lg leading-none"></span>}
                     {busy ? "이동 중..." : item.label}
                   </button>
                 );

@@ -10,7 +10,10 @@ export type Database = {
           id: string;
           name: string;
           business_name: string | null;
-          status: "active" | "inactive";
+          status: "active" | "inactive" | "pending_deletion";
+          created_by: string | null;
+          deletion_requested_at: string | null;
+          purge_after: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -18,14 +21,20 @@ export type Database = {
           id?: string;
           name: string;
           business_name?: string | null;
-          status?: "active" | "inactive";
+          status?: "active" | "inactive" | "pending_deletion";
+          created_by?: string | null;
+          deletion_requested_at?: string | null;
+          purge_after?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           name?: string;
           business_name?: string | null;
-          status?: "active" | "inactive";
+          status?: "active" | "inactive" | "pending_deletion";
+          created_by?: string | null;
+          deletion_requested_at?: string | null;
+          purge_after?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -195,6 +204,7 @@ export type Database = {
           supplier_name: string | null;
           total_stock: number | null;
           minimum_stock: number | null;
+          required_quantity: number | null;
           is_low_stock: boolean;
           fresh_order_selected: boolean;
           urgent_order_requested: boolean;
@@ -214,6 +224,7 @@ export type Database = {
           supplier_name?: string | null;
           total_stock?: number | null;
           minimum_stock?: number | null;
+          required_quantity?: number | null;
           is_low_stock?: boolean;
           fresh_order_selected?: boolean;
           urgent_order_requested?: boolean;
@@ -232,6 +243,7 @@ export type Database = {
           supplier_name?: string | null;
           total_stock?: number | null;
           minimum_stock?: number | null;
+          required_quantity?: number | null;
           is_low_stock?: boolean;
           fresh_order_selected?: boolean;
           urgent_order_requested?: boolean;
@@ -253,6 +265,7 @@ export type Database = {
           invited_by: string | null;
           created_at: string;
           updated_at: string;
+          deletion_requested_at: string | null;
         };
         Insert: {
           id: string;
@@ -264,6 +277,7 @@ export type Database = {
           invited_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          deletion_requested_at?: string | null;
         };
         Update: {
           store_id?: string;
@@ -273,6 +287,7 @@ export type Database = {
           role?: "master" | "store_admin" | "staff";
           invited_by?: string | null;
           updated_at?: string;
+          deletion_requested_at?: string | null;
         };
         Relationships: [];
       };

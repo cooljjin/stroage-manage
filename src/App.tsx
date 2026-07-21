@@ -10,6 +10,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupRequestPage } from "./pages/SignupRequestPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { AccountDeletionRecoveryPage } from "./pages/AccountDeletionRecoveryPage";
 import { HomePage } from "./pages/HomePage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductEditPage } from "./pages/ProductEditPage";
@@ -526,6 +527,10 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  if (profile.deletion_requested_at) {
+    return <AccountDeletionRecoveryPage onRecovered={(nextProfile) => setProfile(nextProfile)} />;
   }
 
   const permittedRoute = canAccess(route.name, profile) ? route : { name: "home" as const };
