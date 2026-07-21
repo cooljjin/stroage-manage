@@ -4,5 +4,7 @@ export { DatabaseService } from "./database/DatabaseService";
 export type { SelectFilter, SelectOptions, SelectOrder } from "./database/DatabaseService";
 export { EdgeFunctionService } from "./functions/EdgeFunctionService";
 export { StorageService } from "./storage/StorageService";
+export { TimelineService } from "./timeline/TimelineService";
+export type { TimelineDay, TimelineEvent, TimelineEventType, TimelineMonth } from "./timeline/TimelineService";
 export type { ServiceError } from "./errors";
 export { normalizeServiceError } from "./errors";

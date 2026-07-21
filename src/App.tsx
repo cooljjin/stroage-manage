@@ -12,6 +12,7 @@ import { SignupRequestPage } from "./pages/SignupRequestPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { AccountDeletionRecoveryPage } from "./pages/AccountDeletionRecoveryPage";
 import { HomePage } from "./pages/HomePage";
+import { TimelineCalendarPage } from "./pages/TimelineCalendarPage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductEditPage } from "./pages/ProductEditPage";
 import { InventoryOperationPage } from "./pages/InventoryOperationPage";
@@ -565,6 +566,7 @@ export default function App() {
         <LazyMotion features={domAnimation}>
           <m.div key={routeKey(permittedRoute)} initial={routeMotionProps.initial} animate={routeMotionProps.animate} transition={routeMotionProps.transition}>
             {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "timeline-calendar" && <TimelineCalendarPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
             {permittedRoute.name === "register" && (
               <ProductEditPage

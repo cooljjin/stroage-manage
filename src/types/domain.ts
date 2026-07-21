@@ -16,6 +16,7 @@ export type RouteName =
   | "signup-request"
   | "privacy"
   | "home"
+  | "timeline-calendar"
   | "scan"
   | "register"
   | "product-edit"

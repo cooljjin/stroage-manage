@@ -319,6 +319,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     }
   }
 
+  function fillActualQuantity(currentQuantity: number) {
+    setQuantity(String(currentQuantity));
+  }
+
   function updateReceiptQuantityInput(value: string) {
     const nextValue = value.replace(",", ".");
     if (/^\d*\.?\d*$/.test(nextValue)) {
@@ -859,20 +863,32 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
         <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
           <div className="panel p-3">
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
+              <button
+                type="button"
+                onClick={() => fillActualQuantity(item.warehouse_qty)}
+                className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+                aria-label={`창고 현재 수량 ${formatInventoryQuantity(item.warehouse_qty)}을 실제 재고 수량에 입력`}
+                title="실제 재고 수량에 입력"
+              >
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">창고</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.warehouse_qty)}</p>
                 <p className="mt-1 text-[10px] font-semibold leading-snug text-slate-500 dark:text-slate-400">
                   <LastInventoryCheckLabel info={lastInventoryCheckDates.warehouse} />
                 </p>
-              </div>
-              <div className="rounded-md bg-slate-100 p-2 dark:bg-slate-900">
+              </button>
+              <button
+                type="button"
+                onClick={() => fillActualQuantity(item.store_qty)}
+                className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+                aria-label={`매장 현재 수량 ${formatInventoryQuantity(item.store_qty)}을 실제 재고 수량에 입력`}
+                title="실제 재고 수량에 입력"
+              >
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">매장</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.store_qty)}</p>
                 <p className="mt-1 text-[10px] font-semibold leading-snug text-slate-500 dark:text-slate-400">
                   <LastInventoryCheckLabel info={lastInventoryCheckDates.store} />
                 </p>
-              </div>
+              </button>
             </div>
             <div className="mt-2 rounded-md border border-slate-200 p-2 text-sm dark:border-slate-800">
               <div className="flex flex-wrap items-center gap-2">

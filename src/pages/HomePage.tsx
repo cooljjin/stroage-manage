@@ -813,7 +813,17 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           <p className="text-xs font-bold text-brand-700 dark:text-brand-100">{isToday ? "오늘의 업무" : "내일의 업무"}</p>
           <h1 className="text-xl font-extrabold">{selectedDate ? shortDateLabel(selectedDate) : "날짜 계산 중..."}</h1>
         </div>
-        <div className="grid grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center gap-1">
+          <PressableButton
+            type="button"
+            onClick={() => navigate({ name: "timeline-calendar" })}
+            className="touch-button grid place-items-center rounded-lg border border-slate-200 bg-white text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-brand-100"
+            aria-label="매장 타임라인 캘린더 열기"
+            title="매장 타임라인 캘린더"
+          >
+            <CalendarDays size={18} />
+          </PressableButton>
+          <div className="grid grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
           {(["today", "tomorrow"] as DashboardView[]).map((view) => (
             <PressableButton
               key={view}
@@ -830,6 +840,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               {view === "today" ? "오늘" : "내일"}
             </PressableButton>
           ))}
+          </div>
         </div>
       </div>
 
