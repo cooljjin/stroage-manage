@@ -92,6 +92,7 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   const [completingFreshIds, setCompletingFreshIds] = useState<Set<string>>(new Set());
   const [freshReceivingUndoStack, setFreshReceivingUndoStack] = useState<FreshReceivingUndoEntry[]>([]);
   const [undoingFreshReceiving, setUndoingFreshReceiving] = useState(false);
+  const [deletingAddedOrderIds, setDeletingAddedOrderIds] = useState<Set<string>>(new Set());
   const [deletingUrgentIds, setDeletingUrgentIds] = useState<Set<string>>(new Set());
   const [freshModalOpen, setFreshModalOpen] = useState(false);
   const [freshSearch, setFreshSearch] = useState("");
@@ -549,6 +550,44 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
     });
   }
 
+  async function deleteAddedOrder(item: InventoryItem) {
+    setError("");
+    setDeletingAddedOrderIds((current) => new Set(current).add(item.id));
+    setItems((current) =>
+      current.map((product) =>
+        product.id === item.id
+          ? {
+              ...product,
+              fresh_order_selected: false,
+              fresh_order_selected_at: null,
+              urgent_order_requested: false,
+              urgent_order_quantity: null
+            }
+          : product
+      )
+    );
+
+    const { error: updateError } = await Services.DatabaseService.update("products", {
+        fresh_order_selected: false,
+        fresh_order_selected_at: null,
+        urgent_order_requested: false,
+        urgent_order_quantity: null
+      })
+      .eq("store_id", currentStoreId)
+      .eq("id", item.id);
+
+    if (updateError) {
+      setItems((current) => current.map((product) => (product.id === item.id ? item : product)));
+      setError(updateError.message);
+    }
+
+    setDeletingAddedOrderIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+  }
+
   async function toggleOrderCompleted(item: InventoryItem, checked: boolean) {
     setError("");
     setUpdatingOrderIds((current) => new Set(current).add(item.id));
@@ -799,7 +838,16 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                     >
                       입고 완료
                     </button>
-                    {item.urgent_order_requested ? (
+                    {item.fresh_order_selected ? (
+                      <button
+                        type="button"
+                        disabled={deletingAddedOrderIds.has(item.id)}
+                        onClick={() => void deleteAddedOrder(item)}
+                        className="min-h-9 whitespace-nowrap rounded-md border border-red-200 px-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
+                      >
+                        삭제
+                      </button>
+                    ) : item.urgent_order_requested ? (
                       <button
                         type="button"
                         disabled={deletingUrgentIds.has(item.id)}
@@ -884,7 +932,16 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
                         aria-label={`${item.name} 컨펌`}
                         className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
                       />
-                      {item.urgent_order_requested ? (
+                      {item.fresh_order_selected ? (
+                        <button
+                          type="button"
+                          disabled={deletingAddedOrderIds.has(item.id)}
+                          onClick={() => void deleteAddedOrder(item)}
+                          className="mt-2 min-h-9 w-full rounded-md border border-red-200 px-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
+                        >
+                          삭제
+                        </button>
+                      ) : item.urgent_order_requested ? (
                         <button
                           type="button"
                           disabled={deletingUrgentIds.has(item.id)}
