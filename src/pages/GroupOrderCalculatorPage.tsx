@@ -8,13 +8,13 @@ import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
-import type { AppRoute, GroupOrderEvent, GroupOrderEventItem, GroupOrderMenu, GroupOrderRecipeIngredient, GroupOrderRouteDraft, InventoryItem, Product, ProductSupplier, ProfileRole, RecipeUsageUnit, UnitWeightUnit } from "../types/domain";
+import type { AppRoute, GroupOrderEvent, GroupOrderEventItem, GroupOrderMenu, GroupOrderRecipeIngredient, GroupOrderRouteDraft, InventoryItem, Product, ProductSupplier, RecipeUsageUnit, UnitWeightUnit } from "../types/domain";
 
 type Props = {
   mode: "recipes" | "calculator";
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
-  currentRole: ProfileRole;
+  canManageRecipes: boolean;
   restoreDraft?: GroupOrderRouteDraft;
 };
 
@@ -247,8 +247,7 @@ function getCalendarDates(monthDate: Date): Date[] {
   });
 }
 
-export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, currentRole, restoreDraft }: Props) {
-  const canManageRecipes = currentRole !== "staff";
+export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canManageRecipes, restoreDraft }: Props) {
   const isRecipeMode = mode === "recipes";
   const isCalculatorMode = mode === "calculator";
   const [menus, setMenus] = useState<GroupOrderMenuWithIngredients[]>([]);

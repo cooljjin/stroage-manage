@@ -1,15 +1,20 @@
 import { Calculator, ClipboardCheck, CookingPot, ListTodo, Package, Settings, Store, Tags, Truck, Users } from "lucide-react";
 import { StocklyMenuButton } from "./StocklyMenuButton";
-import type { ProfileRole, RouteName } from "../types/domain";
+import { hasStaffPermission } from "../lib/staffPermissions";
+import type { ProfileRole, RouteName, StaffPermissionKey } from "../types/domain";
 
 type Props = {
   open: boolean;
   role: ProfileRole;
+  staffPermissions: readonly StaffPermissionKey[];
   onOpenChange: (open: boolean) => void;
   onNavigate: (route: RouteName) => void;
 };
 
-export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
+export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate }: Props) {
+  function canManage(permission: StaffPermissionKey) {
+    return role !== "staff" || hasStaffPermission(staffPermissions, permission);
+  }
   function go(route: RouteName) {
     onNavigate(route);
     onOpenChange(false);
@@ -69,7 +74,7 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
             <Calculator size={19} />
             단체주문 계산
           </button>
-          {role !== "staff" ? (
+          {canManage("group_order_recipe_management") ? (
             <button
               type="button"
               onClick={() => go("group-order-recipes")}
@@ -96,44 +101,54 @@ export function TopMenu({ open, role, onOpenChange, onNavigate }: Props) {
             <ListTodo size={19} />
             To do list
           </button>
-          {role !== "staff" ? <div className="my-1 border-t border-slate-100 dark:border-slate-800" /> : null}
-          {role !== "staff" ? (
+          {role !== "staff" || staffPermissions.some((permission) => ["category_management", "supplier_management"].includes(permission)) ? <div className="my-1 border-t border-slate-100 dark:border-slate-800" /> : null}
+          {canManage("category_management") || canManage("supplier_management") ? (
             <>
-              <button
+              {canManage("category_management") ? <button
                 type="button"
                 onClick={() => go("category-management")}
                 className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
               >
                 <Tags size={19} />
                 카테고리 관리
-              </button>
-              <button
+              </button> : null}
+              {role !== "staff" ? <button
                 type="button"
                 onClick={() => go("unit-management")}
                 className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
               >
                 <Package size={19} />
                 품목 단위 관리
-              </button>
-              <button
+              </button> : null}
+              {canManage("supplier_management") ? <button
                 type="button"
                 onClick={() => go("supplier-management")}
                 className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
               >
                 <Truck size={19} />
                 발주처 관리
-              </button>
+              </button> : null}
             </>
           ) : null}
           {role === "store_admin" ? (
-            <button
-              type="button"
-              onClick={() => go("staff-management")}
-              className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-            >
-              <Users size={19} />
-              직원 관리
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => go("staff-management")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Users size={19} />
+                직원 관리
+              </button>
+              <button
+                type="button"
+                onClick={() => go("staff-permissions")}
+                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+              >
+                <Users size={19} />
+                권한 부여
+              </button>
+            </>
           ) : null}
           <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
           <button

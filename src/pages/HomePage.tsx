@@ -76,6 +76,7 @@ function isRoutineDue(routine: TodoRoutine, dateValue: string) {
 
   const date = new Date(`${dateValue}T00:00:00`);
   if (routine.schedule_type === "once") return routine.target_date === dateValue;
+  if (routine.schedule_type === "daily") return true;
   if (routine.schedule_type === "weekly") return routine.weekday === date.getDay();
   if (routine.schedule_type === "monthly") return Math.min(routine.month_day ?? 1, daysInMonth(dateValue)) === date.getDate();
   return false;

@@ -12,12 +12,14 @@ type Props = {
 
 const SCHEDULE_LABELS: Record<TodoRoutineScheduleType, string> = {
   once: "지정일",
+  daily: "일간 루틴",
   weekly: "주간",
   monthly: "월간"
 };
 
 function routineDescription(routine: TodoRoutine) {
   if (routine.schedule_type === "once") return routine.target_date ?? "-";
+  if (routine.schedule_type === "daily") return "매일";
   if (routine.schedule_type === "weekly") return `매주 ${WEEKDAYS[routine.weekday ?? 0].label}`;
   return `매월 ${routine.month_day ?? 1}일`;
 }
@@ -207,7 +209,7 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
 
   return (
     <section>
-      <PageTitle title="To do list" description="지정일, 주간, 월간 루틴으로 홈 화면에 노출될 할 일을 관리합니다." />
+      <PageTitle title="To do list" description="지정일, 일간, 주간, 월간 루틴으로 홈 화면에 노출될 할 일을 관리합니다." />
 
       {error ? <div className="mb-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
       {message ? <div className="mb-3"><StatusMessage type="success">{message}</StatusMessage></div> : null}
@@ -278,6 +280,7 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
             <span className="mb-1 block text-sm font-bold">반복 방식</span>
             <select className="field" value={scheduleType} onChange={(event) => setScheduleType(event.target.value as TodoRoutineScheduleType)}>
               <option value="once">지정일</option>
+              <option value="daily">일간 루틴</option>
               <option value="weekly">주간 루틴</option>
               <option value="monthly">월간 루틴</option>
             </select>

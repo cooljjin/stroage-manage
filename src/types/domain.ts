@@ -10,6 +10,7 @@ export type StockStatus = "충분" | "절반 이하" | "발주 필요";
 export type UnitWeightUnit = "g" | "kg" | "ml" | "L" | "개";
 export type RecipeUsageUnit = "g" | "kg" | "ml" | "L" | "개";
 export type ProfileRole = "master" | "store_admin" | "staff";
+export type StaffPermissionKey = "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
 export type RouteName =
   | "landing"
   | "login"
@@ -35,6 +36,7 @@ export type RouteName =
   | "supplier-management"
   | "settings"
   | "staff-management"
+  | "staff-permissions"
   | "master-stores"
   | "master-store-detail"
   | "master-users"
@@ -115,6 +117,15 @@ export type StaffProfile = {
   created_at: string;
   updated_at: string;
   deletion_requested_at: string | null;
+};
+
+export type StaffPermission = {
+  id: string;
+  store_id: string;
+  user_id: string;
+  permission_key: StaffPermissionKey;
+  granted_by: string | null;
+  created_at: string;
 };
 
 export type Store = {
@@ -316,7 +327,7 @@ export type DashboardTodo = {
   created_at: string;
 };
 
-export type TodoRoutineScheduleType = "once" | "weekly" | "monthly";
+export type TodoRoutineScheduleType = "once" | "daily" | "weekly" | "monthly";
 
 export type TodoRoutine = {
   id: string;

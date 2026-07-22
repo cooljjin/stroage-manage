@@ -291,6 +291,29 @@ export type Database = {
         };
         Relationships: [];
       };
+      staff_permissions: {
+        Row: {
+          id: string;
+          store_id: string;
+          user_id: string;
+          permission_key: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+          granted_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          user_id: string;
+          permission_key: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+          granted_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          permission_key?: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+          granted_by?: string | null;
+        };
+        Relationships: [];
+      };
       suppliers: {
         Row: {
           id: string;
@@ -860,7 +883,7 @@ export type Database = {
           id: string;
           store_id: string;
           content: string;
-          schedule_type: "once" | "weekly" | "monthly";
+          schedule_type: "once" | "daily" | "weekly" | "monthly";
           target_date: string | null;
           weekday: number | null;
           month_day: number | null;
@@ -875,7 +898,7 @@ export type Database = {
           id?: string;
           store_id: string;
           content: string;
-          schedule_type: "once" | "weekly" | "monthly";
+          schedule_type: "once" | "daily" | "weekly" | "monthly";
           target_date?: string | null;
           weekday?: number | null;
           month_day?: number | null;
@@ -889,7 +912,7 @@ export type Database = {
         Update: {
           store_id?: string;
           content?: string;
-          schedule_type?: "once" | "weekly" | "monthly";
+          schedule_type?: "once" | "daily" | "weekly" | "monthly";
           target_date?: string | null;
           weekday?: number | null;
           month_day?: number | null;

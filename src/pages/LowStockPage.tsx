@@ -9,13 +9,13 @@ import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventor
 import { recordReceiptCheckOnly, recordReceiptCompletion } from "../lib/receiptCheck";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
-import type { AppRoute, InventoryItem, ProductSupplier, ProfileRole } from "../types/domain";
+import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
 import type { Database } from "../types/supabase";
 
 type Props = {
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
-  currentRole: ProfileRole;
+  canConfirmOrderItems: boolean;
 };
 
 type FreshReceivingUndoEntry = {
@@ -83,7 +83,7 @@ function parseRequiredQuantity(value: string): number | null {
   return Number.isFinite(quantity) ? quantity : null;
 }
 
-export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
+export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
@@ -192,7 +192,6 @@ export function LowStockPage({ navigate, currentStoreId, currentRole }: Props) {
   }, [items]);
 
   const todayOrderDate = todayDateValue();
-  const canConfirmOrderItems = currentRole !== "staff";
   const confirmCheckedItems = useMemo(() => lowStockItems.filter((item) => item.order_completed), [lowStockItems]);
 
   const stopFreshScanner = useCallback(async () => {

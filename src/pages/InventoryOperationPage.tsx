@@ -52,13 +52,13 @@ function formatDateOnly(value: string): string {
 }
 
 function LastInventoryCheckLabel({ info }: { info: LocationCheckInfo }) {
-  if (!info.checkedAt) return <>마지막 확인 -</>;
+  if (!info.checkedAt) return <>마지막 실사 -</>;
 
   const timeLabel = formatDateTime(info.checkedAt).split(" ").slice(1).join(" ");
 
   return (
     <>
-      마지막 확인 {formatDateOnly(info.checkedAt)}
+      마지막 실사 {formatDateOnly(info.checkedAt)}
       {timeLabel ? <span className="hidden sm:inline"> {timeLabel}</span> : null}
       {info.staffName ? <> · {info.staffName}</> : null}
     </>
@@ -195,7 +195,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { data, error: latestCheckError } = await Services.DatabaseService.select("inventory_logs", "*")
       .eq("store_id", currentStoreId)
       .eq("product_id", productId)
-      .neq("action", "메모")
+      .eq("action", "조정")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(100);
@@ -940,7 +940,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             {ACTIONS.map((name) => (
               <label key={name} className={`min-h-10 rounded-md border px-2 py-2 text-center text-sm font-bold ${action === name ? "border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100" : "border-slate-200 dark:border-slate-800"}`}>
                 <input className="sr-only" type="radio" checked={action === name} onChange={() => setAction(name)} />
-                {name}
+                {name === "조정" ? "실사" : name}
               </label>
             ))}
           </div>

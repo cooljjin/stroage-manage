@@ -30,15 +30,17 @@ import { SupplierManagementPage } from "./pages/SupplierManagementPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { StaffManagementPage } from "./pages/StaffManagementPage";
+import { StaffPermissionsPage } from "./pages/StaffPermissionsPage";
 import { MasterStoresPage } from "./pages/MasterStoresPage";
 import { MasterUsersPage } from "./pages/MasterUsersPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
+import { hasStaffPermission, permissionForRoute } from "./lib/staffPermissions";
 import { pageTransitionMotion, reducedPageTransitionMotion } from "./lib/animations";
 import { ensureCurrentProfile } from "./lib/profiles";
 import * as Services from "./services";
 import { ACCOUNT_LINK_RETURN_STORAGE_KEY } from "./services";
 import type { Session } from "./services";
-import type { AppRoute, RouteName, StaffProfile } from "./types/domain";
+import type { AppRoute, RouteName, StaffPermission, StaffPermissionKey, StaffProfile } from "./types/domain";
 import type { ProfileRole } from "./types/domain";
 
 const NAV_ROUTES: RouteName[] = ["home", "inventory", "scan", "low-stock", "logs"];
@@ -153,14 +155,17 @@ function getProfileRole(profile: StaffProfile): ProfileRole {
   return profile.role ?? (profile.is_admin ? "store_admin" : "staff");
 }
 
-function canAccess(routeName: RouteName, profile: StaffProfile) {
+function canAccess(routeName: RouteName, profile: StaffProfile, staffPermissions: readonly StaffPermissionKey[]) {
   const role = getProfileRole(profile);
   if (role === "master") return true;
 
   const masterRoutes: RouteName[] = ["master-stores", "master-store-detail", "master-users"];
   if (masterRoutes.includes(routeName)) return false;
 
-  const adminRoutes: RouteName[] = ["admin", "category-management", "unit-management", "supplier-management", "prep-items", "group-order-recipes", "staff-management"];
+  const permission = permissionForRoute(routeName);
+  if (permission) return role === "store_admin" || hasStaffPermission(staffPermissions, permission);
+
+  const adminRoutes: RouteName[] = ["admin", "prep-items", "staff-management", "staff-permissions"];
   if (adminRoutes.includes(routeName)) return role === "store_admin";
 
   return true;
@@ -183,6 +188,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
+  const [staffPermissions, setStaffPermissions] = useState<StaffPermissionKey[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => initialRoute());
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
@@ -262,6 +268,7 @@ export default function App() {
 
     if (!session) {
       setProfile(null);
+      setStaffPermissions([]);
       setProfileLoading(false);
       return;
     }
@@ -275,12 +282,19 @@ export default function App() {
 
       if (existingProfile) {
         setProfile(existingProfile);
+        const { data: permissions } = await Services.DatabaseService.select("staff_permissions", "permission_key")
+          .eq("store_id", existingProfile.store_id)
+          .eq("user_id", existingProfile.id);
+        if (!cancelled) {
+          setStaffPermissions(((permissions ?? []) as Pick<StaffPermission, "permission_key">[]).map((permission) => permission.permission_key));
+        }
         clearPendingInviteCode();
         setProfileLoading(false);
         return;
       }
 
       setProfile(null);
+      setStaffPermissions([]);
       setProfileLoading(false);
     }
 
@@ -382,6 +396,7 @@ export default function App() {
     routeHistoryRef.current = [];
     setCanGoBack(false);
     setProfile(null);
+    setStaffPermissions([]);
     setConnectionError("");
     setConnectionMessage("");
     navigate({ name: "landing" }, { replace: true });
@@ -534,7 +549,7 @@ export default function App() {
     return <AccountDeletionRecoveryPage onRecovered={(nextProfile) => setProfile(nextProfile)} />;
   }
 
-  const permittedRoute = canAccess(route.name, profile) ? route : { name: "home" as const };
+  const permittedRoute = canAccess(route.name, profile, staffPermissions) ? route : { name: "home" as const };
   const profileRole = getProfileRole(profile);
   const routeMotionProps = shouldReduceMotion ? reducedPageTransitionMotion : pageTransitionMotion;
 
@@ -544,7 +559,7 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 flex-1 items-center gap-0">
-            <TopMenu open={menuOpen} role={profileRole} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
+            <TopMenu open={menuOpen} role={profileRole} staffPermissions={staffPermissions} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
             <img src="/stockly-logo.png" alt="Stockly" className="-ml-1 h-10 w-auto min-w-0 object-contain sm:h-12" />
           </div>
         </div>
@@ -589,7 +604,7 @@ export default function App() {
               <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
             )}
             {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} currentRole={profileRole} />}
+            {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} canConfirmOrderItems={profileRole !== "staff" || hasStaffPermission(staffPermissions, "order_confirmation")} />}
             {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "todo-routines" && <TodoRoutinesPage currentStoreId={profile.store_id} />}
@@ -598,7 +613,7 @@ export default function App() {
                 mode="calculator"
                 navigate={navigate}
                 currentStoreId={profile.store_id}
-                currentRole={profileRole}
+                canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
                 restoreDraft={permittedRoute.groupOrderDraft}
               />
             )}
@@ -607,7 +622,7 @@ export default function App() {
                 mode="recipes"
                 navigate={navigate}
                 currentStoreId={profile.store_id}
-                currentRole={profileRole}
+                canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
                 restoreDraft={permittedRoute.groupOrderDraft}
               />
             )}
@@ -618,6 +633,7 @@ export default function App() {
             {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
             {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
             {permittedRoute.name === "staff-management" && <StaffManagementPage />}
+            {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "master-stores" && <MasterStoresPage />}
             {permittedRoute.name === "master-users" && <MasterUsersPage />}
             {permittedRoute.name === "admin" && <AdminPage />}
