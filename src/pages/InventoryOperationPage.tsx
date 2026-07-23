@@ -347,7 +347,12 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setError("");
     setSuccess("");
     const stockStatus = nextStatusEnabled ? nextStockStatus ?? "충분" : nextStockStatus;
-    const { error: updateError } = await Services.DatabaseService.update("products", { status_enabled: nextStatusEnabled, stock_status: stockStatus })
+    const isLowStockAfterStatusUpdate = nextStatusEnabled ? stockStatus === "발주 필요" : item.total_stock <= item.minimum_stock;
+    const { error: updateError } = await Services.DatabaseService.update("products", {
+        status_enabled: nextStatusEnabled,
+        stock_status: stockStatus,
+        ...(item.confirmed_order_pending && !isLowStockAfterStatusUpdate ? { confirmed_order_pending: false, order_completed: false } : {})
+      })
       .eq("store_id", currentStoreId)
       .eq("id", item.id);
 
@@ -360,7 +365,8 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
               ...current,
               status_enabled: nextStatusEnabled,
               stock_status: stockStatus,
-              is_low_stock: nextStatusEnabled ? stockStatus === "발주 필요" : current.total_stock <= current.minimum_stock
+              is_low_stock: isLowStockAfterStatusUpdate,
+              ...(current.confirmed_order_pending && !isLowStockAfterStatusUpdate ? { confirmed_order_pending: false, order_completed: false } : {})
             }
           : current
       );
@@ -774,19 +780,36 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     if (logError) {
       setError(logError.message);
     } else {
-      if (action === "입고" && (item.fresh_order_selected || item.urgent_order_requested || item.order_completed)) {
+      const isNoLongerLowStockAfterOperation = item.status_enabled
+        ? item.stock_status !== "발주 필요"
+        : nextWarehouseQty + nextStoreQty > item.minimum_stock;
+      const shouldClearConfirmedOrderPending = item.confirmed_order_pending && (
+        action === "입고" || (action === "조정" && !item.receipt_check_only && isNoLongerLowStockAfterOperation)
+      );
+      if (action === "입고" && (item.fresh_order_selected || item.urgent_order_requested || item.order_completed || item.confirmed_order_pending)) {
         const { error: freshCompleteError } = await Services.DatabaseService.update("products", {
             fresh_order_selected: false,
             fresh_order_selected_at: null,
             urgent_order_requested: false,
             urgent_order_quantity: null,
-            order_completed: false
+            order_completed: false,
+            confirmed_order_pending: false
           })
           .eq("store_id", currentStoreId)
           .eq("id", item.id);
 
         if (freshCompleteError) {
           setError(freshCompleteError.message);
+          setSaving(false);
+          return;
+        }
+      } else if (shouldClearConfirmedOrderPending) {
+        const { error: clearPendingError } = await Services.DatabaseService.update("products", { confirmed_order_pending: false, order_completed: false })
+          .eq("store_id", currentStoreId)
+          .eq("id", item.id);
+
+        if (clearPendingError) {
+          setError(clearPendingError.message);
           setSaving(false);
           return;
         }

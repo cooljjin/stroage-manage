@@ -102,6 +102,7 @@ export type Database = {
           processed_unit_weight_unit: UnitWeightUnit | null;
           product_url: string | null;
           order_completed: boolean;
+          confirmed_order_pending: boolean;
           urgent_order_requested: boolean;
           urgent_order_quantity: number | null;
           fresh_order_selected: boolean;
@@ -131,6 +132,7 @@ export type Database = {
           processed_unit_weight_unit?: UnitWeightUnit | null;
           product_url?: string | null;
           order_completed?: boolean;
+          confirmed_order_pending?: boolean;
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           fresh_order_selected?: boolean;
@@ -159,6 +161,7 @@ export type Database = {
           processed_unit_weight_unit?: UnitWeightUnit | null;
           product_url?: string | null;
           order_completed?: boolean;
+          confirmed_order_pending?: boolean;
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           fresh_order_selected?: boolean;
@@ -913,10 +916,11 @@ export type Database = {
           id: string;
           store_id: string;
           content: string;
-          schedule_type: "once" | "daily" | "weekly" | "monthly";
+          schedule_type: "once" | "daily" | "weekly" | "monthly" | "interval";
           target_date: string | null;
           weekday: number | null;
           month_day: number | null;
+          interval_days: number | null;
           starts_on: string;
           ends_on: string | null;
           is_active: boolean;
@@ -928,10 +932,11 @@ export type Database = {
           id?: string;
           store_id: string;
           content: string;
-          schedule_type: "once" | "daily" | "weekly" | "monthly";
+          schedule_type: "once" | "daily" | "weekly" | "monthly" | "interval";
           target_date?: string | null;
           weekday?: number | null;
           month_day?: number | null;
+          interval_days?: number | null;
           starts_on?: string;
           ends_on?: string | null;
           is_active?: boolean;
@@ -942,10 +947,11 @@ export type Database = {
         Update: {
           store_id?: string;
           content?: string;
-          schedule_type?: "once" | "daily" | "weekly" | "monthly";
+          schedule_type?: "once" | "daily" | "weekly" | "monthly" | "interval";
           target_date?: string | null;
           weekday?: number | null;
           month_day?: number | null;
+          interval_days?: number | null;
           starts_on?: string;
           ends_on?: string | null;
           is_active?: boolean;

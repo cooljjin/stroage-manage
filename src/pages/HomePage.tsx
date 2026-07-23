@@ -1,9 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarDays, Check, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
 import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { PressableButton } from "../components/PressableButton";
 import { StatusMessage } from "../components/StatusMessage";
-import { addDateValueDays, getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
+import { addDateValueDays, getDateValueWeekday, getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
 import * as Services from "../services";
@@ -56,6 +56,24 @@ function shortDateLabel(value: string) {
   return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(new Date(`${value}T00:00:00`));
 }
 
+function getMonthStart(dateValue: string) {
+  return `${dateValue.slice(0, 7)}-01`;
+}
+
+function addMonths(monthStart: string, amount: number) {
+  const [year, month] = monthStart.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1 + amount, 1)).toISOString().slice(0, 10);
+}
+
+function getCalendarDates(monthStart: string) {
+  const firstDate = addDateValueDays(monthStart, -getDateValueWeekday(monthStart));
+  return Array.from({ length: 42 }, (_, index) => addDateValueDays(firstDate, index));
+}
+
+function formatMonthLabel(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", timeZone: "Asia/Seoul" }).format(new Date(`${value}T00:00:00+09:00`));
+}
+
 function HistoryReceiptIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -72,6 +90,12 @@ function daysInMonth(dateValue: string) {
   return new Date(year, month, 0).getDate();
 }
 
+function daysBetween(startDateValue: string, endDateValue: string) {
+  const [startYear, startMonth, startDay] = startDateValue.split("-").map(Number);
+  const [endYear, endMonth, endDay] = endDateValue.split("-").map(Number);
+  return Math.floor((Date.UTC(endYear, endMonth - 1, endDay) - Date.UTC(startYear, startMonth - 1, startDay)) / 86_400_000);
+}
+
 function isRoutineDue(routine: TodoRoutine, dateValue: string) {
   if (!routine.is_active) return false;
   if (dateValue < routine.starts_on) return false;
@@ -82,6 +106,10 @@ function isRoutineDue(routine: TodoRoutine, dateValue: string) {
   if (routine.schedule_type === "daily") return true;
   if (routine.schedule_type === "weekly") return routine.weekday === date.getDay();
   if (routine.schedule_type === "monthly") return Math.min(routine.month_day ?? 1, daysInMonth(dateValue)) === date.getDate();
+  if (routine.schedule_type === "interval") {
+    const intervalDays = routine.interval_days ?? 0;
+    return intervalDays > 0 && daysBetween(routine.starts_on, dateValue) % intervalDays === 0;
+  }
   return false;
 }
 
@@ -92,6 +120,25 @@ function buildInventoryCheckTodoContent(productName: string) {
 function isDuplicateStaleInventoryTodoError(message: string) {
   return message.includes("dashboard_todos_store_date_stale_inventory_product_idx")
     || (message.includes("duplicate key") && message.includes("stale_inventory_product_id"));
+}
+
+type TodoDisplayType = "manual" | "routine" | "stale-inventory";
+
+function getTodoDisplayType(todo: DashboardTodo): TodoDisplayType {
+  if (todo.stale_inventory_product_id) return "stale-inventory";
+  if (todo.routine_id) return "routine";
+  return "manual";
+}
+
+function compareTodos(left: DashboardTodo, right: DashboardTodo) {
+  const priority: Record<TodoDisplayType, number> = {
+    manual: 0,
+    routine: 1,
+    "stale-inventory": 2
+  };
+  const priorityDifference = priority[getTodoDisplayType(left)] - priority[getTodoDisplayType(right)];
+  if (priorityDifference !== 0) return priorityDifference;
+  return left.created_at.localeCompare(right.created_at);
 }
 
 function getPreviousBusinessDate(
@@ -191,9 +238,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [todoDraft, setTodoDraft] = useState("");
   const [scheduledTodoDraft, setScheduledTodoDraft] = useState("");
   const [scheduledTodoDate, setScheduledTodoDate] = useState(todayValue);
+  const [scheduledTodoCalendarMonth, setScheduledTodoCalendarMonth] = useState(() => getMonthStart(todayValue));
   const [handoverDraft, setHandoverDraft] = useState("");
   const [showTodoForm, setShowTodoForm] = useState(false);
   const [showScheduledTodoDialog, setShowScheduledTodoDialog] = useState(false);
+  const [showScheduledTodoCalendar, setShowScheduledTodoCalendar] = useState(false);
   const [showHandoverForm, setShowHandoverForm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -206,6 +255,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const selectedDate = dashboardView === "today" ? todayValue : nextBusinessDate;
+  const scheduledTodoCalendarDates = useMemo(() => getCalendarDates(scheduledTodoCalendarMonth), [scheduledTodoCalendarMonth]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -292,7 +342,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           }));
 
         if (todosToCreate.length > 0) {
-          const { error: materializeError } = await Services.DatabaseService.insert("dashboard_todos", todosToCreate);
+          const { error: materializeError } = await Services.DatabaseService.upsert("dashboard_todos", todosToCreate, {
+            onConflict: "store_id,task_date,routine_id",
+            ignoreDuplicates: true
+          });
 
           if (materializeError) {
             setError(materializeError.message);
@@ -845,6 +898,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   }
 
   const completedCount = todos.filter((todo) => todo.is_completed).length;
+  const displayedTodos = useMemo(() => [...todos].sort(compareTodos), [todos]);
   const isToday = dashboardView === "today";
 
   function changeDashboardView(nextView: DashboardView) {
@@ -1024,10 +1078,16 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 {isToday ? "오늘 해야 할 일이 없습니다." : "내일 근무자를 위한 할 일이 없습니다."}
               </div>
             ) : null}
-            {todos.map((todo) => {
+            {displayedTodos.map((todo) => {
               const staleInventoryProductId = todo.stale_inventory_product_id;
+              const todoDisplayType = getTodoDisplayType(todo);
+              const todoContainerClassName = todoDisplayType === "manual"
+                ? "mx-2 my-1 rounded-lg border border-violet-100 bg-violet-50/90 px-2 dark:border-violet-900/70 dark:bg-violet-950/35"
+                : todoDisplayType === "routine"
+                  ? "mx-2 my-1 rounded-lg border border-slate-200 bg-slate-100/90 px-2 dark:border-slate-700 dark:bg-slate-800/80"
+                  : "border-b border-slate-100 px-3 last:border-0 dark:border-slate-800";
               return (
-                <AnimatedListItem key={todo.id} className="flex min-h-11 items-center gap-2.5 border-b border-slate-100 px-3 last:border-0 dark:border-slate-800">
+                <AnimatedListItem key={todo.id} className={`flex min-h-11 items-center gap-2.5 ${todoContainerClassName}`}>
                   <label className={`${isToday ? "cursor-pointer" : ""}`}>
                     <input
                       type="checkbox"
@@ -1256,7 +1316,27 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             <form onSubmit={addScheduledTodo} className="space-y-3 p-4">
               <label className="block">
                 <span className="mb-1 block text-sm font-bold">날짜</span>
-                <input className="field" type="date" value={scheduledTodoDate} onChange={(event) => setScheduledTodoDate(event.target.value)} autoFocus />
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                  <input
+                    className="field min-w-0 tabular-nums"
+                    type="date"
+                    value={scheduledTodoDate}
+                    onChange={(event) => setScheduledTodoDate(event.target.value)}
+                    autoFocus
+                  />
+                  <PressableButton
+                    type="button"
+                    onClick={() => {
+                      setScheduledTodoCalendarMonth(getMonthStart(scheduledTodoDate || todayValue));
+                      setShowScheduledTodoCalendar(true);
+                    }}
+                    className="touch-button grid place-items-center rounded-md border border-slate-200 bg-white text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-brand-100"
+                    aria-label="달력에서 날짜 선택"
+                    title="달력에서 날짜 선택"
+                  >
+                    <CalendarDays size={19} />
+                  </PressableButton>
+                </div>
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-bold">할 일</span>
@@ -1268,6 +1348,65 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               </button>
             </form>
           </div>
+        </div>
+      ) : null}
+
+      {showScheduledTodoCalendar ? (
+        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="날짜 선택 달력">
+          <button type="button" onClick={() => setShowScheduledTodoCalendar(false)} className="absolute inset-0 cursor-default" aria-label="날짜 선택 달력 닫기" />
+          <section className="relative z-10 w-full rounded-t-2xl bg-white p-3 shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setScheduledTodoCalendarMonth((current) => addMonths(current, -1))}
+                className="touch-button icon-button"
+                aria-label="이전 달"
+                title="이전 달"
+              >
+                <ChevronLeft size={19} />
+              </button>
+              <div className="flex min-w-0 items-center gap-2">
+                <CalendarDays className="shrink-0 text-brand-700 dark:text-brand-100" size={20} />
+                <h2 className="truncate text-lg font-extrabold">{formatMonthLabel(scheduledTodoCalendarMonth)}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScheduledTodoCalendarMonth((current) => addMonths(current, 1))}
+                className="touch-button icon-button"
+                aria-label="다음 달"
+                title="다음 달"
+              >
+                <ChevronRight size={19} />
+              </button>
+            </div>
+            <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-xs font-extrabold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              {["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}
+            </div>
+            <div className="mt-2 grid grid-cols-7 gap-1">
+              {scheduledTodoCalendarDates.map((date) => {
+                const isCurrentMonth = date.slice(0, 7) === scheduledTodoCalendarMonth.slice(0, 7);
+                const isSelected = date === scheduledTodoDate;
+                const isToday = date === todayValue;
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    onClick={() => {
+                      setScheduledTodoDate(date);
+                      setShowScheduledTodoCalendar(false);
+                    }}
+                    className={`min-h-12 rounded-md border p-1.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${
+                      isSelected ? "border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-950/40" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+                    } ${isCurrentMonth ? "" : "opacity-45"}`}
+                    aria-label={`${shortDateLabel(date)} 선택`}
+                    aria-pressed={isSelected}
+                  >
+                    <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-extrabold ${isToday ? "bg-brand-600 text-white" : ""}`}>{Number(date.slice(-2))}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         </div>
       ) : null}
     </section>

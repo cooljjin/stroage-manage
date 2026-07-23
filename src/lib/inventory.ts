@@ -26,6 +26,7 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
   return {
     ...row,
     order_completed: row.order_completed ?? false,
+    confirmed_order_pending: row.confirmed_order_pending ?? false,
     urgent_order_requested: row.urgent_order_requested ?? false,
     urgent_order_quantity: row.urgent_order_quantity ?? null,
     fresh_order_selected: row.fresh_order_selected ?? false,

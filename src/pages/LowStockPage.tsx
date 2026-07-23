@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Plus, ScanLine, Search, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
+import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
@@ -91,6 +92,8 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [pendingFreshBarcode, setPendingFreshBarcode] = useState("");
   const [confirmedItems, setConfirmedItems] = useState<ConfirmedOrderItem[]>([]);
   const [confirmedModalOpen, setConfirmedModalOpen] = useState(false);
+  const [confirmedEditMode, setConfirmedEditMode] = useState(false);
+  const [savingConfirmedEdit, setSavingConfirmedEdit] = useState(false);
   const [confirmedOrderDate, setConfirmedOrderDate] = useState(() => todayDateValue());
   const [confirmedCalendarOpen, setConfirmedCalendarOpen] = useState(false);
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
@@ -98,7 +101,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [confirmedByNames, setConfirmedByNames] = useState<Map<string, string>>(new Map());
   const [loadingConfirmed, setLoadingConfirmed] = useState(false);
   const [savingConfirmation, setSavingConfirmation] = useState(false);
-  const [headerScrollProgress, setHeaderScrollProgress] = useState(0);
+  const [hideConfirmedItems, setHideConfirmedItems] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -110,25 +113,6 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       if (freshScannerRef.current?.isScanning) {
         freshScannerRef.current.stop().catch(() => undefined);
       }
-    };
-  }, []);
-
-  useEffect(() => {
-    let frameId: number | null = null;
-
-    const updateHeaderProgress = () => {
-      frameId = null;
-      setHeaderScrollProgress(Math.min(window.scrollY / 96, 1));
-    };
-    const handleScroll = () => {
-      if (frameId === null) frameId = window.requestAnimationFrame(updateHeaderProgress);
-    };
-
-    updateHeaderProgress();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
   }, []);
 
@@ -166,6 +150,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       });
   }, [items]);
 
+  const visibleLowStockItems = useMemo(
+    () => (hideConfirmedItems ? lowStockItems.filter((item) => !item.confirmed_order_pending) : lowStockItems),
+    [hideConfirmedItems, lowStockItems]
+  );
+
   const freshProducts = useMemo(() => {
     const keyword = freshSearch.trim().toLocaleLowerCase("ko");
     return items.filter((item) => {
@@ -202,6 +191,12 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
   const todayOrderDate = todayDateValue();
   const confirmCheckedItems = useMemo(() => lowStockItems.filter((item) => item.order_completed), [lowStockItems]);
+  const confirmedProductIds = useMemo(() => new Set(confirmedItems.map((item) => item.product_id)), [confirmedItems]);
+  const confirmedItemCandidates = useMemo(
+    () => lowStockItems.filter((item) => !confirmedProductIds.has(item.id)),
+    [confirmedProductIds, lowStockItems]
+  );
+  const canEditConfirmedItems = canConfirmOrderItems && confirmedOrderDate === todayOrderDate;
 
   const stopFreshScanner = useCallback(async () => {
     if (freshScannerRef.current?.isScanning) {
@@ -467,12 +462,14 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     const orderDate = todayDateValue();
     setConfirmedOrderDate(orderDate);
     setConfirmedCalendarOpen(false);
+    setConfirmedEditMode(false);
     setConfirmedModalOpen(true);
     await loadConfirmedItems(orderDate);
   }
 
   async function changeConfirmedOrderDate(orderDate: string) {
     setConfirmedOrderDate(orderDate);
+    setConfirmedEditMode(false);
     await loadConfirmedItems(orderDate);
   }
 
@@ -558,6 +555,18 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       const addedOrderProductIds = confirmCheckedItems
         .filter((item) => item.fresh_order_selected)
         .map((item) => item.id);
+      const confirmedProductIds = confirmCheckedItems.map((item) => item.id);
+      const { error: pendingOrderError } = await Services.DatabaseService.update("products", { confirmed_order_pending: true })
+        .eq("store_id", currentStoreId)
+        .in("id", confirmedProductIds);
+      if (pendingOrderError) {
+        setError(`발주 품목은 확정됐지만 진행 상태를 저장하지 못했습니다. ${pendingOrderError.message}`);
+      } else {
+        const confirmedProductIdSet = new Set(confirmedProductIds);
+        setItems((current) => current.map((item) => (
+          confirmedProductIdSet.has(item.id) ? { ...item, confirmed_order_pending: true } : item
+        )));
+      }
       let addedOrderCleanupFailed = false;
       if (addedOrderProductIds.length > 0) {
         const { error: clearAddedOrderError } = await Services.DatabaseService.update("products", {
@@ -582,11 +591,151 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
         }
       }
 
-      if (!addedOrderCleanupFailed) {
+      if (!addedOrderCleanupFailed && !pendingOrderError) {
         setMessage(`오늘 발주 품목 ${rows.length}개를 확정했습니다.`);
       }
     }
     setSavingConfirmation(false);
+  }
+
+  async function addConfirmedItem(item: InventoryItem) {
+    if (!canEditConfirmedItems || confirmedProductIds.has(item.id)) return;
+
+    setSavingConfirmedEdit(true);
+    setError("");
+    const { data: userData, error: userError } = await Services.AuthService.getUser();
+    if (userError || !userData.user) {
+      setError(userError?.message ?? "로그인이 필요합니다.");
+      setSavingConfirmedEdit(false);
+      return;
+    }
+
+    const referenceItem = confirmedItems[0];
+    const row = {
+      store_id: currentStoreId,
+      order_date: todayOrderDate,
+      product_id: item.id,
+      product_name: item.name,
+      category: item.category || "기타",
+      supplier_name: item.supplier_name,
+      total_stock: item.receipt_check_only ? null : item.total_stock,
+      minimum_stock: item.receipt_check_only ? null : item.minimum_stock,
+      required_quantity: parseRequiredQuantity(requiredQuantities[item.id] ?? ""),
+      is_low_stock: !item.receipt_check_only && item.is_low_stock,
+      fresh_order_selected: item.fresh_order_selected,
+      urgent_order_requested: item.urgent_order_requested,
+      urgent_order_quantity: item.urgent_order_quantity,
+      order_completed: true,
+      confirmation_note: referenceItem?.confirmation_note ?? null,
+      confirmed_by: referenceItem?.confirmed_by ?? userData.user.id,
+      confirmed_at: referenceItem?.confirmed_at ?? new Date().toISOString()
+    };
+
+    const { data: addedConfirmedItem, error: insertError } = await Services.DatabaseService.insert("confirmed_order_items", row)
+      .select("*")
+      .single();
+    if (insertError) {
+      setError(insertError.message);
+      setSavingConfirmedEdit(false);
+      return;
+    }
+
+    const productUpdate = item.fresh_order_selected
+      ? { order_completed: true, confirmed_order_pending: true, fresh_order_selected: false, fresh_order_selected_at: null }
+      : { order_completed: true, confirmed_order_pending: true };
+    const { error: updateError } = await Services.DatabaseService.update("products", productUpdate)
+      .eq("store_id", currentStoreId)
+      .eq("id", item.id);
+    if (updateError) {
+      setError(`품목은 확정 목록에 추가됐지만 컨펌 상태를 저장하지 못했습니다. ${updateError.message}`);
+    } else {
+      setItems((current) => current.map((product) => (product.id === item.id ? { ...product, ...productUpdate } : product)));
+    }
+    setConfirmedItems((current) => [...current, addedConfirmedItem as ConfirmedOrderItem]);
+    setSavingConfirmedEdit(false);
+  }
+
+  async function removeConfirmedItem(item: ConfirmedOrderItem) {
+    if (!canEditConfirmedItems) return;
+    if (!window.confirm(`${item.product_name} 품목을 확정 목록에서 삭제할까요?`)) return;
+
+    setSavingConfirmedEdit(true);
+    setError("");
+    const { error: deleteError } = await Services.DatabaseService.delete("confirmed_order_items")
+      .eq("store_id", currentStoreId)
+      .eq("id", item.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      setSavingConfirmedEdit(false);
+      return;
+    }
+
+    const productUpdate = item.fresh_order_selected
+      ? { order_completed: false, confirmed_order_pending: false, fresh_order_selected: true, fresh_order_selected_at: new Date().toISOString() }
+      : { order_completed: false, confirmed_order_pending: false };
+    const { error: updateError } = await Services.DatabaseService.update("products", productUpdate)
+      .eq("store_id", currentStoreId)
+      .eq("id", item.product_id);
+    if (updateError) {
+      setError(`확정 목록에서는 삭제됐지만 컨펌 상태를 되돌리지 못했습니다. ${updateError.message}`);
+    } else {
+      setItems((current) => current.map((product) => (product.id === item.product_id ? { ...product, ...productUpdate } : product)));
+    }
+    setConfirmedItems((current) => current.filter((confirmedItem) => confirmedItem.id !== item.id));
+    setSavingConfirmedEdit(false);
+  }
+
+  async function cancelConfirmedOrder() {
+    if (!canEditConfirmedItems || confirmedItems.length === 0) return;
+    if (!window.confirm("오늘 확정한 품목과 컨펌 상태를 모두 취소할까요?")) return;
+
+    setSavingConfirmedEdit(true);
+    setError("");
+    const itemsToCancel = [...confirmedItems];
+    const { error: deleteError } = await Services.DatabaseService.delete("confirmed_order_items")
+      .eq("store_id", currentStoreId)
+      .eq("order_date", todayOrderDate);
+    if (deleteError) {
+      setError(deleteError.message);
+      setSavingConfirmedEdit(false);
+      return;
+    }
+
+    const confirmedProductIds = itemsToCancel.map((item) => item.product_id);
+    const freshProductIds = itemsToCancel.filter((item) => item.fresh_order_selected).map((item) => item.product_id);
+    const { error: clearConfirmationError } = await Services.DatabaseService.update("products", { order_completed: false, confirmed_order_pending: false })
+      .eq("store_id", currentStoreId)
+      .in("id", confirmedProductIds);
+    if (clearConfirmationError) {
+      setError(`확정 목록은 취소됐지만 컨펌 상태를 되돌리지 못했습니다. ${clearConfirmationError.message}`);
+    } else if (freshProductIds.length > 0) {
+      const { error: restoreAddedOrderError } = await Services.DatabaseService.update("products", {
+          fresh_order_selected: true,
+          fresh_order_selected_at: new Date().toISOString()
+        })
+        .eq("store_id", currentStoreId)
+        .in("id", freshProductIds);
+      if (restoreAddedOrderError) {
+        setError(`확정 목록은 취소됐지만 추가 품목을 복원하지 못했습니다. ${restoreAddedOrderError.message}`);
+      }
+    }
+
+    const freshProductIdSet = new Set(freshProductIds);
+    const confirmedProductIdSet = new Set(confirmedProductIds);
+    setItems((current) => current.map((item) => (
+      confirmedProductIdSet.has(item.id)
+        ? {
+            ...item,
+            order_completed: false,
+            confirmed_order_pending: false,
+            ...(freshProductIdSet.has(item.id) ? { fresh_order_selected: true, fresh_order_selected_at: new Date().toISOString() } : {})
+          }
+        : item
+    )));
+    setConfirmedItems([]);
+    setConfirmedEditMode(false);
+    setMessage("오늘 확정한 품목을 모두 취소했습니다.");
+    setSavingConfirmedEdit(false);
   }
 
   async function deleteUrgentOrder(item: InventoryItem) {
@@ -668,80 +817,50 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
   return (
     <section>
-      <div
-        className="sticky top-[calc(57px+env(safe-area-inset-top))] z-30 -mx-4 mb-4 border-b border-slate-200 bg-slate-50/95 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:top-[calc(65px+env(safe-area-inset-top))]"
-        style={{
-          paddingTop: `${8 - headerScrollProgress * 4}px`,
-          paddingBottom: `${8 - headerScrollProgress * 4}px`,
-          boxShadow: `0 4px 12px rgb(15 23 42 / ${headerScrollProgress * 0.1})`
-        }}
-      >
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <h1 className="shrink-0 whitespace-nowrap text-2xl font-bold tracking-normal">부족 재고</h1>
+      <PageTitle
+        title="부족 재고"
+        action={
           <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1">
             <button
               type="button"
               onClick={openFreshModal}
-              className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md bg-brand-600 text-sm font-bold text-white"
-              style={{
-                columnGap: `${2 * (1 - headerScrollProgress)}px`,
-                paddingInline: `${8 * (1 - headerScrollProgress)}px`
-              }}
-              aria-label="품목추가"
-              title="품목추가"
+              className="touch-button inline-flex items-center gap-0.5 rounded-md bg-brand-600 px-2 text-sm font-bold text-white"
             >
-              <Plus className="shrink-0" size={16} />
-              <span
-                className="overflow-hidden whitespace-nowrap"
-                style={{ maxWidth: `${52 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}
-              >
-                품목추가
-              </span>
+              <Plus size={16} />
+              품목추가
             </button>
             {canConfirmOrderItems ? (
               <button
                 type="button"
                 disabled={savingConfirmation || loading || confirmCheckedItems.length === 0}
                 onClick={openConfirmationModal}
-                className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md bg-brand-600 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
-                style={{
-                  columnGap: `${2 * (1 - headerScrollProgress)}px`,
-                  paddingInline: `${8 * (1 - headerScrollProgress)}px`
-                }}
-                aria-label={savingConfirmation ? "확정 중" : "컨펌"}
-                title={savingConfirmation ? "확정 중" : "컨펌"}
+                className="touch-button inline-flex items-center gap-0.5 rounded-md bg-brand-600 px-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
               >
-                <CheckCircle2 className="shrink-0" size={16} />
-                <span
-                  className="overflow-hidden whitespace-nowrap"
-                  style={{ maxWidth: `${44 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}
-                >
-                  {savingConfirmation ? "확정 중" : "컨펌"}
-                </span>
+                <CheckCircle2 size={16} />
+                {savingConfirmation ? "확정 중" : "컨펌"}
               </button>
             ) : null}
             <button
               type="button"
               onClick={() => void openConfirmedModal()}
-              className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md border border-brand-600 text-sm font-bold text-brand-700 dark:text-brand-100"
-              style={{
-                columnGap: `${2 * (1 - headerScrollProgress)}px`,
-                paddingInline: `${8 * (1 - headerScrollProgress)}px`
-              }}
-              aria-label="히스토리"
-              title="히스토리"
+              className="touch-button inline-flex items-center gap-0.5 rounded-md border border-brand-600 px-2 text-sm font-bold text-brand-700 dark:text-brand-100"
             >
-              <ClipboardList className="shrink-0" size={16} />
-              <span
-                className="overflow-hidden whitespace-nowrap"
-                style={{ maxWidth: `${52 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}
-              >
-                히스토리
-              </span>
+              <ClipboardList size={16} />
+              발주하기
             </button>
           </div>
-        </div>
-      </div>
+        }
+      />
+
+      <label className="mb-3 inline-flex min-h-10 items-center gap-2 text-sm font-semibold">
+        <input
+          type="checkbox"
+          checked={hideConfirmedItems}
+          onChange={(event) => setHideConfirmedItems(event.target.checked)}
+          className="h-5 w-5 rounded border-slate-300 accent-brand-600"
+        />
+        컨펌 완료한 품목 숨기기
+      </label>
 
       {loading ? (
         <div role="status" aria-live="polite" aria-label="부족 재고를 불러오는 중">
@@ -760,7 +879,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       {!loading && !error ? (
         <>
           <div className="space-y-2 sm:hidden">
-            {lowStockItems.map((item) => (
+            {visibleLowStockItems.map((item) => (
               <div
                 key={item.id}
                 onClick={() => navigate({ name: "operation", productId: item.id })}
@@ -865,7 +984,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                 </tr>
               </thead>
               <tbody>
-                {lowStockItems.map((item) => (
+                {visibleLowStockItems.map((item) => (
                   <tr
                     key={item.id}
                     onClick={() => navigate({ name: "operation", productId: item.id })}
@@ -947,7 +1066,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
             </table>
           </div>
 
-          {lowStockItems.length === 0 ? <StatusMessage type="success">부족 재고가 없습니다.</StatusMessage> : null}
+          {visibleLowStockItems.length === 0 ? <StatusMessage type="success">표시할 부족 재고가 없습니다.</StatusMessage> : null}
 
           {freshModalOpen ? (
             <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-4 py-6">
@@ -1174,15 +1293,39 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                     <h2 className="text-lg font-bold">확정품목 확인하기</h2>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{confirmedOrderDate} 확정 발주 품목</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmedModalOpen(false)}
-                    className="icon-button touch-button shrink-0"
-                    aria-label="확정품목 닫기"
-                    title="닫기"
-                  >
-                    <X size={20} />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {canConfirmOrderItems ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={!canEditConfirmedItems || savingConfirmedEdit}
+                          onClick={() => setConfirmedEditMode((current) => !current)}
+                          className="touch-button rounded-md border border-brand-600 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:opacity-60 dark:text-brand-100 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+                          title={canEditConfirmedItems ? "확정 품목 수정" : "오늘 확정 목록만 수정할 수 있습니다."}
+                        >
+                          {confirmedEditMode ? "완료" : "수정"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canEditConfirmedItems || savingConfirmedEdit || confirmedItems.length === 0}
+                          onClick={() => void cancelConfirmedOrder()}
+                          className="touch-button rounded-md border border-red-200 px-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:opacity-60 dark:border-red-900 dark:text-red-200 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+                          title={canEditConfirmedItems ? "오늘 컨펌 취소" : "오늘 확정 목록만 취소할 수 있습니다."}
+                        >
+                          컨펌취소
+                        </button>
+                      </>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setConfirmedModalOpen(false)}
+                      className="icon-button touch-button shrink-0"
+                      aria-label="확정품목 닫기"
+                      title="닫기"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="border-b border-slate-200 p-3 dark:border-slate-800">
@@ -1234,6 +1377,28 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                 <div className="min-h-0 flex-1 overflow-y-auto p-3">
                   {loadingConfirmed ? <StatusMessage>확정 품목을 불러오는 중...</StatusMessage> : null}
                   {!loadingConfirmed && confirmedItems.length === 0 ? <StatusMessage>선택한 날짜에 확정된 품목이 없습니다.</StatusMessage> : null}
+                  {!loadingConfirmed && confirmedEditMode ? (
+                    <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950">
+                      <p className="text-sm font-extrabold text-brand-700 dark:text-brand-100">확정 품목 추가</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">현재 부족 재고 목록에서 추가할 품목을 선택하세요.</p>
+                      <div className="mt-2 space-y-2">
+                        {confirmedItemCandidates.length === 0 ? <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">추가할 수 있는 품목이 없습니다.</p> : null}
+                        {confirmedItemCandidates.map((item) => (
+                          <div key={item.id} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-brand-100 bg-white px-3 py-2 dark:border-brand-900 dark:bg-slate-950">
+                            <span className="min-w-0 truncate text-sm font-bold">{item.name}</span>
+                            <button
+                              type="button"
+                              disabled={savingConfirmedEdit}
+                              onClick={() => void addConfirmedItem(item)}
+                              className="touch-button shrink-0 rounded-md bg-brand-600 px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              추가
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {!loadingConfirmed && confirmedItems.length > 0 ? (
                     <>
                       {confirmedItems[0].confirmation_note ? (
@@ -1275,14 +1440,28 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                                     <span>필요 개수: {item.required_quantity === null ? "-" : formatInventoryQuantity(item.required_quantity)}</span>
                                   </div>
                                 </div>
-                                {product ? (
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {confirmedEditMode ? (
+                                    <button
+                                      type="button"
+                                      disabled={savingConfirmedEdit}
+                                      onClick={() => void removeConfirmedItem(item)}
+                                      className="touch-button icon-button border-red-200 text-red-700 dark:border-red-900 dark:text-red-200"
+                                      aria-label={`${item.product_name} 확정 목록에서 삭제`}
+                                      title="확정 목록에서 삭제"
+                                    >
+                                      <Trash2 size={18} />
+                                    </button>
+                                  ) : null}
+                                  {product ? (
                                   <ProductOrderAction
                                     item={product}
                                     supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
                                     quantity={orderQuantities[item.product_id] ?? ""}
                                     onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.product_id]: quantity }))}
                                   />
-                                ) : null}
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           );

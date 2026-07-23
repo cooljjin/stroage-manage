@@ -58,7 +58,8 @@ async function recordReceiptWithoutStockChange(
       fresh_order_selected_at: null,
       urgent_order_requested: false,
       urgent_order_quantity: null,
-      order_completed: false
+      order_completed: false,
+      confirmed_order_pending: false
     })
     .eq("store_id", storeId)
     .eq("id", productId);

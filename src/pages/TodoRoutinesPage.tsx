@@ -14,13 +14,15 @@ const SCHEDULE_LABELS: Record<TodoRoutineScheduleType, string> = {
   once: "지정일",
   daily: "일간 루틴",
   weekly: "주간",
-  monthly: "월간"
+  monthly: "월간",
+  interval: "기간 임의 지정"
 };
 
 function routineDescription(routine: TodoRoutine) {
   if (routine.schedule_type === "once") return routine.target_date ?? "-";
   if (routine.schedule_type === "daily") return "매일";
   if (routine.schedule_type === "weekly") return `매주 ${WEEKDAYS[routine.weekday ?? 0].label}`;
+  if (routine.schedule_type === "interval") return `${routine.interval_days ?? 1}일마다`;
   return `매월 ${routine.month_day ?? 1}일`;
 }
 
@@ -34,6 +36,7 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
   const [targetDate, setTargetDate] = useState(todayValue);
   const [weekday, setWeekday] = useState(() => new Date(`${todayValue}T00:00:00`).getDay());
   const [monthDay, setMonthDay] = useState(() => Number(todayValue.slice(-2)));
+  const [intervalDays, setIntervalDays] = useState("10");
   const [startsOn, setStartsOn] = useState(todayValue);
   const [endsOn, setEndsOn] = useState("");
   const [loading, setLoading] = useState(true);
@@ -88,6 +91,11 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
       setError("할 일을 입력해 주세요.");
       return;
     }
+    const parsedIntervalDays = Number(intervalDays);
+    if (scheduleType === "interval" && (!Number.isInteger(parsedIntervalDays) || parsedIntervalDays < 1)) {
+      setError("반복 간격은 1일 이상 정수로 입력해 주세요.");
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -106,6 +114,7 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
       target_date: scheduleType === "once" ? targetDate : null,
       weekday: scheduleType === "weekly" ? weekday : null,
       month_day: scheduleType === "monthly" ? monthDay : null,
+      interval_days: scheduleType === "interval" ? parsedIntervalDays : null,
       starts_on: scheduleType === "once" ? targetDate : startsOn,
       ends_on: endsOn || null,
       created_by: userData.user.id
@@ -209,7 +218,7 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
 
   return (
     <section>
-      <PageTitle title="To do list" description="지정일, 일간, 주간, 월간 루틴으로 홈 화면에 노출될 할 일을 관리합니다." />
+      <PageTitle title="To do list" description="지정일, 일간, 주간, 월간, 기간 임의 지정 루틴으로 홈 화면에 노출될 할 일을 관리합니다." />
 
       {error ? <div className="mb-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
       {message ? <div className="mb-3"><StatusMessage type="success">{message}</StatusMessage></div> : null}
@@ -283,6 +292,7 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
               <option value="daily">일간 루틴</option>
               <option value="weekly">주간 루틴</option>
               <option value="monthly">월간 루틴</option>
+              <option value="interval">기간 임의 지정</option>
             </select>
           </label>
 
@@ -306,6 +316,16 @@ export function TodoRoutinesPage({ currentStoreId }: Props) {
             <label className="block">
               <span className="mb-1 block text-sm font-bold">매월 날짜</span>
               <input className="field" type="number" min={1} max={31} value={monthDay} onChange={(event) => setMonthDay(Number(event.target.value))} />
+            </label>
+          ) : null}
+
+          {scheduleType === "interval" ? (
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold">반복 간격</span>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                <input className="field" type="number" min={1} step={1} value={intervalDays} onChange={(event) => setIntervalDays(event.target.value)} />
+                <span className="text-sm font-bold text-slate-500 dark:text-slate-400">일마다</span>
+              </div>
             </label>
           ) : null}
         </div>

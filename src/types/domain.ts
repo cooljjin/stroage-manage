@@ -60,6 +60,7 @@ export type Product = {
   processed_unit_weight_unit: UnitWeightUnit | null;
   product_url: string | null;
   order_completed: boolean;
+  confirmed_order_pending: boolean;
   urgent_order_requested: boolean;
   urgent_order_quantity: number | null;
   fresh_order_selected: boolean;
@@ -327,7 +328,7 @@ export type DashboardTodo = {
   created_at: string;
 };
 
-export type TodoRoutineScheduleType = "once" | "daily" | "weekly" | "monthly";
+export type TodoRoutineScheduleType = "once" | "daily" | "weekly" | "monthly" | "interval";
 
 export type TodoRoutine = {
   id: string;
@@ -337,6 +338,7 @@ export type TodoRoutine = {
   target_date: string | null;
   weekday: number | null;
   month_day: number | null;
+  interval_days: number | null;
   starts_on: string;
   ends_on: string | null;
   is_active: boolean;
