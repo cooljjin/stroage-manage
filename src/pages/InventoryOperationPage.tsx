@@ -103,6 +103,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [quantity, setQuantity] = useState("");
   const [receiptQuantity, setReceiptQuantity] = useState("1");
   const [memoText, setMemoText] = useState("");
+  const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [latestMemo, setLatestMemo] = useState<InventoryLog | null>(null);
   const [lastInventoryCheckDates, setLastInventoryCheckDates] = useState<LocationCheckDates>({
     warehouse: emptyLocationCheckInfo,
@@ -123,6 +124,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [restoring, setRestoring] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [defaultLocationSaving, setDefaultLocationSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const defaultLocationPressTimerRef = useRef<number | null>(null);
@@ -252,6 +254,18 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   }, [loadProduct]);
 
   useEffect(() => {
+    let active = true;
+
+    void Services.AuthService.getUser().then(({ data }) => {
+      if (active) setCurrentUserId(data.user?.id ?? null);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!item?.id) return;
     setLocation(item.default_location ?? "창고");
   }, [item?.default_location, item?.id]);
@@ -317,10 +331,6 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     if (/^\d*\.?\d*$/.test(nextValue)) {
       setQuantity(nextValue);
     }
-  }
-
-  function fillActualQuantity(currentQuantity: number) {
-    setQuantity(String(currentQuantity));
   }
 
   function updateReceiptQuantityInput(value: string) {
@@ -541,6 +551,25 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     return memoStaffNames.get(memo.user_id) ?? "직원";
   }
 
+  function isOwnMemo(memo: InventoryLog): boolean {
+    return currentUserId === memo.user_id;
+  }
+
+  function startMemoEdit(memo: InventoryLog) {
+    if (!isOwnMemo(memo)) return;
+
+    setMemoText(memo.note ?? "");
+    setEditingMemoId(memo.id);
+    setMemoError("");
+    setMemoSuccess("");
+  }
+
+  function cancelMemoEdit() {
+    setMemoText("");
+    setEditingMemoId(null);
+    setMemoError("");
+  }
+
   async function handleMemoSubmit(event: FormEvent) {
     event.preventDefault();
     if (!item || memoIsEmpty) return;
@@ -552,6 +581,33 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     const { data: userData, error: userError } = await Services.AuthService.getUser();
     if (userError || !userData.user) {
       setMemoError(userError?.message ?? "로그인이 필요합니다.");
+      setMemoSaving(false);
+      return;
+    }
+
+    if (editingMemoId) {
+      const { data: updatedMemo, error: updateError } = await Services.DatabaseService.update("inventory_logs", {
+          note: memoText.trim()
+        })
+        .eq("store_id", currentStoreId)
+        .eq("id", editingMemoId)
+        .eq("user_id", userData.user.id)
+        .eq("action", "메모")
+        .select("*")
+        .maybeSingle();
+
+      if (updateError) {
+        setMemoError(formatMemoSaveError(updateError.message));
+      } else if (!updatedMemo) {
+        setMemoError("본인이 작성한 메모만 수정할 수 있습니다.");
+      } else {
+        const nextMemo = updatedMemo as InventoryLog;
+        setLatestMemo((current) => (current?.id === nextMemo.id ? nextMemo : current));
+        setMemoHistory((current) => current.map((memo) => (memo.id === nextMemo.id ? nextMemo : memo)));
+        setMemoSuccess("메모를 수정했습니다.");
+        setMemoText("");
+        setEditingMemoId(null);
+      }
       setMemoSaving(false);
       return;
     }
@@ -865,10 +921,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => fillActualQuantity(item.warehouse_qty)}
+                onClick={() => setLocation("창고")}
                 className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
-                aria-label={`창고 현재 수량 ${formatInventoryQuantity(item.warehouse_qty)}을 실제 재고 수량에 입력`}
-                title="실제 재고 수량에 입력"
+                aria-label={`창고 현재 수량 ${formatInventoryQuantity(item.warehouse_qty)} 선택`}
+                title="창고 선택"
               >
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">창고</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.warehouse_qty)}</p>
@@ -878,10 +934,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
               </button>
               <button
                 type="button"
-                onClick={() => fillActualQuantity(item.store_qty)}
+                onClick={() => setLocation("매장")}
                 className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
-                aria-label={`매장 현재 수량 ${formatInventoryQuantity(item.store_qty)}을 실제 재고 수량에 입력`}
-                title="실제 재고 수량에 입력"
+                aria-label={`매장 현재 수량 ${formatInventoryQuantity(item.store_qty)} 선택`}
+                title="매장 선택"
               >
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">매장</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.store_qty)}</p>
@@ -1079,12 +1135,25 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-extrabold text-brand-700 dark:text-brand-100">최근 메모</span>
-              <span className="text-right text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <span className="block">{formatDateTime(latestMemo.created_at)}</span>
-                <span className="block">{getMemoStaffName(latestMemo)}</span>
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-right text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <span className="block">{formatDateTime(latestMemo.created_at)}</span>
+                  <span className="block">{getMemoStaffName(latestMemo)}</span>
+                </span>
+                {isOwnMemo(latestMemo) ? (
+                  <button type="button" onClick={() => startMemoEdit(latestMemo)} className="touch-button icon-button" aria-label="최근 메모 수정" title="메모 수정">
+                    <Pencil size={16} />
+                  </button>
+                ) : null}
+              </div>
             </div>
             <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{latestMemo.note}</p>
+          </div>
+        ) : null}
+        {editingMemoId ? (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-md bg-brand-50 px-3 py-2 text-xs font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-100">
+            <span>내 메모 수정 중</span>
+            <button type="button" onClick={cancelMemoEdit} className="underline underline-offset-2">수정 취소</button>
           </div>
         ) : null}
         <textarea
@@ -1096,12 +1165,12 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             setMemoError("");
             setMemoSuccess("");
           }}
-          placeholder="메모를 입력하세요"
+          placeholder={editingMemoId ? "수정할 메모를 입력하세요" : "메모를 입력하세요"}
         />
         {memoError ? <div className="mt-2"><StatusMessage type="error">{memoError}</StatusMessage></div> : null}
         {memoSuccess ? <div className="mt-2"><StatusMessage type="success">{memoSuccess}</StatusMessage></div> : null}
         <button className="primary-button mt-2 min-h-11 w-full py-2" type="submit" disabled={memoSaving || memoIsEmpty}>
-          {memoSaving ? "저장 중..." : "저장"}
+          {memoSaving ? "저장 중..." : editingMemoId ? "수정 저장" : "저장"}
         </button>
       </form>
 
@@ -1182,7 +1251,23 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
               <div className="space-y-2">
                 {memoHistory.map((memo) => (
                   <div key={memo.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{memo.note}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{memo.note}</p>
+                      {isOwnMemo(memo) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            startMemoEdit(memo);
+                            setMemoHistoryOpen(false);
+                          }}
+                          className="touch-button icon-button shrink-0"
+                          aria-label="메모 수정"
+                          title="메모 수정"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      ) : null}
+                    </div>
                     <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                       <span className="block">{formatDateTime(memo.created_at)}</span>
                       <span className="block">{getMemoStaffName(memo)}</span>

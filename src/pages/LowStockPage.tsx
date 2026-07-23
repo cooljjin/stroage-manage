@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, ScanLine, Search, X } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Plus, ScanLine, Search, X } from "lucide-react";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
-import { recordReceiptCheckOnly, recordReceiptCompletion } from "../lib/receiptCheck";
+import { resolveStoreStaffNames } from "../lib/staffNames";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
@@ -16,16 +15,6 @@ type Props = {
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
   canConfirmOrderItems: boolean;
-};
-
-type FreshReceivingUndoEntry = {
-  productId: string;
-  freshOrderSelected: boolean;
-  freshOrderSelectedAt: string | null;
-  urgentOrderRequested: boolean;
-  urgentOrderQuantity: number | null;
-  orderCompleted: boolean;
-  receiptLogId: string | null;
 };
 
 type ConfirmedOrderItem = Database["public"]["Tables"]["confirmed_order_items"]["Row"];
@@ -89,9 +78,6 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
   const [requiredQuantities, setRequiredQuantities] = useState<Record<string, string>>({});
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set());
-  const [completingFreshIds, setCompletingFreshIds] = useState<Set<string>>(new Set());
-  const [freshReceivingUndoStack, setFreshReceivingUndoStack] = useState<FreshReceivingUndoEntry[]>([]);
-  const [undoingFreshReceiving, setUndoingFreshReceiving] = useState(false);
   const [deletingAddedOrderIds, setDeletingAddedOrderIds] = useState<Set<string>>(new Set());
   const [deletingUrgentIds, setDeletingUrgentIds] = useState<Set<string>>(new Set());
   const [freshModalOpen, setFreshModalOpen] = useState(false);
@@ -107,8 +93,12 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [confirmedModalOpen, setConfirmedModalOpen] = useState(false);
   const [confirmedOrderDate, setConfirmedOrderDate] = useState(() => todayDateValue());
   const [confirmedCalendarOpen, setConfirmedCalendarOpen] = useState(false);
+  const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
+  const [confirmationMemo, setConfirmationMemo] = useState("");
+  const [confirmedByNames, setConfirmedByNames] = useState<Map<string, string>>(new Map());
   const [loadingConfirmed, setLoadingConfirmed] = useState(false);
   const [savingConfirmation, setSavingConfirmation] = useState(false);
+  const [headerScrollProgress, setHeaderScrollProgress] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -120,6 +110,25 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       if (freshScannerRef.current?.isScanning) {
         freshScannerRef.current.stop().catch(() => undefined);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    let frameId: number | null = null;
+
+    const updateHeaderProgress = () => {
+      frameId = null;
+      setHeaderScrollProgress(Math.min(window.scrollY / 96, 1));
+    };
+    const handleScroll = () => {
+      if (frameId === null) frameId = window.requestAnimationFrame(updateHeaderProgress);
+    };
+
+    updateHeaderProgress();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
   }, []);
 
@@ -443,7 +452,13 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     if (loadError) {
       setError(loadError.message);
     } else {
-      setConfirmedItems((data ?? []) as ConfirmedOrderItem[]);
+      const nextConfirmedItems = (data ?? []) as ConfirmedOrderItem[];
+      setConfirmedItems(nextConfirmedItems);
+      const confirmedByIds = Array.from(new Set(nextConfirmedItems.map((item) => item.confirmed_by).filter(Boolean) as string[]));
+      if (confirmedByIds.length > 0) {
+        const names = await resolveStoreStaffNames(currentStoreId, confirmedByIds);
+        setConfirmedByNames((current) => new Map([...current, ...names]));
+      }
     }
     setLoadingConfirmed(false);
   }
@@ -467,7 +482,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     await changeConfirmedOrderDate(nextDate);
   }
 
-  async function confirmTodayOrderItems() {
+  function openConfirmationModal() {
     if (!canConfirmOrderItems) {
       setError("관리자만 발주 품목을 확정할 수 있습니다.");
       return;
@@ -477,8 +492,12 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       return;
     }
 
-    const ok = window.confirm(`컨펌 체크한 ${confirmCheckedItems.length}개 품목을 오늘 발주 품목으로 확정할까요?\n기존 당일 확정 목록은 선택한 품목으로 교체됩니다.`);
-    if (!ok) return;
+    setConfirmationMemo("");
+    setConfirmationModalOpen(true);
+  }
+
+  async function confirmTodayOrderItems() {
+    if (!canConfirmOrderItems || confirmCheckedItems.length === 0) return;
 
     setSavingConfirmation(true);
     setError("");
@@ -494,7 +513,15 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       return;
     }
 
+    const { data: userData, error: userError } = await Services.AuthService.getUser();
+    if (userError || !userData.user) {
+      setError(userError?.message ?? "로그인이 필요합니다.");
+      setSavingConfirmation(false);
+      return;
+    }
+
     const confirmedAt = new Date().toISOString();
+    const trimmedConfirmationMemo = confirmationMemo.trim();
     const rows = confirmCheckedItems.map((item) => ({
       store_id: currentStoreId,
       order_date: todayOrderDate,
@@ -510,6 +537,8 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       urgent_order_requested: item.urgent_order_requested,
       urgent_order_quantity: item.urgent_order_quantity,
       order_completed: item.order_completed,
+      confirmation_note: trimmedConfirmationMemo || null,
+      confirmed_by: userData.user.id,
       confirmed_at: confirmedAt
     }));
 
@@ -519,11 +548,43 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     } else {
       setConfirmedItems(rows.map((row, index) => ({
         id: `${row.product_id}-${index}`,
-        confirmed_by: null,
         created_at: confirmedAt,
         ...row
       })));
-      setMessage(`오늘 발주 품목 ${rows.length}개를 확정했습니다.`);
+      const names = await resolveStoreStaffNames(currentStoreId, [userData.user.id]);
+      setConfirmedByNames((current) => new Map([...current, ...names]));
+      setConfirmationModalOpen(false);
+
+      const addedOrderProductIds = confirmCheckedItems
+        .filter((item) => item.fresh_order_selected)
+        .map((item) => item.id);
+      let addedOrderCleanupFailed = false;
+      if (addedOrderProductIds.length > 0) {
+        const { error: clearAddedOrderError } = await Services.DatabaseService.update("products", {
+          fresh_order_selected: false,
+          fresh_order_selected_at: null
+        })
+          .eq("store_id", currentStoreId)
+          .in("id", addedOrderProductIds);
+
+        if (clearAddedOrderError) {
+          addedOrderCleanupFailed = true;
+          setError(`발주 품목은 확정됐지만 추가 품목 목록을 정리하지 못했습니다. ${clearAddedOrderError.message}`);
+        } else {
+          const addedOrderProductIdSet = new Set(addedOrderProductIds);
+          setItems((current) =>
+            current.map((item) =>
+              addedOrderProductIdSet.has(item.id)
+                ? { ...item, fresh_order_selected: false, fresh_order_selected_at: null }
+                : item
+            )
+          );
+        }
+      }
+
+      if (!addedOrderCleanupFailed) {
+        setMessage(`오늘 발주 품목 ${rows.length}개를 확정했습니다.`);
+      }
     }
     setSavingConfirmation(false);
   }
@@ -605,168 +666,82 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     });
   }
 
-  async function completeFreshReceiving(item: InventoryItem) {
-    setError("");
-    setCompletingFreshIds((current) => new Set(current).add(item.id));
-
-    const receiptResult = item.receipt_check_only
-      ? await recordReceiptCheckOnly(item.id, currentStoreId)
-      : await recordReceiptCompletion(item.id, currentStoreId);
-
-    if (receiptResult.errorMessage) {
-      setError(receiptResult.errorMessage);
-    } else {
-      setFreshReceivingUndoStack((current) => [
-        ...current,
-        {
-          productId: item.id,
-          freshOrderSelected: item.fresh_order_selected,
-          freshOrderSelectedAt: item.fresh_order_selected_at,
-          urgentOrderRequested: item.urgent_order_requested,
-          urgentOrderQuantity: item.urgent_order_quantity,
-          orderCompleted: item.order_completed,
-          receiptLogId: receiptResult.logId
-        }
-      ]);
-      setItems((current) =>
-        current.map((product) =>
-          product.id === item.id
-            ? {
-                ...product,
-                fresh_order_selected: false,
-                fresh_order_selected_at: null,
-                urgent_order_requested: false,
-                urgent_order_quantity: null,
-                order_completed: false
-              }
-            : product
-        )
-      );
-    }
-
-    setCompletingFreshIds((current) => {
-      const next = new Set(current);
-      next.delete(item.id);
-      return next;
-    });
-  }
-
-  function handleReceiptComplete(item: InventoryItem) {
-    if (item.fresh_order_selected || item.receipt_check_only || item.order_completed) {
-      void completeFreshReceiving(item);
-      return;
-    }
-    navigate({ name: "operation", productId: item.id });
-  }
-
-  async function undoFreshReceiving() {
-    const previous = freshReceivingUndoStack[freshReceivingUndoStack.length - 1];
-    if (!previous) return;
-
-    setError("");
-    setUndoingFreshReceiving(true);
-
-    const { data: userData } = await Services.AuthService.getUser();
-    if (!userData.user) {
-      setError("로그인이 필요합니다.");
-      setUndoingFreshReceiving(false);
-      return;
-    }
-
-    const { error: updateError } = await Services.DatabaseService.update("products", {
-        fresh_order_selected: previous.freshOrderSelected,
-        fresh_order_selected_at: previous.freshOrderSelectedAt,
-        urgent_order_requested: previous.urgentOrderRequested,
-        urgent_order_quantity: previous.urgentOrderQuantity,
-        order_completed: previous.orderCompleted
-      })
-      .eq("store_id", currentStoreId)
-      .eq("id", previous.productId);
-
-    if (updateError) {
-      setError(updateError.message);
-      setUndoingFreshReceiving(false);
-      return;
-    }
-
-    if (previous.receiptLogId) {
-      const { error: logUndoError } = await Services.DatabaseService.update("inventory_logs", {
-          reverted_at: new Date().toISOString(),
-          reverted_by: userData.user.id
-        })
-        .eq("store_id", currentStoreId)
-        .eq("id", previous.receiptLogId);
-
-      if (logUndoError) {
-        setError(logUndoError.message);
-        setUndoingFreshReceiving(false);
-        return;
-      }
-    }
-
-    setItems((current) =>
-      current.map((product) =>
-        product.id === previous.productId
-          ? {
-              ...product,
-              fresh_order_selected: previous.freshOrderSelected,
-              fresh_order_selected_at: previous.freshOrderSelectedAt,
-              urgent_order_requested: previous.urgentOrderRequested,
-              urgent_order_quantity: previous.urgentOrderQuantity,
-              order_completed: previous.orderCompleted
-            }
-          : product
-      )
-    );
-    setFreshReceivingUndoStack((current) => current.slice(0, -1));
-
-    setUndoingFreshReceiving(false);
-  }
-
   return (
     <section>
-      <PageTitle
-        title="부족 재고"
-        description="총재고가 최소재고 이하인 품목입니다."
-        action={
-          <div className="flex flex-wrap items-center justify-end gap-2">
+      <div
+        className="sticky top-[calc(57px+env(safe-area-inset-top))] z-30 -mx-4 mb-4 border-b border-slate-200 bg-slate-50/95 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:top-[calc(65px+env(safe-area-inset-top))]"
+        style={{
+          paddingTop: `${8 - headerScrollProgress * 4}px`,
+          paddingBottom: `${8 - headerScrollProgress * 4}px`,
+          boxShadow: `0 4px 12px rgb(15 23 42 / ${headerScrollProgress * 0.1})`
+        }}
+      >
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h1 className="shrink-0 whitespace-nowrap text-2xl font-bold tracking-normal">부족 재고</h1>
+          <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1">
             <button
               type="button"
               onClick={openFreshModal}
-              className="touch-button rounded-md bg-brand-600 px-3 text-sm font-bold text-white"
+              className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md bg-brand-600 text-sm font-bold text-white"
+              style={{
+                columnGap: `${2 * (1 - headerScrollProgress)}px`,
+                paddingInline: `${8 * (1 - headerScrollProgress)}px`
+              }}
+              aria-label="품목추가"
+              title="품목추가"
             >
-              발주품목 추가
+              <Plus className="shrink-0" size={16} />
+              <span
+                className="overflow-hidden whitespace-nowrap"
+                style={{ maxWidth: `${52 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}
+              >
+                품목추가
+              </span>
             </button>
             {canConfirmOrderItems ? (
               <button
                 type="button"
                 disabled={savingConfirmation || loading || confirmCheckedItems.length === 0}
-                onClick={() => void confirmTodayOrderItems()}
-                className="touch-button inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                onClick={openConfirmationModal}
+                className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md bg-brand-600 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                style={{
+                  columnGap: `${2 * (1 - headerScrollProgress)}px`,
+                  paddingInline: `${8 * (1 - headerScrollProgress)}px`
+                }}
+                aria-label={savingConfirmation ? "확정 중" : "컨펌"}
+                title={savingConfirmation ? "확정 중" : "컨펌"}
               >
-                <CheckCircle2 size={18} />
-                {savingConfirmation ? "확정 중" : "컨펌하기"}
+                <CheckCircle2 className="shrink-0" size={16} />
+                <span
+                  className="overflow-hidden whitespace-nowrap"
+                  style={{ maxWidth: `${44 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}
+                >
+                  {savingConfirmation ? "확정 중" : "컨펌"}
+                </span>
               </button>
             ) : null}
             <button
               type="button"
               onClick={() => void openConfirmedModal()}
-              className="touch-button inline-flex items-center gap-1 rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 dark:text-brand-100"
+              className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md border border-brand-600 text-sm font-bold text-brand-700 dark:text-brand-100"
+              style={{
+                columnGap: `${2 * (1 - headerScrollProgress)}px`,
+                paddingInline: `${8 * (1 - headerScrollProgress)}px`
+              }}
+              aria-label="히스토리"
+              title="히스토리"
             >
-              <ClipboardList size={18} />
-              확정품목 확인하기
-            </button>
-            <button
-              type="button"
-              disabled={freshReceivingUndoStack.length === 0 || undoingFreshReceiving}
-              onClick={() => void undoFreshReceiving()}
-              className="touch-button rounded-md border border-brand-600 px-3 text-sm font-bold text-brand-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:opacity-60 dark:text-brand-100 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
-            >
-              {undoingFreshReceiving ? "되돌리는 중" : `입고완료 되돌리기 (${freshReceivingUndoStack.length})`}
+              <ClipboardList className="shrink-0" size={16} />
+              <span
+                className="overflow-hidden whitespace-nowrap"
+                style={{ maxWidth: `${52 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}
+              >
+                히스토리
+              </span>
             </button>
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {loading ? (
         <div role="status" aria-live="polite" aria-label="부족 재고를 불러오는 중">
@@ -806,7 +781,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                     <span className="rounded-full bg-brand-600 px-2 py-1 text-xs font-bold text-white">추가</span>
                   ) : null}
                 </div>
-                <div className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2 text-sm">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_92px_auto_auto] items-end gap-1.5 text-sm">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">총재고</p>
                     <p className="font-bold tabular-nums text-red-700 dark:text-red-200">
@@ -817,8 +792,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">최소</p>
                     <p className="tabular-nums">{item.receipt_check_only ? "-" : item.minimum_stock}</p>
                   </div>
-                  <div className="flex min-w-[154px] flex-wrap items-end justify-end gap-2" onClick={(event) => event.stopPropagation()}>
-                    <label className="flex flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300">
+                  <label className="flex flex-col items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300" onClick={(event) => event.stopPropagation()}>
                       컨펌
                       <input
                         type="checkbox"
@@ -828,37 +802,8 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                         aria-label={`${item.name} 컨펌`}
                         className="h-6 w-6 rounded border-slate-300 accent-brand-600 disabled:opacity-45"
                       />
-                    </label>
-                    <button
-                      type="button"
-                      disabled={completingFreshIds.has(item.id)}
-                      onClick={() => handleReceiptComplete(item)}
-                      className="min-h-9 whitespace-nowrap rounded-md bg-brand-600 px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
-                    >
-                      입고 완료
-                    </button>
-                    {item.fresh_order_selected ? (
-                      <button
-                        type="button"
-                        disabled={deletingAddedOrderIds.has(item.id)}
-                        onClick={() => void deleteAddedOrder(item)}
-                        className="min-h-9 whitespace-nowrap rounded-md border border-red-200 px-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
-                      >
-                        삭제
-                      </button>
-                    ) : item.urgent_order_requested ? (
-                      <button
-                        type="button"
-                        disabled={deletingUrgentIds.has(item.id)}
-                        onClick={() => void deleteUrgentOrder(item)}
-                        className="min-h-9 whitespace-nowrap rounded-md border border-red-200 px-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
-                      >
-                        삭제
-                      </button>
-                    ) : null}
-                  </div>
-                  <label className="col-span-full flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
-                    <span className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">필요 갯수</span>
+                  </label>
+                  <label className="block min-w-0" onClick={(event) => event.stopPropagation()}>
                     <input
                       type="number"
                       min="0"
@@ -866,10 +811,36 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                       inputMode="decimal"
                       value={requiredQuantities[item.id] ?? ""}
                       onChange={(event) => setRequiredQuantities((current) => ({ ...current, [item.id]: event.target.value }))}
-                      className="field h-9 min-w-0 flex-1 px-2 py-1 text-right text-sm tabular-nums"
-                      aria-label={`${item.name} 필요 갯수`}
+                      className="field h-9 w-full px-2 py-1 text-center text-sm font-semibold tabular-nums placeholder:text-slate-400"
+                      placeholder="필요 개수"
+                      aria-label={`${item.name} 필요 개수`}
                     />
                   </label>
+                  {item.fresh_order_selected ? (
+                    <button
+                      type="button"
+                      disabled={deletingAddedOrderIds.has(item.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteAddedOrder(item);
+                      }}
+                      className="h-10 w-10 rounded-md border border-red-200 px-1 text-[11px] font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
+                    >
+                      삭제
+                    </button>
+                  ) : item.urgent_order_requested ? (
+                    <button
+                      type="button"
+                      disabled={deletingUrgentIds.has(item.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteUrgentOrder(item);
+                      }}
+                      className="h-10 w-10 rounded-md border border-red-200 px-1 text-[11px] font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-red-900 dark:text-red-200"
+                    >
+                      삭제
+                    </button>
+                  ) : <span className="h-10 w-10" aria-hidden="true" />}
                   <ProductOrderAction
                     item={item}
                     supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
@@ -889,8 +860,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                   <th className="w-16 px-2 py-3 text-right">총재고</th>
                   <th className="w-16 px-2 py-3 text-right">최소</th>
                   <th className="w-[92px] px-2 py-3 text-center">컨펌</th>
-                  <th className="w-[96px] px-2 py-3 text-center">입고완료</th>
-                  <th className="w-[104px] px-2 py-3 text-center">필요 갯수</th>
+                  <th className="w-[104px] px-2 py-3 text-center">필요 개수</th>
                   <th className="w-[122px] px-2 py-3 text-center">발주</th>
                 </tr>
               </thead>
@@ -951,16 +921,6 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                         </button>
                       ) : null}
                     </td>
-                    <td className="px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
-                      <button
-                        type="button"
-                        disabled={completingFreshIds.has(item.id)}
-                        onClick={() => handleReceiptComplete(item)}
-                        className="min-h-9 w-full rounded-md bg-brand-600 px-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
-                      >
-                        입고 완료
-                      </button>
-                    </td>
                     <td className="px-2 py-2" onClick={(event) => event.stopPropagation()}>
                       <input
                         type="number"
@@ -970,7 +930,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                         value={requiredQuantities[item.id] ?? ""}
                         onChange={(event) => setRequiredQuantities((current) => ({ ...current, [item.id]: event.target.value }))}
                         className="field h-9 w-full px-2 py-1 text-right text-sm tabular-nums"
-                        aria-label={`${item.name} 필요 갯수`}
+                        aria-label={`${item.name} 필요 개수`}
                       />
                     </td>
                     <td className="px-2 py-2 text-center">
@@ -1172,6 +1132,40 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
             </div>
           ) : null}
 
+          {confirmationModalOpen ? (
+            <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 px-4 py-6">
+              <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
+                <h2 id="confirmation-dialog-title" className="text-lg font-bold">발주 품목 컨펌</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  컨펌 체크한 {confirmCheckedItems.length}개 품목을 확정합니다. 기존 당일 확정 목록은 선택한 품목으로 교체됩니다.
+                </p>
+                <label className="mt-4 block">
+                  <span className="mb-1 block text-sm font-semibold">메모</span>
+                  <textarea
+                    className="field min-h-28 resize-y"
+                    value={confirmationMemo}
+                    onChange={(event) => setConfirmationMemo(event.target.value)}
+                    placeholder="확정 품목에 함께 남길 메모를 입력하세요"
+                    disabled={savingConfirmation}
+                  />
+                </label>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    disabled={savingConfirmation}
+                    onClick={() => setConfirmationModalOpen(false)}
+                    className="secondary-button"
+                  >
+                    취소
+                  </button>
+                  <button type="button" disabled={savingConfirmation} onClick={() => void confirmTodayOrderItems()} className="primary-button">
+                    {savingConfirmation ? "확정 중..." : "컨펌하기"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {confirmedModalOpen ? (
             <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-4 py-6">
               <div className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
@@ -1241,49 +1235,60 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                   {loadingConfirmed ? <StatusMessage>확정 품목을 불러오는 중...</StatusMessage> : null}
                   {!loadingConfirmed && confirmedItems.length === 0 ? <StatusMessage>선택한 날짜에 확정된 품목이 없습니다.</StatusMessage> : null}
                   {!loadingConfirmed && confirmedItems.length > 0 ? (
-                    <div className="space-y-2">
-                      {confirmedItems.map((item) => {
-                        const product = itemsById.get(item.product_id);
+                    <>
+                      {confirmedItems[0].confirmation_note ? (
+                        <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950">
+                          <p className="text-xs font-extrabold text-brand-700 dark:text-brand-100">컨펌 메모</p>
+                          <p className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{confirmedItems[0].confirmation_note}</p>
+                          <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            작성자: {confirmedItems[0].confirmed_by ? confirmedByNames.get(confirmedItems[0].confirmed_by) ?? "직원" : "-"}
+                          </p>
+                        </div>
+                      ) : null}
+                      <div className="space-y-2">
+                        {confirmedItems.map((item) => {
+                          const product = itemsById.get(item.product_id);
 
-                        return (
-                          <div key={item.id} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
-                            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="min-w-0 flex-1 break-words font-bold">{item.product_name}</span>
-                                  {item.urgent_order_requested ? (
-                                    <span className="rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">
-                                      {item.urgent_order_quantity ? `긴급 ${item.urgent_order_quantity}개` : "긴급"}
-                                    </span>
-                                  ) : null}
-                                  {item.fresh_order_selected ? (
-                                    <span className="rounded-full bg-brand-600 px-2 py-1 text-xs font-bold text-white">추가</span>
-                                  ) : null}
-                                  {item.is_low_stock ? (
-                                    <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">부족</span>
-                                  ) : null}
+                          return (
+                            <div key={item.id} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="min-w-0 flex-1 break-words font-bold">{item.product_name}</span>
+                                    {item.urgent_order_requested ? (
+                                      <span className="rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">
+                                        {item.urgent_order_quantity ? `긴급 ${item.urgent_order_quantity}개` : "긴급"}
+                                      </span>
+                                    ) : null}
+                                    {item.fresh_order_selected ? (
+                                      <span className="rounded-full bg-brand-600 px-2 py-1 text-xs font-bold text-white">추가</span>
+                                    ) : null}
+                                    {item.is_low_stock ? (
+                                      <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">부족</span>
+                                    ) : null}
+                                  </div>
+                                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                    <span>카테고리: {item.category}</span>
+                                    <span>발주처: {item.supplier_name || "미지정"}</span>
+                                    <span>총재고: {item.total_stock === null ? "-" : formatInventoryQuantity(item.total_stock)}</span>
+                                    <span>최소: {item.minimum_stock ?? "-"}</span>
+                                    <span>필요 개수: {item.required_quantity === null ? "-" : formatInventoryQuantity(item.required_quantity)}</span>
+                                  </div>
                                 </div>
-                                <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                  <span>카테고리: {item.category}</span>
-                                  <span>발주처: {item.supplier_name || "미지정"}</span>
-                                  <span>총재고: {item.total_stock === null ? "-" : formatInventoryQuantity(item.total_stock)}</span>
-                                  <span>최소: {item.minimum_stock ?? "-"}</span>
-                                  <span>필요 갯수: {item.required_quantity === null ? "-" : formatInventoryQuantity(item.required_quantity)}</span>
-                                </div>
+                                {product ? (
+                                  <ProductOrderAction
+                                    item={product}
+                                    supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
+                                    quantity={orderQuantities[item.product_id] ?? ""}
+                                    onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.product_id]: quantity }))}
+                                  />
+                                ) : null}
                               </div>
-                              {product ? (
-                                <ProductOrderAction
-                                  item={product}
-                                  supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
-                                  quantity={orderQuantities[item.product_id] ?? ""}
-                                  onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.product_id]: quantity }))}
-                                />
-                              ) : null}
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   ) : null}
                 </div>
 

@@ -26,6 +26,9 @@ type ConfirmedOrderReceipt = {
   product_id: string;
   product_name: string;
   confirmed_at: string;
+  products?: {
+    is_active?: boolean | null;
+  } | null;
 };
 type ReceiptHistoryLog = InventoryLog & {
   products?: {
@@ -123,6 +126,26 @@ function buildCompletedReceipts(logs: ReceiptHistoryLog[]) {
     });
   });
   return Array.from(grouped.values());
+}
+
+function buildExpectedReceipts(receipts: ConfirmedOrderReceipt[]) {
+  return receipts.map((product) => ({
+    productId: product.product_id,
+    name: product.product_name,
+    quantity: null,
+    lastReceivedAt: product.confirmed_at,
+    receiptCheckOnly: false,
+    status: "expected" as const
+  }));
+}
+
+function mergeExpectedReceipts(delayedItems: ReceiptItem[], expectedItems: ReceiptItem[]) {
+  const productIds = new Set<string>();
+  return [...delayedItems, ...expectedItems].filter((item) => {
+    if (productIds.has(item.productId)) return false;
+    productIds.add(item.productId);
+    return true;
+  });
 }
 
 function SectionHeader({
@@ -390,7 +413,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       .gte("created_at", range.start)
       .lt("created_at", range.end)
       .order("created_at", { ascending: false });
-    const expectedReceiptQuery = Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at")
+    const expectedReceiptQuery = Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at, products(is_active)")
       .eq("store_id", currentStoreId)
       .eq("order_date", previousBusinessDate)
       .order("urgent_order_requested", { ascending: false })
@@ -415,7 +438,32 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         .maybeSingle()
     ]);
 
-    const firstError = receiptLogResult.error ?? expectedReceiptResult.error ?? todoResult.error ?? handoverResult.error ?? profileResult.error ?? receiptDeletionResult.error;
+    let delayedSourceDate: string;
+    try {
+      delayedSourceDate = getPreviousBusinessDate(previousBusinessDate, weeklyClosureDays, specificClosureDates);
+    } catch (calendarError) {
+      setError(calendarError instanceof Error ? calendarError.message : "지연 입고 날짜를 계산하지 못했습니다.");
+      setLoading(false);
+      return;
+    }
+    const delayedRange = getDayRange(new Date(`${previousBusinessDate}T00:00:00`));
+    const [delayedExpectedResult, delayedLogResult] = await Promise.all([
+      Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at, products(is_active)")
+        .eq("store_id", currentStoreId)
+        .eq("order_date", delayedSourceDate)
+        .order("urgent_order_requested", { ascending: false })
+        .order("product_name", { ascending: true }),
+      Services.DatabaseService.select("inventory_logs", "*, products(name, barcode, receipt_check_only)")
+        .eq("store_id", currentStoreId)
+        .eq("action", "입고")
+        .is("reverted_at", null)
+        .gte("created_at", delayedRange.start)
+        .lt("created_at", delayedRange.end)
+    ]);
+    const delayedExpectedReceiptResult = delayedExpectedResult as { data: ConfirmedOrderReceipt[] | null; error: null | { message: string } };
+    const delayedReceiptLogResult = delayedLogResult as { data: ReceiptHistoryLog[] | null; error: null | { message: string } };
+
+    const firstError = receiptLogResult.error ?? expectedReceiptResult.error ?? delayedExpectedReceiptResult.error ?? delayedReceiptLogResult.error ?? todoResult.error ?? handoverResult.error ?? profileResult.error ?? receiptDeletionResult.error;
     if (firstError) {
       setError(
         firstError.message.includes("dashboard_todos")
@@ -427,23 +475,26 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       );
     }
 
-    if (!receiptLogResult.error && !expectedReceiptResult.error) {
+    if (!receiptLogResult.error && !expectedReceiptResult.error && !delayedExpectedReceiptResult.error && !delayedReceiptLogResult.error) {
       const completedItems = buildCompletedReceipts((receiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[]);
       const completedProductIds = new Set(completedItems.map((item) => item.productId));
-
-      const expectedItems = ((expectedReceiptResult.data ?? []) as ConfirmedOrderReceipt[]).map((product) => ({
-        productId: product.product_id,
-        name: product.product_name,
-        quantity: null,
-        lastReceivedAt: product.confirmed_at,
-        receiptCheckOnly: false,
-        status: "expected" as const
-      }));
+      const previousBusinessDayCompletedProductIds = new Set(
+        buildCompletedReceipts((delayedReceiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[]).map((item) => item.productId)
+      );
+      const expectedItems = buildExpectedReceipts(
+        ((expectedReceiptResult.data ?? []) as ConfirmedOrderReceipt[]).filter((item) => item.products?.is_active !== false)
+      )
+        .filter((item) => !previousBusinessDayCompletedProductIds.has(item.productId));
+      const delayedItems = buildExpectedReceipts(
+        ((delayedExpectedReceiptResult.data ?? []) as ConfirmedOrderReceipt[]).filter((item) => item.products?.is_active !== false)
+      )
+        .filter((item) => !previousBusinessDayCompletedProductIds.has(item.productId));
+      const nextExpectedItems = mergeExpectedReceipts(delayedItems, expectedItems);
 
       if (dashboardView === "today") {
-        setReceipts([...expectedItems.filter((item) => !completedProductIds.has(item.productId)), ...completedItems]);
+        setReceipts([...nextExpectedItems.filter((item) => !completedProductIds.has(item.productId)), ...completedItems]);
       } else {
-        setReceipts(expectedItems);
+        setReceipts(nextExpectedItems);
       }
     }
 
@@ -750,7 +801,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     const range = getDayRange(new Date(`${targetDate}T00:00:00`));
     const [expectedResult, completedResult] = await Promise.all([
-      Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at")
+      Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at, products(is_active)")
         .eq("store_id", currentStoreId)
         .eq("order_date", previousBusinessDate)
         .order("urgent_order_requested", { ascending: false })
@@ -772,15 +823,15 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           : historyError.message
       );
     } else {
-      setReceiptHistoryExpected(((expectedResult.data ?? []) as ConfirmedOrderReceipt[]).map((product) => ({
-        productId: product.product_id,
-        name: product.product_name,
-        quantity: null,
-        lastReceivedAt: product.confirmed_at,
-        receiptCheckOnly: false,
-        status: "expected"
-      })));
-      setReceiptHistoryCompleted(buildCompletedReceipts((completedResult.data ?? []) as unknown as ReceiptHistoryLog[]));
+      const completedItems = buildCompletedReceipts((completedResult.data ?? []) as unknown as ReceiptHistoryLog[]);
+      const completedProductIds = new Set(completedItems.map((item) => item.productId));
+      setReceiptHistoryExpected(
+        buildExpectedReceipts(
+          ((expectedResult.data ?? []) as ConfirmedOrderReceipt[]).filter((item) => item.products?.is_active !== false)
+        )
+          .filter((item) => !completedProductIds.has(item.productId))
+      );
+      setReceiptHistoryCompleted(completedItems);
     }
 
     setReceiptHistoryLoading(false);

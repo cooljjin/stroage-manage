@@ -210,6 +210,7 @@ export type Database = {
           urgent_order_requested: boolean;
           urgent_order_quantity: number | null;
           order_completed: boolean;
+          confirmation_note: string | null;
           confirmed_by: string | null;
           confirmed_at: string;
           created_at: string;
@@ -230,6 +231,7 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          confirmation_note?: string | null;
           confirmed_by?: string | null;
           confirmed_at?: string;
           created_at?: string;
@@ -249,8 +251,35 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          confirmation_note?: string | null;
           confirmed_by?: string | null;
           confirmed_at?: string;
+        };
+        Relationships: [];
+      };
+      product_merge_history: {
+        Row: {
+          id: string;
+          store_id: string;
+          source_product_id: string;
+          target_product_id: string;
+          merged_by: string | null;
+          merged_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          source_product_id: string;
+          target_product_id: string;
+          merged_by?: string | null;
+          merged_at?: string;
+        };
+        Update: {
+          store_id?: string;
+          source_product_id?: string;
+          target_product_id?: string;
+          merged_by?: string | null;
+          merged_at?: string;
         };
         Relationships: [];
       };
@@ -643,6 +672,7 @@ export type Database = {
           created_at?: string;
         };
         Update: {
+          note?: string | null;
           store_id?: string;
           reverted_at?: string | null;
           reverted_by?: string | null;

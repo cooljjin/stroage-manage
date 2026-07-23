@@ -58,6 +58,33 @@ function formatProductUpdateError(message: string) {
   return message;
 }
 
+function ProductMergeInfo({ product, title, description }: { product: Product; title: string; description: string }) {
+  const details = [
+    ["상품명", product.name],
+    ["바코드", product.barcode ?? "없음"],
+    ["카테고리", product.category],
+    ["보관", product.storage_type || "미설정"],
+    ["기본 위치", product.default_location],
+    ["발주처", product.supplier_name ?? "미설정"],
+    ["단위", product.unit_name ?? "미설정"]
+  ];
+
+  return (
+    <section className="min-w-0 rounded-md border border-slate-200 p-2.5 dark:border-slate-700 sm:p-3">
+      <h3 className="text-sm font-bold sm:text-base">{title}</h3>
+      <p className="mt-1 text-[10px] font-semibold leading-tight text-slate-500 dark:text-slate-400 sm:text-xs">{description}</p>
+      <dl className="mt-2 space-y-1.5 text-[11px] sm:mt-3 sm:space-y-2 sm:text-sm">
+        {details.map(([label, value]) => (
+          <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] gap-1 sm:grid-cols-[76px_minmax(0,1fr)] sm:gap-2">
+            <dt className="font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
+            <dd className="min-w-0 break-words font-medium">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export function ProductEditPage({ productId, barcode: initialBarcode = "", navigate, currentStoreId, returnTo, prepDraft, groupOrderDraft }: Props) {
   const isRegisterMode = !productId;
   const [product, setProduct] = useState<Product | null>(null);
@@ -85,6 +112,8 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [mergeSearch, setMergeSearch] = useState("");
+  const [mergeCandidate, setMergeCandidate] = useState<Product | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -381,17 +410,17 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     return errorMessage;
   }
 
-  async function mergeProduct(sourceProduct: Product) {
-    if (!product) return;
+  async function mergeProduct() {
+    if (!product || !mergeCandidate) return;
 
-    const ok = window.confirm(`${sourceProduct.name} 상품을 ${product.name} 상품으로 병합할까요? 병합 후 ${sourceProduct.name}은 비활성화됩니다.`);
-    if (!ok) return;
+    const targetProduct = mergeTargetId === mergeCandidate.id ? mergeCandidate : product;
+    const sourceProduct = targetProduct.id === product.id ? mergeCandidate : product;
 
     setError("");
     setMessage("");
     setMerging(true);
     const { error: mergeError } = await Services.DatabaseService.rpc("merge_products", {
-      target_product_id: product.id,
+      target_product_id: targetProduct.id,
       source_product_id: sourceProduct.id
     });
     setMerging(false);
@@ -402,8 +431,10 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     }
 
     setMergeSearch("");
+    setMergeCandidate(null);
+    setMergeTargetId(null);
     await loadProduct();
-    setMessage("상품을 병합했습니다.");
+    setMessage(`${targetProduct.name} 품목으로 병합했습니다.`);
   }
 
   if (loading) return <StatusMessage>{isRegisterMode ? "상품 등록 화면을 준비하는 중..." : "상품 정보를 불러오는 중..."}</StatusMessage>;
@@ -679,7 +710,12 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
                 key={candidate.id}
                 type="button"
                 disabled={merging}
-                onClick={() => void mergeProduct(candidate)}
+                onClick={() => {
+                  setError("");
+                  setMessage("");
+                  setMergeCandidate(candidate);
+                  setMergeTargetId(product?.id ?? null);
+                }}
                 className="w-full rounded-md border border-slate-200 bg-white p-3 text-left text-sm disabled:opacity-45 dark:border-slate-800 dark:bg-slate-900"
               >
                 <span className="block font-bold">{candidate.name}</span>
@@ -691,6 +727,60 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
           <p className="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">병합할 품목이 없습니다.</p>
         ) : null}
       </div> : null}
+
+      {mergeCandidate && product ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-3 py-3 sm:px-4 sm:py-6">
+          <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white p-3 shadow-xl dark:bg-slate-900 sm:max-h-[90dvh] sm:p-5" role="dialog" aria-modal="true" aria-labelledby="merge-product-dialog-title">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <h2 id="merge-product-dialog-title" className="text-lg font-bold">상품 병합 확인</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">남길 품목을 선택해 주세요. 선택하지 않은 품목은 병합 후 비활성화됩니다.</p>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:gap-3">
+                {([product, mergeCandidate] as const).map((mergeProductItem) => {
+                  const isSelected = mergeTargetId === mergeProductItem.id;
+                  const isCurrentProduct = mergeProductItem.id === product.id;
+                  return (
+                    <button
+                      key={mergeProductItem.id}
+                      type="button"
+                      disabled={merging}
+                      onClick={() => setMergeTargetId(mergeProductItem.id)}
+                      className={`rounded-md border-2 p-px text-left transition-colors disabled:cursor-not-allowed ${isSelected ? "border-brand-600" : "border-transparent"}`}
+                      aria-pressed={isSelected}
+                    >
+                      <ProductMergeInfo
+                        product={mergeProductItem}
+                        title={isCurrentProduct ? "현재 품목" : "병합 품목"}
+                        description={isSelected ? "선택됨 · 병합 후 이 품목을 유지합니다." : "선택하면 이 품목을 유지합니다."}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+
+              {error ? <div className="mt-3 sm:mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
+            </div>
+
+            <div className="mt-3 grid shrink-0 grid-cols-2 gap-2 sm:mt-5 sm:gap-3">
+              <button
+                type="button"
+                disabled={merging}
+                onClick={() => {
+                  setError("");
+                  setMergeCandidate(null);
+                  setMergeTargetId(null);
+                }}
+                className="secondary-button"
+              >
+                취소
+              </button>
+              <button type="button" disabled={merging || !mergeTargetId} onClick={() => void mergeProduct()} className="primary-button">
+                {merging ? "병합 중..." : "병합"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {!isRegisterMode ? <div className="mt-4 w-full max-w-2xl">
         <button
