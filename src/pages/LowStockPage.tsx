@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
@@ -101,6 +100,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [confirmedByNames, setConfirmedByNames] = useState<Map<string, string>>(new Map());
   const [loadingConfirmed, setLoadingConfirmed] = useState(false);
   const [savingConfirmation, setSavingConfirmation] = useState(false);
+  const [headerScrollProgress, setHeaderScrollProgress] = useState(0);
   const [hideConfirmedItems, setHideConfirmedItems] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -113,6 +113,25 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       if (freshScannerRef.current?.isScanning) {
         freshScannerRef.current.stop().catch(() => undefined);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    let frameId: number | null = null;
+
+    const updateHeaderProgress = () => {
+      frameId = null;
+      setHeaderScrollProgress(Math.min(window.scrollY / 96, 1));
+    };
+    const handleScroll = () => {
+      if (frameId === null) frameId = window.requestAnimationFrame(updateHeaderProgress);
+    };
+
+    updateHeaderProgress();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
   }, []);
 
@@ -817,40 +836,71 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
   return (
     <section>
-      <PageTitle
-        title="부족 재고"
-        action={
+      <div
+        className="sticky top-[calc(57px+env(safe-area-inset-top))] z-30 -mx-4 mb-4 border-b border-slate-200 bg-slate-50/95 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:top-[calc(65px+env(safe-area-inset-top))]"
+        style={{
+          paddingTop: `${8 - headerScrollProgress * 4}px`,
+          paddingBottom: `${8 - headerScrollProgress * 4}px`,
+          boxShadow: `0 4px 12px rgb(15 23 42 / ${headerScrollProgress * 0.1})`
+        }}
+      >
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h1 className="shrink-0 whitespace-nowrap text-2xl font-bold tracking-normal">부족 재고</h1>
           <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1">
             <button
               type="button"
               onClick={openFreshModal}
-              className="touch-button inline-flex items-center gap-0.5 rounded-md bg-brand-600 px-2 text-sm font-bold text-white"
+              className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md bg-brand-600 text-sm font-bold text-white"
+              style={{
+                columnGap: `${2 * (1 - headerScrollProgress)}px`,
+                paddingInline: `${8 * (1 - headerScrollProgress)}px`
+              }}
+              aria-label="품목추가"
+              title="품목추가"
             >
-              <Plus size={16} />
-              품목추가
+              <Plus className="shrink-0" size={16} />
+              <span className="overflow-hidden whitespace-nowrap" style={{ maxWidth: `${52 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}>
+                품목추가
+              </span>
             </button>
             {canConfirmOrderItems ? (
               <button
                 type="button"
                 disabled={savingConfirmation || loading || confirmCheckedItems.length === 0}
                 onClick={openConfirmationModal}
-                className="touch-button inline-flex items-center gap-0.5 rounded-md bg-brand-600 px-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md bg-brand-600 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800"
+                style={{
+                  columnGap: `${2 * (1 - headerScrollProgress)}px`,
+                  paddingInline: `${8 * (1 - headerScrollProgress)}px`
+                }}
+                aria-label={savingConfirmation ? "확정 중" : "컨펌"}
+                title={savingConfirmation ? "확정 중" : "컨펌"}
               >
-                <CheckCircle2 size={16} />
-                {savingConfirmation ? "확정 중" : "컨펌"}
+                <CheckCircle2 className="shrink-0" size={16} />
+                <span className="overflow-hidden whitespace-nowrap" style={{ maxWidth: `${44 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}>
+                  {savingConfirmation ? "확정 중" : "컨펌"}
+                </span>
               </button>
             ) : null}
             <button
               type="button"
               onClick={() => void openConfirmedModal()}
-              className="touch-button inline-flex items-center gap-0.5 rounded-md border border-brand-600 px-2 text-sm font-bold text-brand-700 dark:text-brand-100"
+              className="touch-button no-press-scale inline-flex items-center justify-center overflow-hidden rounded-md border border-brand-600 text-sm font-bold text-brand-700 dark:text-brand-100"
+              style={{
+                columnGap: `${2 * (1 - headerScrollProgress)}px`,
+                paddingInline: `${8 * (1 - headerScrollProgress)}px`
+              }}
+              aria-label="발주하기"
+              title="발주하기"
             >
-              <ClipboardList size={16} />
-              발주하기
+              <ClipboardList className="shrink-0" size={16} />
+              <span className="overflow-hidden whitespace-nowrap" style={{ maxWidth: `${52 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}>
+                발주하기
+              </span>
             </button>
           </div>
-        }
-      />
+        </div>
+      </div>
 
       <label className="mb-3 inline-flex min-h-10 items-center gap-2 text-sm font-semibold">
         <input
