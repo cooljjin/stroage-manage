@@ -10,7 +10,7 @@ import type { AppRoute, GroupOrderRouteDraft, Location, PrepItemRouteDraft, Prod
 type Props = {
   productId?: string;
   barcode?: string;
-  navigate: (route: AppRoute) => void;
+  navigate: (route: AppRoute, options?: { replace?: boolean; restore?: boolean }) => void;
   currentStoreId: string;
   returnTo?: "prep-items" | "group-order" | "group-order-recipes";
   prepDraft?: PrepItemRouteDraft;
@@ -308,7 +308,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         }
 
         if (existingProduct?.is_active) {
-          navigate({ name: "operation", productId: existingProduct.id });
+          navigate({ name: "operation", productId: existingProduct.id }, { replace: true });
           setSaving(false);
           return;
         }
@@ -330,7 +330,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
             if (inventoryError) {
               setError(inventoryError.message);
             } else {
-              navigate({ name: "operation", productId: restoredProduct.id });
+              navigate({ name: "operation", productId: restoredProduct.id }, { replace: true });
             }
           }
 
@@ -353,7 +353,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         if (inventoryError) {
           setError(inventoryError.message);
         } else {
-          navigate({ name: "operation", productId: insertedProduct.id });
+          navigate({ name: "operation", productId: insertedProduct.id }, { replace: true });
         }
       }
       setSaving(false);
@@ -368,7 +368,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     if (updateError) {
       setError(formatProductUpdateError(updateError.message));
     } else {
-      navigate(getExitRoute());
+      navigate(getExitRoute(), { replace: true });
     }
   }
 
@@ -390,7 +390,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
       return;
     }
 
-    navigate({ name: "inventory" });
+    navigate({ name: "inventory" }, { restore: true });
   }
 
   const mergeCandidates = product && !isRegisterMode
@@ -445,7 +445,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
       <PageTitle
         title={isRegisterMode ? "상품 등록" : "상품 수정"}
         description={isRegisterMode ? "미등록 상품을 등록한 뒤 바로 재고 작업으로 이동합니다." : product?.name}
-        action={<button className="secondary-button px-3" type="button" onClick={() => navigate(getExitRoute())}>취소</button>}
+        action={<button className="secondary-button px-3" type="button" onClick={() => navigate(getExitRoute(), { replace: true })}>취소</button>}
       />
 
       <form onSubmit={handleSubmit} className="panel w-full max-w-2xl overflow-hidden p-4">
@@ -680,7 +680,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         {message ? <div className="mt-4"><StatusMessage type="success">{message}</StatusMessage></div> : null}
 
         <div className="mt-5 grid grid-cols-2 gap-3">
-          <button type="button" onClick={() => navigate(getExitRoute())} className="secondary-button">
+          <button type="button" onClick={() => navigate(getExitRoute(), { replace: true })} className="secondary-button">
             취소
           </button>
           <button type="submit" disabled={saving || !name.trim()} className="primary-button">

@@ -34,6 +34,7 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
     receipt_check_only: row.receipt_check_only ?? false,
     status_enabled: row.status_enabled ?? false,
     stock_status: row.stock_status ?? null,
+    is_important: row.is_important ?? false,
     default_location: row.default_location ?? "창고",
     inventory,
     warehouse_qty,

@@ -3,7 +3,7 @@ import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardCh
 import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { PressableButton } from "../components/PressableButton";
 import { StatusMessage } from "../components/StatusMessage";
-import { addDateValueDays, getDateValueWeekday, getNextBusinessDate, getSeoulDateValue } from "../lib/businessCalendar";
+import { addDateValueDays, getDateValueWeekday, getNextBusinessDate, getSeoulDateValue, isStoreClosureDate } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
 import * as Services from "../services";
@@ -38,6 +38,10 @@ type ReceiptHistoryLog = InventoryLog & {
 };
 
 type DashboardView = "today" | "tomorrow";
+type ReceiptCalendarCount = {
+  expected: number;
+  completed: number;
+};
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -223,6 +227,7 @@ function SectionHeader({
 export function HomePage({ navigate, currentStoreId }: Props) {
   const todayValue = useMemo(() => getSeoulDateValue(), []);
   const [nextBusinessDate, setNextBusinessDate] = useState<string | null>(null);
+  const [todayIsStoreClosure, setTodayIsStoreClosure] = useState(false);
   const [dashboardView, setDashboardView] = useState<DashboardView>("today");
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [todos, setTodos] = useState<DashboardTodo[]>([]);
@@ -234,18 +239,28 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [receiptHistoryOpen, setReceiptHistoryOpen] = useState(false);
   const [receiptHistoryLoading, setReceiptHistoryLoading] = useState(false);
   const [receiptHistoryError, setReceiptHistoryError] = useState("");
+  const [receiptCalendarMonth, setReceiptCalendarMonth] = useState(() => getMonthStart(todayValue));
+  const [receiptCalendarCounts, setReceiptCalendarCounts] = useState<Map<string, ReceiptCalendarCount>>(new Map());
+  const [receiptCalendarOpen, setReceiptCalendarOpen] = useState(false);
+  const [receiptCalendarLoading, setReceiptCalendarLoading] = useState(false);
   const [profiles, setProfiles] = useState<Map<string, string>>(new Map());
   const [todoDraft, setTodoDraft] = useState("");
   const [scheduledTodoDraft, setScheduledTodoDraft] = useState("");
   const [scheduledTodoDate, setScheduledTodoDate] = useState(todayValue);
-  const [scheduledTodoCalendarMonth, setScheduledTodoCalendarMonth] = useState(() => getMonthStart(todayValue));
+  const [todoCalendarMonth, setTodoCalendarMonth] = useState(() => getMonthStart(todayValue));
+  const [todoCalendarTodos, setTodoCalendarTodos] = useState<DashboardTodo[]>([]);
+  const [scheduledTodos, setScheduledTodos] = useState<DashboardTodo[]>([]);
+  const [editingScheduledTodoId, setEditingScheduledTodoId] = useState<string | null>(null);
+  const [editingScheduledTodoDraft, setEditingScheduledTodoDraft] = useState("");
   const [handoverDraft, setHandoverDraft] = useState("");
   const [showTodoForm, setShowTodoForm] = useState(false);
   const [showScheduledTodoDialog, setShowScheduledTodoDialog] = useState(false);
-  const [showScheduledTodoCalendar, setShowScheduledTodoCalendar] = useState(false);
+  const [showTodoCalendarDialog, setShowTodoCalendarDialog] = useState(false);
   const [showHandoverForm, setShowHandoverForm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [todoCalendarLoading, setTodoCalendarLoading] = useState(false);
+  const [scheduledTodosLoading, setScheduledTodosLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [receiptActioning, setReceiptActioning] = useState(false);
   const [receiptDeletingIds, setReceiptDeletingIds] = useState<Set<string>>(new Set());
@@ -255,7 +270,113 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const selectedDate = dashboardView === "today" ? todayValue : nextBusinessDate;
-  const scheduledTodoCalendarDates = useMemo(() => getCalendarDates(scheduledTodoCalendarMonth), [scheduledTodoCalendarMonth]);
+  const todoCalendarDates = useMemo(() => getCalendarDates(todoCalendarMonth), [todoCalendarMonth]);
+  const receiptCalendarDates = useMemo(() => getCalendarDates(receiptCalendarMonth), [receiptCalendarMonth]);
+  const todoCountsByDate = useMemo(() => {
+    const counts = new Map<string, number>();
+    todoCalendarTodos.forEach((todo) => counts.set(todo.task_date, (counts.get(todo.task_date) ?? 0) + 1));
+    return counts;
+  }, [todoCalendarTodos]);
+
+  const loadTodoCalendar = useCallback(async () => {
+    setTodoCalendarLoading(true);
+    const nextMonth = addMonths(todoCalendarMonth, 1);
+    const { data, error: loadError } = await Services.DatabaseService.select("dashboard_todos", "*")
+      .eq("store_id", currentStoreId)
+      .gte("task_date", todoCalendarMonth)
+      .lt("task_date", nextMonth)
+      .is("deleted_at", null)
+      .order("task_date", { ascending: true });
+
+    if (loadError) {
+      setError(loadError.message.includes("dashboard_todos") ? "To do list 데이터를 불러오지 못했습니다." : loadError.message);
+      setTodoCalendarTodos([]);
+    } else {
+      setTodoCalendarTodos((data ?? []) as DashboardTodo[]);
+    }
+    setTodoCalendarLoading(false);
+  }, [currentStoreId, todoCalendarMonth]);
+
+  useEffect(() => {
+    if (showTodoCalendarDialog) void loadTodoCalendar();
+  }, [loadTodoCalendar, showTodoCalendarDialog]);
+
+  const loadReceiptCalendar = useCallback(async () => {
+    setReceiptCalendarLoading(true);
+    const calendarDates = getCalendarDates(receiptCalendarMonth);
+    const calendarStart = calendarDates[0];
+    const calendarEnd = addDateValueDays(calendarDates[calendarDates.length - 1], 1);
+    const closureLookupStart = addDateValueDays(calendarStart, -366);
+    const receiptRange = getDayRange(new Date(`${calendarStart}T00:00:00`));
+    const receiptRangeEnd = getDayRange(new Date(`${calendarEnd}T00:00:00`));
+    const [weeklyClosureResult, specificClosureResult, expectedResult, completedResult] = await Promise.all([
+      Services.DatabaseService.select("weekly_store_closures", "weekday").eq("store_id", currentStoreId),
+      Services.DatabaseService.select("store_closure_dates", "closure_date").eq("store_id", currentStoreId).gte("closure_date", closureLookupStart).lt("closure_date", calendarEnd),
+      Services.DatabaseService.select("confirmed_order_items", "order_date, product_id, products(is_active)")
+        .eq("store_id", currentStoreId)
+        .gte("order_date", closureLookupStart)
+        .lt("order_date", calendarEnd),
+      Services.DatabaseService.select("inventory_logs", "product_id, created_at")
+        .eq("store_id", currentStoreId)
+        .eq("action", "입고")
+        .is("reverted_at", null)
+        .gte("created_at", receiptRange.start)
+        .lt("created_at", receiptRangeEnd.end)
+    ]);
+    const loadError = weeklyClosureResult.error ?? specificClosureResult.error ?? expectedResult.error ?? completedResult.error;
+    if (loadError) {
+      setError(
+        loadError.message.includes("weekly_store_closures") || loadError.message.includes("store_closure_dates") || loadError.message.includes("confirmed_order_items") || loadError.message.includes("inventory_logs")
+          ? "입고 캘린더 데이터를 불러오지 못했습니다. 데이터베이스 업데이트 상태를 확인해 주세요."
+          : loadError.message
+      );
+      setReceiptCalendarCounts(new Map());
+      setReceiptCalendarLoading(false);
+      return;
+    }
+
+    const weeklyClosureDays = new Set(((weeklyClosureResult.data ?? []) as Array<{ weekday: number }>).map((item) => item.weekday));
+    const specificClosureDates = new Set(((specificClosureResult.data ?? []) as Array<{ closure_date: string }>).map((item) => item.closure_date));
+    const expectedItems = (expectedResult.data ?? []) as Array<{ order_date: string; product_id: string; products?: { is_active?: boolean | null } | null }>;
+    const completedItems = (completedResult.data ?? []) as Array<{ product_id: string; created_at: string }>;
+    const counts = new Map<string, ReceiptCalendarCount>();
+    calendarDates.forEach((date) => {
+      let previousBusinessDate: string | null = null;
+      try {
+        previousBusinessDate = getPreviousBusinessDate(date, weeklyClosureDays, specificClosureDates);
+      } catch {
+        previousBusinessDate = null;
+      }
+      const expected = previousBusinessDate
+        ? new Set(expectedItems.filter((item) => item.order_date === previousBusinessDate && item.products?.is_active !== false).map((item) => item.product_id)).size
+        : 0;
+      const completed = new Set(completedItems.filter((item) => getSeoulDateValue(new Date(item.created_at)) === date).map((item) => item.product_id)).size;
+      counts.set(date, { expected, completed });
+    });
+    setReceiptCalendarCounts(counts);
+    setReceiptCalendarLoading(false);
+  }, [currentStoreId, receiptCalendarMonth]);
+
+  useEffect(() => {
+    if (receiptCalendarOpen) void loadReceiptCalendar();
+  }, [loadReceiptCalendar, receiptCalendarOpen]);
+
+  const loadScheduledTodos = useCallback(async (date: string) => {
+    setScheduledTodosLoading(true);
+    const { data, error: loadError } = await Services.DatabaseService.select("dashboard_todos", "*")
+      .eq("store_id", currentStoreId)
+      .eq("task_date", date)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true });
+
+    if (loadError) {
+      setError(loadError.message.includes("dashboard_todos") ? "할 일을 불러오지 못했습니다." : loadError.message);
+      setScheduledTodos([]);
+    } else {
+      setScheduledTodos((data ?? []) as DashboardTodo[]);
+    }
+    setScheduledTodosLoading(false);
+  }, [currentStoreId]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -279,6 +400,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     const weeklyClosureDays = new Set(((weeklyClosureResult.data ?? []) as Array<{ weekday: number }>).map((item) => item.weekday));
     const specificClosureDates = new Set(((specificClosureResult.data ?? []) as Array<{ closure_date: string }>).map((item) => item.closure_date));
+    const isTodayStoreClosure = isStoreClosureDate(todayValue, weeklyClosureDays, specificClosureDates);
+    setTodayIsStoreClosure(isTodayStoreClosure);
     let calculatedNextBusinessDate: string;
     try {
       calculatedNextBusinessDate = getNextBusinessDate(
@@ -528,7 +651,9 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       );
     }
 
-    if (!receiptLogResult.error && !expectedReceiptResult.error && !delayedExpectedReceiptResult.error && !delayedReceiptLogResult.error) {
+    if (dashboardView === "today" && isTodayStoreClosure) {
+      setReceipts([]);
+    } else if (!receiptLogResult.error && !expectedReceiptResult.error && !delayedExpectedReceiptResult.error && !delayedReceiptLogResult.error) {
       const completedItems = buildCompletedReceipts((receiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[]);
       const completedProductIds = new Set(completedItems.map((item) => item.productId));
       const previousBusinessDayCompletedProductIds = new Set(
@@ -559,7 +684,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     if (!profileResult.error) {
       setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
     }
-    if (!receiptDeletionResult.error) setHasReceiptDeletion(Boolean(receiptDeletionResult.data));
+    if (!receiptDeletionResult.error) setHasReceiptDeletion(!isTodayStoreClosure && Boolean(receiptDeletionResult.data));
     setLoading(false);
   }, [currentStoreId, dashboardView, todayValue]);
 
@@ -682,10 +807,64 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     } else {
       const addedDate = scheduledTodoDate;
       setScheduledTodoDraft("");
-      setScheduledTodoDate(todayValue);
-      setShowScheduledTodoDialog(false);
-      await loadDashboard();
-      setMessage(`${shortDateLabel(addedDate)} To do list에 추가했습니다.`);
+      await Promise.all([loadDashboard(), loadScheduledTodos(addedDate)]);
+    }
+    setSaving(false);
+  }
+
+  async function updateScheduledTodo(event: FormEvent) {
+    event.preventDefault();
+    const content = editingScheduledTodoDraft.trim();
+    if (!editingScheduledTodoId || !content) return;
+
+    setSaving(true);
+    setError("");
+    const { data: updatedTodo, error: updateError } = await Services.DatabaseService.update("dashboard_todos", { content })
+      .eq("store_id", currentStoreId)
+      .eq("id", editingScheduledTodoId)
+      .is("routine_id", null)
+      .is("stale_inventory_product_id", null)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError || !updatedTodo) {
+      setError(updateError?.message ?? "할 일을 수정하지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+    } else {
+      setEditingScheduledTodoId(null);
+      setEditingScheduledTodoDraft("");
+      await Promise.all([loadDashboard(), loadScheduledTodos(scheduledTodoDate)]);
+    }
+    setSaving(false);
+  }
+
+  async function deleteScheduledTodo(todo: DashboardTodo) {
+    if (todo.routine_id || todo.stale_inventory_product_id) return;
+    if (!window.confirm(`"${todo.content}" 할 일을 삭제할까요?`)) return;
+
+    setSaving(true);
+    setError("");
+    const { data: userData } = await Services.AuthService.getUser();
+    const { data: deletedTodo, error: deleteError } = await Services.DatabaseService.update("dashboard_todos", {
+      deleted_at: new Date().toISOString(),
+      deleted_by: userData.user?.id ?? null
+    })
+      .eq("store_id", currentStoreId)
+      .eq("id", todo.id)
+      .is("routine_id", null)
+      .is("stale_inventory_product_id", null)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (deleteError || !deletedTodo) {
+      setError(deleteError?.message ?? "할 일을 삭제하지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+    } else {
+      if (editingScheduledTodoId === todo.id) {
+        setEditingScheduledTodoId(null);
+        setEditingScheduledTodoDraft("");
+      }
+      await Promise.all([loadDashboard(), loadScheduledTodos(scheduledTodoDate)]);
     }
     setSaving(false);
   }
@@ -890,26 +1069,53 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setReceiptHistoryLoading(false);
   }
 
-  async function openReceiptHistory() {
-    const initialDate = selectedDate ?? nextBusinessDate ?? todayValue;
-    setReceiptHistoryDate(initialDate);
+  function openReceiptCalendar() {
+    const initialDate = isToday && todayIsStoreClosure
+      ? nextBusinessDate ?? todayValue
+      : selectedDate ?? nextBusinessDate ?? todayValue;
+    setReceiptCalendarMonth(getMonthStart(initialDate));
+    setReceiptCalendarOpen(true);
+  }
+
+  async function openReceiptHistoryFromCalendar(date: string) {
+    setReceiptHistoryDate(date);
+    setReceiptCalendarOpen(false);
     setReceiptHistoryOpen(true);
-    await loadReceiptHistory(initialDate);
+    await loadReceiptHistory(date);
   }
 
   const completedCount = todos.filter((todo) => todo.is_completed).length;
   const displayedTodos = useMemo(() => [...todos].sort(compareTodos), [todos]);
   const isToday = dashboardView === "today";
+  const isTodayStoreClosure = isToday && todayIsStoreClosure;
 
   function changeDashboardView(nextView: DashboardView) {
     setDashboardView(nextView);
     setShowTodoForm(false);
     setShowScheduledTodoDialog(false);
+    setShowTodoCalendarDialog(false);
+    setReceiptCalendarOpen(false);
     setShowHandoverForm(false);
     setTodoDraft("");
     setScheduledTodoDraft("");
     setHandoverDraft("");
     setError("");
+  }
+
+  function openTodoCalendar() {
+    setTodoCalendarMonth(getMonthStart(selectedDate ?? todayValue));
+    setShowTodoCalendarDialog(true);
+    setShowTodoForm(false);
+  }
+
+  function openScheduledTodoDialog(date: string) {
+    setScheduledTodoDate(date);
+    setScheduledTodoDraft("");
+    setEditingScheduledTodoId(null);
+    setEditingScheduledTodoDraft("");
+    setShowTodoCalendarDialog(false);
+    setShowScheduledTodoDialog(true);
+    void loadScheduledTodos(date);
   }
 
   return (
@@ -958,36 +1164,38 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           <SectionHeader
             icon={PackageCheck}
             title={isToday ? "금일 입고품목" : "내일 입고예정 품목"}
-            badge={`${receipts.length}종`}
+            badge={isTodayStoreClosure ? "휴무일" : `${receipts.length}종`}
             action={isToday ? (
               <div className="flex items-center gap-1">
                 <PressableButton
                   type="button"
-                  onClick={() => void openReceiptHistory()}
+                  onClick={openReceiptCalendar}
                   className="touch-button grid shrink-0 place-items-center rounded-md text-brand-700 dark:text-brand-100"
-                  aria-label="입고 예정 및 완료 히스토리"
-                  title="입고 히스토리"
+                  aria-label="입고 예정 및 완료 캘린더"
+                  title="입고 캘린더"
                 >
                   <HistoryReceiptIcon size={19} />
                 </PressableButton>
-                <PressableButton
-                  type="button"
-                  disabled={!hasReceiptDeletion || receiptActioning}
-                  onClick={() => void restoreLatestReceiptDeletion()}
-                  className="touch-button grid shrink-0 place-items-center text-brand-700 disabled:cursor-default disabled:opacity-30 dark:text-brand-100"
-                  aria-label="최근 금일 입고 삭제 되돌리기"
-                  title="최근 삭제 되돌리기"
-                >
-                  <Undo2 size={18} />
-                </PressableButton>
+                {!isTodayStoreClosure ? (
+                  <PressableButton
+                    type="button"
+                    disabled={!hasReceiptDeletion || receiptActioning}
+                    onClick={() => void restoreLatestReceiptDeletion()}
+                    className="touch-button grid shrink-0 place-items-center text-brand-700 disabled:cursor-default disabled:opacity-30 dark:text-brand-100"
+                    aria-label="최근 금일 입고 삭제 되돌리기"
+                    title="최근 삭제 되돌리기"
+                  >
+                    <Undo2 size={18} />
+                  </PressableButton>
+                ) : null}
               </div>
             ) : (
               <PressableButton
                 type="button"
-                onClick={() => void openReceiptHistory()}
+                onClick={openReceiptCalendar}
                 className="touch-button grid shrink-0 place-items-center rounded-md text-brand-700 dark:text-brand-100"
-                aria-label="입고 예정 및 완료 히스토리"
-                title="입고 히스토리"
+                aria-label="입고 예정 및 완료 캘린더"
+                title="입고 캘린더"
               >
                 <HistoryReceiptIcon size={19} />
               </PressableButton>
@@ -995,12 +1203,17 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           />
           <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
             {loading ? <div className="p-3 text-xs text-slate-500">불러오는 중...</div> : null}
-            {!loading && receipts.length === 0 ? (
+            {!loading && isTodayStoreClosure ? (
+              <div className="grid h-full place-items-center p-3 text-xs font-bold text-slate-400">
+                휴무일
+              </div>
+            ) : null}
+            {!loading && !isTodayStoreClosure && receipts.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
                 {isToday ? "오늘 입고 예정이거나 완료된 품목이 없습니다." : "내일 입고예정 품목이 없습니다."}
               </div>
             ) : null}
-            {receipts.map((item) => (
+            {!isTodayStoreClosure ? receipts.map((item) => (
               <AnimatedListItem key={item.productId} className="flex min-h-11 items-center gap-1 border-b border-slate-100 px-2 last:border-0 dark:border-slate-800">
                 <PressableButton
                   type="button"
@@ -1034,7 +1247,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                   </PressableButton>
                 ) : null}
               </AnimatedListItem>
-            ))}
+            )) : null}
           </AnimatedList>
         </article>
 
@@ -1047,14 +1260,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               <div className="flex items-center gap-1">
                 <PressableButton
                   type="button"
-                  onClick={() => {
-                    setScheduledTodoDate(selectedDate ?? todayValue);
-                    setShowScheduledTodoDialog(true);
-                    setShowTodoForm(false);
-                  }}
+                  onClick={openTodoCalendar}
                   className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100"
-                  aria-label="날짜 지정 할 일 추가"
-                  title="날짜 지정"
+                  aria-label="할 일 캘린더 열기"
+                  title="할 일 캘린더"
                 >
                   <CalendarDays size={18} />
                 </PressableButton>
@@ -1210,6 +1419,60 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         </div>
       ) : null}
 
+      {receiptCalendarOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="입고 캘린더">
+          <button type="button" onClick={() => setReceiptCalendarOpen(false)} className="absolute inset-0 cursor-default" aria-label="입고 캘린더 닫기" />
+          <section className="relative z-10 w-full rounded-t-2xl bg-white p-3 shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <button type="button" onClick={() => setReceiptCalendarMonth((current) => addMonths(current, -1))} className="touch-button icon-button" aria-label="이전 달" title="이전 달">
+                <ChevronLeft size={19} />
+              </button>
+              <div className="flex min-w-0 items-center gap-2">
+                <HistoryReceiptIcon className="shrink-0 text-brand-700 dark:text-brand-100" size={20} />
+                <h2 className="truncate text-lg font-extrabold">{formatMonthLabel(receiptCalendarMonth)}</h2>
+              </div>
+              <button type="button" onClick={() => setReceiptCalendarMonth((current) => addMonths(current, 1))} className="touch-button icon-button" aria-label="다음 달" title="다음 달">
+                <ChevronRight size={19} />
+              </button>
+            </div>
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">날짜를 누르면 입고 예정과 완료 내역을 확인합니다.</p>
+            <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-xs font-extrabold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              {["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}
+            </div>
+            {receiptCalendarLoading ? <div className="grid min-h-72 place-items-center text-sm text-slate-500">입고 내역을 불러오는 중...</div> : null}
+            {!receiptCalendarLoading ? (
+              <div className="mt-2 grid grid-cols-7 gap-1">
+                {receiptCalendarDates.map((date) => {
+                  const isCurrentMonth = date.slice(0, 7) === receiptCalendarMonth.slice(0, 7);
+                  const isToday = date === todayValue;
+                  const counts = receiptCalendarCounts.get(date) ?? { expected: 0, completed: 0 };
+                  const hasReceipts = counts.expected > 0 || counts.completed > 0;
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => void openReceiptHistoryFromCalendar(date)}
+                      className={`min-h-[62px] rounded-md border p-1.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${
+                        hasReceipts ? "border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+                      } ${isCurrentMonth ? "" : "opacity-45"}`}
+                      aria-label={`${shortDateLabel(date)}${counts.expected ? `, 입고 예정 ${counts.expected}종` : ""}${counts.completed ? `, 입고 완료 ${counts.completed}종` : ""}`}
+                    >
+                      <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-extrabold ${isToday ? "bg-brand-600 text-white" : ""}`}>{Number(date.slice(-2))}</span>
+                      {hasReceipts ? (
+                        <span className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] font-extrabold tabular-nums">
+                          {counts.expected ? <span className="flex items-center gap-0.5 text-amber-700 dark:text-amber-200"><HistoryReceiptIcon size={11} />{counts.expected}</span> : null}
+                          {counts.completed ? <span className="flex items-center gap-0.5 text-brand-700 dark:text-brand-100"><PackageCheck size={11} />{counts.completed}</span> : null}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
+
       {receiptHistoryOpen ? (
         <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="입고 히스토리">
           <div className="flex max-h-[86dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-xl sm:rounded-2xl">
@@ -1221,26 +1484,25 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 </div>
                 <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">날짜별 입고 예정 품목과 실제 입고 품목을 확인합니다.</p>
               </div>
-              <PressableButton type="button" onClick={() => setReceiptHistoryOpen(false)} className="touch-button icon-button shrink-0" aria-label="닫기">
-                <X size={20} />
-              </PressableButton>
+              <div className="flex shrink-0 items-center gap-1">
+                <PressableButton
+                  type="button"
+                  onClick={() => {
+                    setReceiptCalendarMonth(getMonthStart(receiptHistoryDate));
+                    setReceiptHistoryOpen(false);
+                    setReceiptCalendarOpen(true);
+                  }}
+                  className="touch-button icon-button"
+                  aria-label="입고 캘린더로 돌아가기"
+                  title="입고 캘린더"
+                >
+                  <CalendarDays size={19} />
+                </PressableButton>
+                <PressableButton type="button" onClick={() => setReceiptHistoryOpen(false)} className="touch-button icon-button" aria-label="닫기">
+                  <X size={20} />
+                </PressableButton>
+              </div>
             </div>
-
-            <form
-              className="grid grid-cols-[1fr_auto] gap-2 border-b border-slate-100 p-3 dark:border-slate-800"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void loadReceiptHistory(receiptHistoryDate);
-              }}
-            >
-              <label className="min-w-0">
-                <span className="sr-only">조회 날짜</span>
-                <input className="field min-h-10" type="date" value={receiptHistoryDate} onChange={(event) => setReceiptHistoryDate(event.target.value)} />
-              </label>
-              <PressableButton type="submit" disabled={receiptHistoryLoading || !receiptHistoryDate} className="min-h-10 rounded-md bg-brand-600 px-4 text-xs font-extrabold text-white disabled:opacity-50" surfaceFeedback={false}>
-                조회
-              </PressableButton>
-            </form>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {receiptHistoryError ? <StatusMessage type="error">{receiptHistoryError}</StatusMessage> : null}
@@ -1302,63 +1564,82 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       ) : null}
 
       {showScheduledTodoDialog ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="날짜 지정 할 일 추가">
-          <div className="flex max-h-[82dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
+        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="할 일 추가">
+          <button type="button" onClick={() => setShowScheduledTodoDialog(false)} className="absolute inset-0 cursor-default" aria-label="할 일 추가 닫기" />
+          <div className="relative z-10 flex w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
               <div>
-                <h2 className="font-extrabold">날짜 지정 할 일</h2>
-                <p className="text-xs text-slate-500">선택한 날짜의 홈 To do list에 추가합니다.</p>
+                <h2 className="font-extrabold">할일</h2>
+                <p className="text-xs text-slate-500">{shortDateLabel(scheduledTodoDate)}</p>
               </div>
-              <PressableButton type="button" onClick={() => setShowScheduledTodoDialog(false)} className="touch-button icon-button" aria-label="닫기">
-                <X size={20} />
-              </PressableButton>
+              <div className="flex items-center gap-1.5">
+                <PressableButton
+                  type="button"
+                  onClick={() => {
+                    setTodoCalendarMonth(getMonthStart(scheduledTodoDate));
+                    setShowScheduledTodoDialog(false);
+                    setShowTodoCalendarDialog(true);
+                  }}
+                  className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100"
+                  aria-label="할 일 캘린더로 돌아가기"
+                  title="할 일 캘린더"
+                >
+                  <CalendarDays size={19} />
+                </PressableButton>
+                <PressableButton type="submit" form="scheduled-todo-form" className="touch-button rounded-md bg-brand-600 px-3 text-sm font-extrabold text-white" disabled={saving || !scheduledTodoDraft.trim()} surfaceFeedback={false}>
+                  저장
+                </PressableButton>
+              </div>
             </div>
-            <form onSubmit={addScheduledTodo} className="space-y-3 p-4">
-              <label className="block">
-                <span className="mb-1 block text-sm font-bold">날짜</span>
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                  <input
-                    className="field min-w-0 tabular-nums"
-                    type="date"
-                    value={scheduledTodoDate}
-                    onChange={(event) => setScheduledTodoDate(event.target.value)}
-                    autoFocus
-                  />
-                  <PressableButton
-                    type="button"
-                    onClick={() => {
-                      setScheduledTodoCalendarMonth(getMonthStart(scheduledTodoDate || todayValue));
-                      setShowScheduledTodoCalendar(true);
-                    }}
-                    className="touch-button grid place-items-center rounded-md border border-slate-200 bg-white text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-brand-100"
-                    aria-label="달력에서 날짜 선택"
-                    title="달력에서 날짜 선택"
-                  >
-                    <CalendarDays size={19} />
-                  </PressableButton>
-                </div>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-bold">할 일</span>
-                <input className="field" value={scheduledTodoDraft} onChange={(event) => setScheduledTodoDraft(event.target.value)} placeholder="할 일 입력" />
-              </label>
-              <button type="submit" disabled={saving || !scheduledTodoDraft.trim() || !scheduledTodoDate} className="primary-button inline-flex w-full items-center justify-center gap-2">
-                <Check size={18} />
+            <form id="scheduled-todo-form" onSubmit={addScheduledTodo} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 p-4">
+              <input className="field min-w-0" value={scheduledTodoDraft} onChange={(event) => setScheduledTodoDraft(event.target.value)} placeholder="할 일 입력" autoFocus />
+              <button type="submit" disabled={saving || !scheduledTodoDraft.trim() || !scheduledTodoDate} className="primary-button min-h-11 px-4">
                 {saving ? "저장 중..." : "추가"}
               </button>
             </form>
+            <div className="max-h-[52dvh] overflow-y-auto border-t border-slate-100 px-4 dark:border-slate-800">
+              {scheduledTodosLoading ? <p className="py-4 text-center text-xs text-slate-500">할 일을 불러오는 중...</p> : null}
+              {!scheduledTodosLoading && scheduledTodos.length === 0 ? <p className="py-4 text-center text-xs text-slate-400">추가된 할 일이 없습니다.</p> : null}
+              {!scheduledTodosLoading ? scheduledTodos.map((todo) => {
+                const isEditable = !todo.routine_id && !todo.stale_inventory_product_id;
+                const isEditing = editingScheduledTodoId === todo.id;
+                return (
+                  <div key={todo.id} className="border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800">
+                    {isEditing ? (
+                      <form onSubmit={updateScheduledTodo} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5">
+                        <input className="field min-w-0" value={editingScheduledTodoDraft} onChange={(event) => setEditingScheduledTodoDraft(event.target.value)} aria-label="할 일 수정" autoFocus />
+                        <button type="submit" className="secondary-button min-h-10 px-2 text-xs" disabled={saving || !editingScheduledTodoDraft.trim()}>저장</button>
+                        <button type="button" className="touch-button rounded-md px-2 text-xs font-bold text-slate-500" onClick={() => { setEditingScheduledTodoId(null); setEditingScheduledTodoDraft(""); }} disabled={saving}>취소</button>
+                      </form>
+                    ) : (
+                      <div className="flex min-h-10 items-center gap-2">
+                        <span className={`min-w-0 flex-1 text-sm font-bold ${todo.is_completed ? "text-slate-400 line-through" : ""}`}>{todo.content}</span>
+                        {todo.routine_id ? <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">루틴</span> : null}
+                        {todo.stale_inventory_product_id ? <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950 dark:text-amber-200">재고 확인</span> : null}
+                        {isEditable ? (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button type="button" className="touch-button rounded-md px-2 text-xs font-bold text-brand-700 dark:text-brand-100" onClick={() => { setEditingScheduledTodoId(todo.id); setEditingScheduledTodoDraft(todo.content); }} disabled={saving}>수정</button>
+                            <button type="button" className="touch-button rounded-md px-2 text-xs font-bold text-red-600 dark:text-red-300" onClick={() => void deleteScheduledTodo(todo)} disabled={saving}>삭제</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                );
+              }) : null}
+            </div>
           </div>
         </div>
       ) : null}
 
-      {showScheduledTodoCalendar ? (
-        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="날짜 선택 달력">
-          <button type="button" onClick={() => setShowScheduledTodoCalendar(false)} className="absolute inset-0 cursor-default" aria-label="날짜 선택 달력 닫기" />
+      {showTodoCalendarDialog ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="할 일 캘린더">
+          <button type="button" onClick={() => setShowTodoCalendarDialog(false)} className="absolute inset-0 cursor-default" aria-label="할 일 캘린더 닫기" />
           <section className="relative z-10 w-full rounded-t-2xl bg-white p-3 shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
             <div className="mb-3 flex items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => setScheduledTodoCalendarMonth((current) => addMonths(current, -1))}
+                onClick={() => setTodoCalendarMonth((current) => addMonths(current, -1))}
                 className="touch-button icon-button"
                 aria-label="이전 달"
                 title="이전 달"
@@ -1367,11 +1648,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               </button>
               <div className="flex min-w-0 items-center gap-2">
                 <CalendarDays className="shrink-0 text-brand-700 dark:text-brand-100" size={20} />
-                <h2 className="truncate text-lg font-extrabold">{formatMonthLabel(scheduledTodoCalendarMonth)}</h2>
+                <h2 className="truncate text-lg font-extrabold">{formatMonthLabel(todoCalendarMonth)}</h2>
               </div>
               <button
                 type="button"
-                onClick={() => setScheduledTodoCalendarMonth((current) => addMonths(current, 1))}
+                onClick={() => setTodoCalendarMonth((current) => addMonths(current, 1))}
                 className="touch-button icon-button"
                 aria-label="다음 달"
                 title="다음 달"
@@ -1382,30 +1663,35 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-xs font-extrabold text-slate-500 dark:border-slate-800 dark:text-slate-400">
               {["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}
             </div>
-            <div className="mt-2 grid grid-cols-7 gap-1">
-              {scheduledTodoCalendarDates.map((date) => {
-                const isCurrentMonth = date.slice(0, 7) === scheduledTodoCalendarMonth.slice(0, 7);
-                const isSelected = date === scheduledTodoDate;
+            {todoCalendarLoading ? <div className="grid min-h-72 place-items-center text-sm text-slate-500">할 일을 불러오는 중...</div> : null}
+            {!todoCalendarLoading ? (
+              <div className="mt-2 grid grid-cols-7 gap-1">
+              {todoCalendarDates.map((date) => {
+                const isCurrentMonth = date.slice(0, 7) === todoCalendarMonth.slice(0, 7);
                 const isToday = date === todayValue;
+                const todoCount = todoCountsByDate.get(date) ?? 0;
                 return (
                   <button
                     key={date}
                     type="button"
-                    onClick={() => {
-                      setScheduledTodoDate(date);
-                      setShowScheduledTodoCalendar(false);
-                    }}
+                    onClick={() => openScheduledTodoDialog(date)}
                     className={`min-h-12 rounded-md border p-1.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${
-                      isSelected ? "border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-950/40" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+                      todoCount > 0 ? "border-brand-200 bg-brand-50/70 dark:border-brand-900 dark:bg-brand-950/30" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
                     } ${isCurrentMonth ? "" : "opacity-45"}`}
-                    aria-label={`${shortDateLabel(date)} 선택`}
-                    aria-pressed={isSelected}
+                    aria-label={`${shortDateLabel(date)}${todoCount > 0 ? `, 할 일 ${todoCount}개` : ", 할 일 추가"}`}
                   >
                     <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-extrabold ${isToday ? "bg-brand-600 text-white" : ""}`}>{Number(date.slice(-2))}</span>
+                    {todoCount > 0 ? (
+                      <span className="mt-1 flex items-center gap-0.5 text-[10px] font-extrabold text-brand-700 dark:text-brand-100">
+                        <ClipboardCheck size={12} aria-hidden="true" />
+                        <span className="tabular-nums">{todoCount}</span>
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
-            </div>
+              </div>
+            ) : null}
           </section>
         </div>
       ) : null}

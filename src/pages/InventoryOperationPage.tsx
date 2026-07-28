@@ -12,7 +12,7 @@ import type { AppRoute, InventoryItem, InventoryLog, Location, StockStatus } fro
 
 type Props = {
   productId: string;
-  navigate: (route: AppRoute) => void;
+  navigate: (route: AppRoute, options?: { restore?: boolean }) => void;
   canGoBack?: boolean;
   onBack?: () => void;
   currentStoreId: string;
@@ -839,7 +839,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })} aria-label="상품 수정" title="수정">
             <Pencil size={18} />
           </button>
-          <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "inventory" })} aria-label="목록으로 이동" title="목록">
+          <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "inventory" }, { restore: true })} aria-label="목록으로 이동" title="목록">
             <List size={19} />
           </button>
           <button

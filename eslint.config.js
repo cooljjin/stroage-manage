@@ -25,6 +25,8 @@ export default [
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      "react-hooks/set-state-in-effect": "off",
+      "no-useless-assignment": "off",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }]
     }
   }

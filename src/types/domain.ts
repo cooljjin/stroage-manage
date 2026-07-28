@@ -11,6 +11,8 @@ export type UnitWeightUnit = "g" | "kg" | "ml" | "L" | "개";
 export type RecipeUsageUnit = "g" | "kg" | "ml" | "L" | "개";
 export type ProfileRole = "master" | "store_admin" | "staff";
 export type StaffPermissionKey = "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+export type InventoryOverviewMode = "list" | "overview";
+export type InventoryOverviewDisplay = "name" | "activity" | "important";
 export type RouteName =
   | "landing"
   | "login"
@@ -69,6 +71,7 @@ export type Product = {
   status_enabled: boolean;
   stock_status: StockStatus | null;
   minimum_stock: number;
+  is_important: boolean;
   is_active: boolean;
   created_at: string;
 };
@@ -172,6 +175,13 @@ export type InventoryItem = Product & {
   store_qty: number;
   total_stock: number;
   is_low_stock: boolean;
+};
+
+export type InventoryOverviewSetting = {
+  store_id: string;
+  abundant_multiplier: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type PrepItem = {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { App as CapacitorApp, type URLOpenListenerEvent } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
@@ -16,7 +16,7 @@ import { TimelineCalendarPage } from "./pages/TimelineCalendarPage";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductEditPage } from "./pages/ProductEditPage";
 import { InventoryOperationPage } from "./pages/InventoryOperationPage";
-import { InventoryListPage } from "./pages/InventoryListPage";
+import { InventoryListPage, type InventoryListPageState } from "./pages/InventoryListPage";
 import { LowStockPage } from "./pages/LowStockPage";
 import { StatusItemsPage } from "./pages/StatusItemsPage";
 import { LogsPage } from "./pages/LogsPage";
@@ -55,6 +55,23 @@ const PENDING_INVITE_CODE_STORAGE_KEY = "store-inventory-pending-invite-code";
 type RouteHistoryEntry = {
   route: AppRoute;
   scrollY: number;
+};
+
+type NavigationTab = (typeof NAV_ROUTES)[number];
+
+type NavigationStacks = Partial<Record<NavigationTab, RouteHistoryEntry[]>>;
+
+type BrowserNavigationState = {
+  stocklyNavigation: true;
+  activeTab: NavigationTab;
+  stacks: NavigationStacks;
+};
+
+type NavigationOptions = {
+  replace?: boolean;
+  resetHistory?: boolean;
+  restore?: boolean;
+  scrollY?: number;
 };
 
 type StoredRouteEntry = {
@@ -175,8 +192,20 @@ function routeKey(route: AppRoute) {
   return JSON.stringify(route);
 }
 
-function updateBrowserPath(nextRoute?: AppRoute) {
-  window.history.replaceState(null, "", nextRoute?.name === "privacy" ? "/privacy" : "/");
+function browserPathForRoute(nextRoute?: AppRoute) {
+  return nextRoute?.name === "privacy" ? "/privacy" : "/";
+}
+
+function isBrowserNavigationState(value: unknown): value is BrowserNavigationState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<BrowserNavigationState>;
+  return state.stocklyNavigation === true && NAV_ROUTES.includes(state.activeTab as NavigationTab) && Boolean(state.stacks);
+}
+
+function createNavigationStacks(route: AppRoute): NavigationStacks {
+  return {
+    home: [{ route, scrollY: 0 }]
+  };
 }
 
 function maxWindowScrollY() {
@@ -191,28 +220,39 @@ export default function App() {
   const [staffPermissions, setStaffPermissions] = useState<StaffPermissionKey[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => initialRoute());
+  const [activeTab, setActiveTab] = useState<NavigationTab>("home");
+  const [inventoryListState, setInventoryListState] = useState<InventoryListPageState>();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [canGoBack, setCanGoBack] = useState(false);
   const [storeName, setStoreName] = useState("");
   const [inviteCode, setInviteCode] = useState(() => savePendingInviteCode(readInviteCodeFromUrl()) || readPendingInviteCode());
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [connectionMessage, setConnectionMessage] = useState("");
-  const routeHistoryRef = useRef<RouteHistoryEntry[]>([]);
+  const navigationStacksRef = useRef<NavigationStacks>(createNavigationStacks(initialRoute()));
+  const activeTabRef = useRef<NavigationTab>("home");
   const pendingScrollYRef = useRef<number | null>(null);
   const profileRef = useRef<StaffProfile | null>(null);
+  const routeRef = useRef(route);
+  const navigateRef = useRef<(next: AppRoute, options?: NavigationOptions) => void>(() => undefined);
+  const goBackRef = useRef<() => boolean>(() => false);
   const shouldReduceMotion = useReducedMotion();
+
+  routeRef.current = route;
 
   useEffect(() => {
     profileRef.current = profile;
   }, [profile]);
 
   useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
     const codeFromUrl = readInviteCodeFromUrl();
     if (codeFromUrl) {
       setInviteCode(savePendingInviteCode(codeFromUrl));
-      updateBrowserPath(window.location.pathname === "/privacy" ? { name: "privacy" } : { name: "landing" });
+      window.history.replaceState(window.history.state, "", browserPathForRoute(window.location.pathname === "/privacy" ? { name: "privacy" } : { name: "landing" }));
     }
 
     Services.AuthService.getSession().then(({ data }) => {
@@ -309,9 +349,7 @@ export default function App() {
     if (!session) return;
     if (route.name === "landing" || route.name === "login" || route.name === "signup-request") {
       const homeRoute = consumeAccountLinkReturnRoute() ?? consumePostScanRoute() ?? defaultSignedInRoute();
-      pendingScrollYRef.current = 0;
-      setRoute(homeRoute);
-      updateBrowserPath(homeRoute);
+      navigateRef.current(homeRoute, { resetHistory: true, replace: true });
     }
   }, [session, route.name]);
 
@@ -326,6 +364,21 @@ export default function App() {
     let cancelled = false;
     const startedAt = performance.now();
 
+    function stopRestoring() {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("wheel", stopRestoring);
+      window.removeEventListener("touchmove", stopRestoring);
+      window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) {
+        stopRestoring();
+      }
+    }
+
     function restoreScroll() {
       if (cancelled) return;
 
@@ -334,72 +387,194 @@ export default function App() {
       const reachedTarget = Math.abs(window.scrollY - scrollY) <= SCROLL_RESTORE_TOLERANCE_PX;
       const canReachTarget = maxWindowScrollY() >= scrollY;
       const timedOut = performance.now() - startedAt >= SCROLL_RESTORE_TIMEOUT_MS;
-      if ((reachedTarget && canReachTarget) || timedOut) return;
+      if ((reachedTarget && canReachTarget) || timedOut) {
+        stopRestoring();
+        return;
+      }
 
       frameId = requestAnimationFrame(restoreScroll);
     }
 
+    window.addEventListener("wheel", stopRestoring, { passive: true });
+    window.addEventListener("touchmove", stopRestoring, { passive: true });
+    window.addEventListener("keydown", handleKeyDown);
     frameId = requestAnimationFrame(restoreScroll);
     timeoutId = window.setTimeout(restoreScroll, 150);
 
+    return stopRestoring;
+  }, [route]);
+
+  useEffect(() => {
+    const browserState: BrowserNavigationState = {
+      stocklyNavigation: true,
+      activeTab: activeTabRef.current,
+      stacks: navigationStacksRef.current
+    };
+    window.history.replaceState(browserState, "", browserPathForRoute(routeRef.current));
+
+    function handlePopState(event: PopStateEvent) {
+      if (!isBrowserNavigationState(event.state)) return;
+
+      const restoredEntries = event.state.stacks[event.state.activeTab];
+      const restoredEntry = restoredEntries?.[restoredEntries.length - 1];
+      if (!restoredEntry) return;
+
+      navigationStacksRef.current = event.state.stacks;
+      activeTabRef.current = event.state.activeTab;
+      pendingScrollYRef.current = restoredEntry.scrollY;
+      setMenuOpen(false);
+      setActiveTab(event.state.activeTab);
+      setRoute(restoredEntry.route);
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let listenerHandle: PluginListenerHandle | null = null;
+    let cancelled = false;
+    CapacitorApp.addListener("backButton", () => {
+      goBackRef.current();
+    })
+      .then((handle) => {
+        if (cancelled) {
+          void handle.remove();
+        } else {
+          listenerHandle = handle;
+        }
+      })
+      .catch(() => undefined);
+
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frameId);
-      window.clearTimeout(timeoutId);
+      if (listenerHandle) {
+        void listenerHandle.remove();
+      }
     };
-  }, [route]);
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
     localStorage.setItem(DARK_MODE_STORAGE_KEY, String(darkMode));
   }, [darkMode]);
 
-  const activeRoute = useMemo<RouteName>(() => {
-    return NAV_ROUTES.includes(route.name) ? route.name : "home";
-  }, [route.name]);
+  const canGoBack = (navigationStacksRef.current[activeTab]?.length ?? 0) > 1;
 
-  function navigateFromBottomNav(name: RouteName) {
-    navigate(name === "scan" ? { name, scanLaunchId: Date.now() } : { name }, { resetHistory: true });
+  function writeBrowserNavigationState(nextRoute: AppRoute, browserState: BrowserNavigationState, replace = false) {
+    const method = replace ? "replaceState" : "pushState";
+    window.history[method](browserState, "", browserPathForRoute(nextRoute));
   }
 
-  function navigate(next: AppRoute, options: { replace?: boolean; resetHistory?: boolean; scrollY?: number } = {}) {
+  function commitNavigation(nextRoute: AppRoute, nextActiveTab: NavigationTab, nextStacks: NavigationStacks, scrollY: number, replaceBrowserState = false) {
+    const browserState: BrowserNavigationState = {
+      stocklyNavigation: true,
+      activeTab: nextActiveTab,
+      stacks: nextStacks
+    };
+
+    navigationStacksRef.current = nextStacks;
+    activeTabRef.current = nextActiveTab;
+    pendingScrollYRef.current = scrollY;
+    setActiveTab(nextActiveTab);
+    setRoute(nextRoute);
+    writeBrowserNavigationState(nextRoute, browserState, replaceBrowserState);
+  }
+
+  function saveCurrentScroll(stacks: NavigationStacks, tab: NavigationTab) {
+    const entries = stacks[tab];
+    if (!entries?.length) return;
+    entries[entries.length - 1] = { ...entries[entries.length - 1], scrollY: window.scrollY };
+  }
+
+  function navigateFromBottomNav(name: RouteName) {
+    const nextRoute = name === "scan" ? { name, scanLaunchId: Date.now() } : { name };
+    const isActiveTab = activeTabRef.current === name;
+    navigate(nextRoute, isActiveTab ? { resetHistory: true } : { restore: true });
+  }
+
+  function navigate(next: AppRoute, options: NavigationOptions = {}) {
     setMenuOpen(false);
     if (route.name === "scan") {
       savePostScanRoute(next);
     }
+
+    const currentTab = activeTabRef.current;
+    const targetTab = NAV_ROUTES.includes(next.name) && (options.restore || options.resetHistory)
+      ? next.name as NavigationTab
+      : currentTab;
+    const nextStacks: NavigationStacks = Object.fromEntries(
+      Object.entries(navigationStacksRef.current).map(([tab, entries]) => [tab, entries ? [...entries] : entries])
+    ) as NavigationStacks;
+
+    saveCurrentScroll(nextStacks, currentTab);
+
     if (options.resetHistory) {
-      routeHistoryRef.current = [];
-      setCanGoBack(false);
-    } else if (!options.replace && routeKey(route) !== routeKey(next)) {
-      routeHistoryRef.current.push({ route, scrollY: window.scrollY });
-      setCanGoBack(true);
+      nextStacks[targetTab] = [{ route: next, scrollY: options.scrollY ?? 0 }];
+      commitNavigation(next, targetTab, nextStacks, options.scrollY ?? 0, options.replace ?? false);
+      return;
     }
 
-    pendingScrollYRef.current = options.scrollY ?? 0;
-    setRoute(next);
-    updateBrowserPath(next);
+    if (options.restore) {
+      const targetEntries = nextStacks[targetTab];
+      const restoredEntry = targetEntries?.[targetEntries.length - 1];
+      const restoredRoute = restoredEntry?.route ?? next;
+      if (!restoredEntry) {
+        nextStacks[targetTab] = [{ route: next, scrollY: options.scrollY ?? 0 }];
+      }
+      commitNavigation(restoredRoute, targetTab, nextStacks, options.scrollY ?? restoredEntry?.scrollY ?? 0);
+      return;
+    }
+
+    const entries = nextStacks[targetTab] ?? [];
+    if (options.replace) {
+      if (entries.length) {
+        entries[entries.length - 1] = { route: next, scrollY: options.scrollY ?? 0 };
+      } else {
+        entries.push({ route: next, scrollY: options.scrollY ?? 0 });
+      }
+    } else if (routeKey(route) !== routeKey(next)) {
+      entries.push({ route: next, scrollY: options.scrollY ?? 0 });
+    }
+    nextStacks[targetTab] = entries;
+    commitNavigation(next, targetTab, nextStacks, options.scrollY ?? 0, options.replace ?? false);
+  }
+
+  function resetNavigation(next: AppRoute) {
+    const nextTab = NAV_ROUTES.includes(next.name) ? next.name as NavigationTab : "home";
+    commitNavigation(next, nextTab, { [nextTab]: [{ route: next, scrollY: 0 }] }, 0, true);
   }
 
   function goBack() {
-    const previous = routeHistoryRef.current.pop();
-    if (!previous) return;
+    const currentTab = activeTabRef.current;
+    const currentEntries = navigationStacksRef.current[currentTab];
+    if (!currentEntries || currentEntries.length <= 1) return false;
+
+    const nextStacks: NavigationStacks = {
+      ...navigationStacksRef.current,
+      [currentTab]: currentEntries.slice(0, -1)
+    };
+    const previousEntries = nextStacks[currentTab];
+    const previous = previousEntries?.[previousEntries.length - 1];
+    if (!previous) return false;
 
     setMenuOpen(false);
-    setCanGoBack(routeHistoryRef.current.length > 0);
-    pendingScrollYRef.current = previous.scrollY;
-    setRoute(previous.route);
-    updateBrowserPath(previous.route);
+    commitNavigation(previous.route, currentTab, nextStacks, previous.scrollY);
+    return true;
   }
+
+  navigateRef.current = navigate;
+  goBackRef.current = goBack;
 
   async function handleLogout() {
     await Services.AuthService.signOut();
-    routeHistoryRef.current = [];
-    setCanGoBack(false);
     setProfile(null);
     setStaffPermissions([]);
     setConnectionError("");
     setConnectionMessage("");
-    navigate({ name: "landing" }, { replace: true });
+    resetNavigation({ name: "landing" });
   }
 
   async function createPersonalStore(event: FormEvent) {
@@ -423,7 +598,7 @@ export default function App() {
       setStoreName("");
       clearPendingInviteCode();
       setConnectionMessage("");
-      navigate(defaultSignedInRoute(), { replace: true });
+      resetNavigation(defaultSignedInRoute());
     }
 
     setConnectionLoading(false);
@@ -450,7 +625,7 @@ export default function App() {
       setInviteCode("");
       clearPendingInviteCode();
       setConnectionMessage("");
-      navigate(defaultSignedInRoute(), { replace: true });
+      resetNavigation(defaultSignedInRoute());
     }
 
     setConnectionLoading(false);
@@ -603,7 +778,15 @@ export default function App() {
             {permittedRoute.name === "operation" && (
               <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
             )}
-            {permittedRoute.name === "inventory" && <InventoryListPage navigate={navigate} currentStoreId={profile.store_id} />}
+            {permittedRoute.name === "inventory" && (
+              <InventoryListPage
+                navigate={navigate}
+                currentStoreId={profile.store_id}
+                canManageImportantItems={profileRole !== "staff"}
+                initialState={inventoryListState}
+                onStateChange={setInventoryListState}
+              />
+            )}
             {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} canConfirmOrderItems={profileRole !== "staff" || hasStaffPermission(staffPermissions, "order_confirmation")} />}
             {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
@@ -631,7 +814,7 @@ export default function App() {
             {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
             {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
-            {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
+            {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
             {permittedRoute.name === "staff-management" && <StaffManagementPage />}
             {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "master-stores" && <MasterStoresPage />}
@@ -641,7 +824,7 @@ export default function App() {
         </LazyMotion>
       </main>
 
-      <BottomNav activeRoute={activeRoute} onNavigate={navigateFromBottomNav} />
+      <BottomNav activeRoute={activeTab} onNavigate={navigateFromBottomNav} />
     </div>
   );
 }

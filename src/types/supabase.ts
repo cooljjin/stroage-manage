@@ -111,6 +111,7 @@ export type Database = {
           status_enabled: boolean;
           stock_status: StockStatus | null;
           minimum_stock: number;
+          is_important: boolean;
           is_active: boolean;
           created_at: string;
         };
@@ -141,6 +142,7 @@ export type Database = {
           status_enabled?: boolean;
           stock_status?: StockStatus | null;
           minimum_stock?: number;
+          is_important?: boolean;
           is_active?: boolean;
           created_at?: string;
         };
@@ -170,6 +172,7 @@ export type Database = {
           status_enabled?: boolean;
           stock_status?: StockStatus | null;
           minimum_stock?: number;
+          is_important?: boolean;
           is_active?: boolean;
         };
         Relationships: [];
@@ -982,6 +985,33 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "inventory_check_todo_settings_store_id_fkey";
+            columns: ["store_id"];
+            isOneToOne: true;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      inventory_overview_settings: {
+        Row: {
+          store_id: string;
+          abundant_multiplier: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          store_id: string;
+          abundant_multiplier?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          abundant_multiplier?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "inventory_overview_settings_store_id_fkey";
             columns: ["store_id"];
             isOneToOne: true;
             referencedRelation: "stores";

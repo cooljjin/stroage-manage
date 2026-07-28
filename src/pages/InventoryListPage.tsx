@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, Search, TriangleAlert } from "lucide-react";
+import { ChevronDown, Search, Star, TriangleAlert } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton } from "../components/Skeleton";
@@ -8,30 +8,85 @@ import { fallbackCategories, loadCategories } from "../lib/categories";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
-import type { AppRoute, CategoryFilter, InventoryItem, ProductSupplier } from "../types/domain";
+import type { AppRoute, CategoryFilter, InventoryItem, InventoryOverviewDisplay, InventoryOverviewMode, ProductSupplier } from "../types/domain";
+
+const DEFAULT_ABUNDANT_MULTIPLIER = 1.5;
+
+type OverviewStockState = "부족" | "주의" | "넉넉" | "입고 확인";
 
 type Props = {
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
+  canManageImportantItems: boolean;
+  initialState?: InventoryListPageState;
+  onStateChange?: (state: InventoryListPageState) => void;
 };
 
-export function InventoryListPage({ navigate, currentStoreId }: Props) {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
-  const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
-  const [categories, setCategories] = useState<string[]>([]);
-  const [category, setCategory] = useState<CategoryFilter>("전체");
-  const [categoryExpanded, setCategoryExpanded] = useState(false);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+export type InventoryListPageState = {
+  items: InventoryItem[];
+  suppliers: ProductSupplier[];
+  orderQuantities: Record<string, string>;
+  categories: string[];
+  category: CategoryFilter;
+  categoryExpanded: boolean;
+  search: string;
+  overviewMode: InventoryOverviewMode;
+  overviewDisplay: InventoryOverviewDisplay;
+  activityCounts: Record<string, number>;
+  abundantMultiplier: number;
+};
+
+function overviewStockState(item: InventoryItem, abundantMultiplier: number): OverviewStockState {
+  if (item.receipt_check_only) return "입고 확인";
+  if (item.status_enabled) {
+    if (item.stock_status === "발주 필요") return "부족";
+    if (item.stock_status === "절반 이하") return "주의";
+    return "넉넉";
+  }
+  if (item.total_stock <= item.minimum_stock) return "부족";
+  if (item.total_stock <= item.minimum_stock * abundantMultiplier) return "주의";
+  return "넉넉";
+}
+
+function overviewStateClass(state: OverviewStockState) {
+  if (state === "부족") return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200";
+  if (state === "주의") return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-200";
+  if (state === "넉넉") return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/35 dark:text-emerald-200";
+  return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200";
+}
+
+export function InventoryListPage({ navigate, currentStoreId, canManageImportantItems, initialState, onStateChange }: Props) {
+  const [items, setItems] = useState<InventoryItem[]>(() => initialState?.items ?? []);
+  const [suppliers, setSuppliers] = useState<ProductSupplier[]>(() => initialState?.suppliers ?? []);
+  const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>(() => initialState?.orderQuantities ?? {});
+  const [categories, setCategories] = useState<string[]>(() => initialState?.categories ?? []);
+  const [category, setCategory] = useState<CategoryFilter>(() => initialState?.category ?? "전체");
+  const [categoryExpanded, setCategoryExpanded] = useState(() => initialState?.categoryExpanded ?? false);
+  const [search, setSearch] = useState(() => initialState?.search ?? "");
+  const [overviewMode, setOverviewMode] = useState<InventoryOverviewMode>(() => initialState?.overviewMode ?? "list");
+  const [overviewDisplay, setOverviewDisplay] = useState<InventoryOverviewDisplay>(() => initialState?.overviewDisplay ?? "name");
+  const [activityCounts, setActivityCounts] = useState<Record<string, number>>(() => initialState?.activityCounts ?? {});
+  const [abundantMultiplier, setAbundantMultiplier] = useState(() => initialState?.abundantMultiplier ?? DEFAULT_ABUNDANT_MULTIPLIER);
+  const [loading, setLoading] = useState(() => (initialState?.items.length ?? 0) === 0);
   const [error, setError] = useState("");
+  const [importantSavingId, setImportantSavingId] = useState<string | null>(null);
 
   const loadItems = useCallback(async () => {
-    setLoading(true);
-    const [categoryResult, supplierResult, productResult] = await Promise.all([
+    setLoading(items.length === 0);
+    const activityStart = new Date();
+    activityStart.setDate(activityStart.getDate() - 30);
+    const [categoryResult, supplierResult, productResult, activityResult, overviewSettingsResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true })
+      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true }),
+      Services.DatabaseService.select("inventory_logs", "product_id")
+        .eq("store_id", currentStoreId)
+        .neq("action", "메모")
+        .is("reverted_at", null)
+        .gte("created_at", activityStart.toISOString()),
+      Services.DatabaseService.select("inventory_overview_settings", "abundant_multiplier")
+        .eq("store_id", currentStoreId)
+        .maybeSingle()
     ]);
     const { data, error: loadError } = productResult;
     setCategories(categoryResult.map((item) => item.name));
@@ -40,13 +95,24 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
       setError(loadError.message);
     } else {
       setItems(((data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
+      const nextActivityCounts = ((activityResult.data ?? []) as Array<{ product_id: string }>).reduce<Record<string, number>>((counts, log) => {
+        counts[log.product_id] = (counts[log.product_id] ?? 0) + 1;
+        return counts;
+      }, {});
+      setActivityCounts(nextActivityCounts);
+      const configuredMultiplier = Number(overviewSettingsResult.data?.abundant_multiplier);
+      setAbundantMultiplier(Number.isFinite(configuredMultiplier) && configuredMultiplier > 1 ? configuredMultiplier : DEFAULT_ABUNDANT_MULTIPLIER);
     }
     setLoading(false);
-  }, [currentStoreId]);
+  }, [currentStoreId, items.length]);
 
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  useEffect(() => {
+    onStateChange?.({ items, suppliers, orderQuantities, categories, category, categoryExpanded, search, overviewMode, overviewDisplay, activityCounts, abundantMultiplier });
+  }, [abundantMultiplier, activityCounts, categories, category, categoryExpanded, items, onStateChange, orderQuantities, overviewDisplay, overviewMode, search, suppliers]);
 
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -56,8 +122,17 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
       return categoryMatch && keywordMatch;
     });
 
+    if (overviewDisplay === "important") {
+      return filtered.filter((item) => item.is_important).sort((left, right) => left.name.localeCompare(right.name, "ko"));
+    }
+    if (overviewDisplay === "activity") {
+      return filtered.sort((left, right) => {
+        const countDifference = (activityCounts[right.id] ?? 0) - (activityCounts[left.id] ?? 0);
+        return countDifference || left.name.localeCompare(right.name, "ko");
+      });
+    }
     return filtered.sort((left, right) => left.name.localeCompare(right.name, "ko"));
-  }, [category, items, search]);
+  }, [activityCounts, category, items, overviewDisplay, search]);
 
   const suppliersByName = useMemo(() => {
     return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
@@ -65,9 +140,39 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
 
   const stickyHeaderCell = "sticky top-[73px] z-30 bg-slate-100 shadow-sm dark:bg-slate-900";
 
+  async function toggleImportantItem(item: InventoryItem) {
+    if (!canManageImportantItems || importantSavingId) return;
+    const nextImportant = !item.is_important;
+    setImportantSavingId(item.id);
+    setError("");
+    setItems((current) => current.map((currentItem) => currentItem.id === item.id ? { ...currentItem, is_important: nextImportant } : currentItem));
+    const { error: updateError } = await Services.DatabaseService.update("products", { is_important: nextImportant })
+      .eq("store_id", currentStoreId)
+      .eq("id", item.id);
+    if (updateError) {
+      setItems((current) => current.map((currentItem) => currentItem.id === item.id ? { ...currentItem, is_important: item.is_important } : currentItem));
+      setError(updateError.message);
+    }
+    setImportantSavingId(null);
+  }
+
   return (
     <section>
-      <PageTitle title="재고 현황" description="카테고리와 검색으로 빠르게 확인합니다." />
+      <PageTitle title="재고 현황" description={overviewMode === "overview" ? "전체 품목의 재고 상태를 한눈에 확인합니다." : "카테고리와 검색으로 빠르게 확인합니다."} />
+
+      <div className="mb-4 grid grid-cols-2 rounded-lg bg-slate-100 p-1 dark:bg-slate-900">
+        {(["list", "overview"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setOverviewMode(mode)}
+            aria-pressed={overviewMode === mode}
+            className={`touch-button rounded-md px-3 text-sm font-extrabold ${overviewMode === mode ? "bg-white text-brand-700 shadow-sm dark:bg-slate-800 dark:text-brand-100" : "text-slate-600 dark:text-slate-300"}`}
+          >
+            {mode === "list" ? "목록" : "오버뷰"}
+          </button>
+        ))}
+      </div>
 
       <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
         <div className={`flex gap-2 pb-1 ${categoryExpanded ? "flex-wrap overflow-visible" : "overflow-x-auto"}`}>
@@ -100,6 +205,20 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
         </label>
       </div>
 
+      {overviewMode === "overview" ? (
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">
+            표시 방식
+            <select className="field mt-1" value={overviewDisplay} onChange={(event) => setOverviewDisplay(event.target.value as InventoryOverviewDisplay)}>
+              <option value="name">이름순</option>
+              <option value="activity">재고 변동 많은 순</option>
+              <option value="important">중요 품목만 표시</option>
+            </select>
+          </label>
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">최근 30일 재고 작업 횟수로 변동 많은 순을 계산합니다.</p>
+        </div>
+      ) : null}
+
       {loading ? (
         <div role="status" aria-live="polite" aria-label="재고를 불러오는 중">
           <span className="sr-only">재고를 불러오는 중...</span>
@@ -108,7 +227,51 @@ export function InventoryListPage({ navigate, currentStoreId }: Props) {
       ) : null}
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
 
-      {!loading && !error ? (
+      {overviewMode === "overview" && (!loading || items.length > 0) && (!error || items.length > 0) ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {filteredItems.map((item) => {
+            const state = overviewStockState(item, abundantMultiplier);
+            return (
+              <article
+                key={item.id}
+                onClick={() => navigate({ name: "operation", productId: item.id })}
+                className={`relative cursor-pointer rounded-lg border p-3 text-left shadow-sm transition-shadow hover:shadow-md ${overviewStateClass(state)}`}
+              >
+                {canManageImportantItems ? (
+                  <button
+                    type="button"
+                    disabled={importantSavingId !== null}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void toggleImportantItem(item);
+                    }}
+                    className={`icon-button absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-white/70 disabled:opacity-50 dark:bg-slate-950/50 ${item.is_important ? "text-amber-500" : "text-slate-400"}`}
+                    aria-label={`${item.name} 중요 품목 ${item.is_important ? "해제" : "지정"}`}
+                    title={item.is_important ? "중요 품목 해제" : "중요 품목 지정"}
+                  >
+                    <Star size={17} fill={item.is_important ? "currentColor" : "none"} />
+                  </button>
+                ) : item.is_important ? <Star className="absolute right-3 top-3 text-amber-500" size={17} fill="currentColor" aria-label="중요 품목" /> : null}
+                <p className="min-h-11 pr-8 text-sm font-extrabold leading-snug break-words">{item.name}</p>
+                <span className="mt-2 inline-flex rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-extrabold dark:bg-slate-950/45">{state}</span>
+                {item.receipt_check_only ? (
+                  <p className="mt-3 text-xs font-bold">수량 대신 입고 여부를 확인합니다.</p>
+                ) : (
+                  <>
+                    <p className="mt-3 text-lg font-black tabular-nums">{formatInventoryQuantity(item.total_stock)}{item.unit_name ? ` ${item.unit_name}` : ""}</p>
+                    <p className="mt-1 text-xs font-semibold">창고 {formatInventoryQuantity(item.warehouse_qty)} · 매장 {formatInventoryQuantity(item.store_qty)}</p>
+                    <p className="mt-1 text-xs font-semibold">최소재고 {formatInventoryQuantity(item.minimum_stock)}</p>
+                  </>
+                )}
+                {overviewDisplay === "activity" ? <p className="mt-2 text-[11px] font-bold">최근 30일 변동 {activityCounts[item.id] ?? 0}회</p> : null}
+              </article>
+            );
+          })}
+          {filteredItems.length === 0 ? <div className="col-span-full"><StatusMessage>{overviewDisplay === "important" ? "지정된 중요 품목이 없습니다." : "표시할 상품이 없습니다."}</StatusMessage></div> : null}
+        </div>
+      ) : null}
+
+      {overviewMode === "list" && (!loading || items.length > 0) && (!error || items.length > 0) ? (
         <div className="panel relative overflow-visible before:sticky before:top-[73px] before:z-20 before:block before:h-4 before:bg-slate-50 before:content-[''] dark:before:bg-slate-950">
           <table className="w-full table-fixed text-left text-sm">
             <thead className="text-xs text-slate-600 dark:text-slate-300">

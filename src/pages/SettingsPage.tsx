@@ -6,7 +6,7 @@ import { AccountDeletionSection } from "../components/AccountDeletionSection";
 import { getSeoulDateValue, WEEKDAYS } from "../lib/businessCalendar";
 import * as Services from "../services";
 import type { UserIdentity } from "../services";
-import type { ProfileRole, StoreClosureDate, WeeklyStoreClosure } from "../types/domain";
+import type { InventoryOverviewSetting, ProfileRole, StoreClosureDate, WeeklyStoreClosure } from "../types/domain";
 
 const APP_VERSION = "1.0.1";
 type LinkProvider = "google" | "kakao";
@@ -70,12 +70,13 @@ function authErrorMessage(message: string) {
 
 type Props = {
   currentRole: ProfileRole;
+  currentStoreId: string;
   darkMode: boolean;
   onToggleDarkMode: () => void;
   onLogout: () => void;
 };
 
-export function SettingsPage({ currentRole, darkMode, onToggleDarkMode, onLogout }: Props) {
+export function SettingsPage({ currentRole, currentStoreId, darkMode, onToggleDarkMode, onLogout }: Props) {
   const todayValue = useMemo(() => getSeoulDateValue(), []);
   const canManageStoreClosures = currentRole !== "staff";
   const [weeklyClosures, setWeeklyClosures] = useState<WeeklyStoreClosure[]>([]);
@@ -83,6 +84,8 @@ export function SettingsPage({ currentRole, darkMode, onToggleDarkMode, onLogout
   const [closureDate, setClosureDate] = useState("");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(canManageStoreClosures);
+  const [overviewSettingsLoading, setOverviewSettingsLoading] = useState(canManageStoreClosures);
+  const [abundantMultiplier, setAbundantMultiplier] = useState("1.5");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
   const [accountError, setAccountError] = useState("");
@@ -128,6 +131,29 @@ export function SettingsPage({ currentRole, darkMode, onToggleDarkMode, onLogout
   useEffect(() => {
     void loadClosures();
   }, [loadClosures]);
+
+  const loadOverviewSettings = useCallback(async () => {
+    if (!canManageStoreClosures) {
+      setOverviewSettingsLoading(false);
+      return;
+    }
+
+    setOverviewSettingsLoading(true);
+    const { data, error: loadError } = await Services.DatabaseService.select("inventory_overview_settings", "*")
+      .eq("store_id", currentStoreId)
+      .maybeSingle();
+    if (loadError) {
+      setError(loadError.message.includes("inventory_overview_settings") ? "재고 오버뷰 설정을 불러오지 못했습니다. 데이터베이스 업데이트 상태를 확인해 주세요." : loadError.message);
+    } else {
+      const settings = data as InventoryOverviewSetting | null;
+      setAbundantMultiplier(String(settings?.abundant_multiplier ?? 1.5));
+    }
+    setOverviewSettingsLoading(false);
+  }, [canManageStoreClosures, currentStoreId]);
+
+  useEffect(() => {
+    void loadOverviewSettings();
+  }, [loadOverviewSettings]);
 
   const loadAccountIdentities = useCallback(async () => {
     setAccountLoading(true);
@@ -282,6 +308,30 @@ export function SettingsPage({ currentRole, darkMode, onToggleDarkMode, onLogout
     setSavingKey(null);
   }
 
+  async function saveOverviewSettings() {
+    const nextMultiplier = Number(abundantMultiplier);
+    if (!Number.isFinite(nextMultiplier) || nextMultiplier <= 1) {
+      setError("넉넉 기준은 최소재고의 1배보다 큰 수로 입력해 주세요.");
+      return;
+    }
+
+    setSavingKey("inventory-overview");
+    setError("");
+    setMessage("");
+    const { error: saveError } = await Services.DatabaseService.upsert("inventory_overview_settings", {
+      store_id: currentStoreId,
+      abundant_multiplier: nextMultiplier,
+      updated_at: new Date().toISOString()
+    });
+    if (saveError) {
+      setError(saveError.message.includes("inventory_overview_settings") ? "재고 오버뷰 설정을 저장하지 못했습니다. 데이터베이스 업데이트 상태를 확인해 주세요." : saveError.message);
+    } else {
+      setAbundantMultiplier(String(nextMultiplier));
+      setMessage("재고 오버뷰 기준을 저장했습니다.");
+    }
+    setSavingKey(null);
+  }
+
   return (
     <section>
       <PageTitle title="환경설정" description="매장 운영에 필요한 설정을 관리합니다." />
@@ -404,6 +454,55 @@ export function SettingsPage({ currentRole, darkMode, onToggleDarkMode, onLogout
               ) : null}
             </div>
           </div>
+
+          {canManageStoreClosures ? (
+            <div className="panel overflow-hidden">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-100">
+                  <CalendarDays size={21} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-extrabold">재고 오버뷰 기준</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">오버뷰 카드의 주의·넉넉 상태를 매장 공용으로 설정합니다.</p>
+                </div>
+                <ChevronRight className="text-slate-400" size={18} />
+              </div>
+
+              <div className="space-y-3 p-4">
+                {overviewSettingsLoading ? <StatusMessage>재고 오버뷰 기준을 불러오는 중...</StatusMessage> : null}
+                {!overviewSettingsLoading ? (
+                  <>
+                    <label className="block text-sm font-extrabold">
+                      넉넉 기준
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="shrink-0 text-sm text-slate-600 dark:text-slate-300">최소재고의</span>
+                        <input
+                          type="number"
+                          min="1.001"
+                          step="0.1"
+                          inputMode="decimal"
+                          className="field w-24 text-right tabular-nums"
+                          value={abundantMultiplier}
+                          onChange={(event) => setAbundantMultiplier(event.target.value)}
+                          aria-label="넉넉 기준 배수"
+                        />
+                        <span className="shrink-0 text-sm text-slate-600 dark:text-slate-300">배 초과</span>
+                      </div>
+                    </label>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">부족은 최소재고 이하, 주의는 최소재고 초과부터 넉넉 기준 이하까지 자동 계산됩니다.</p>
+                    <button
+                      type="button"
+                      disabled={savingKey !== null}
+                      onClick={() => void saveOverviewSettings()}
+                      className="primary-button"
+                    >
+                      {savingKey === "inventory-overview" ? "저장 중..." : "저장"}
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {canManageStoreClosures ? (
             <div className="panel overflow-hidden">

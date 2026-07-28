@@ -32,6 +32,14 @@ export function getDateValueWeekday(value: string): number {
   return new Date(`${value}T00:00:00Z`).getUTCDay();
 }
 
+export function isStoreClosureDate(
+  value: string,
+  weeklyClosureDays: ReadonlySet<number>,
+  specificClosureDates: ReadonlySet<string>
+) {
+  return weeklyClosureDays.has(getDateValueWeekday(value)) || specificClosureDates.has(value);
+}
+
 export function getNextBusinessDate(
   fromDate: string,
   weeklyClosureDays: ReadonlySet<number>,
@@ -39,7 +47,7 @@ export function getNextBusinessDate(
 ): string {
   for (let daysAhead = 1; daysAhead <= MAX_BUSINESS_DAY_SEARCH; daysAhead += 1) {
     const candidate = addDateValueDays(fromDate, daysAhead);
-    if (!weeklyClosureDays.has(getDateValueWeekday(candidate)) && !specificClosureDates.has(candidate)) {
+    if (!isStoreClosureDate(candidate, weeklyClosureDays, specificClosureDates)) {
       return candidate;
     }
   }
