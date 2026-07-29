@@ -554,6 +554,8 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       urgent_order_quantity: item.urgent_order_quantity,
       order_completed: item.order_completed,
       confirmation_note: trimmedConfirmationMemo || null,
+      receipt_expected_deleted_at: null,
+      receipt_expected_deleted_by: null,
       confirmed_by: userData.user.id,
       confirmed_at: confirmedAt
     }));

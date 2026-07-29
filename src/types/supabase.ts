@@ -217,6 +217,8 @@ export type Database = {
           urgent_order_quantity: number | null;
           order_completed: boolean;
           confirmation_note: string | null;
+          receipt_expected_deleted_at: string | null;
+          receipt_expected_deleted_by: string | null;
           confirmed_by: string | null;
           confirmed_at: string;
           created_at: string;
@@ -238,6 +240,8 @@ export type Database = {
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
           confirmation_note?: string | null;
+          receipt_expected_deleted_at?: string | null;
+          receipt_expected_deleted_by?: string | null;
           confirmed_by?: string | null;
           confirmed_at?: string;
           created_at?: string;
@@ -258,6 +262,8 @@ export type Database = {
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
           confirmation_note?: string | null;
+          receipt_expected_deleted_at?: string | null;
+          receipt_expected_deleted_by?: string | null;
           confirmed_by?: string | null;
           confirmed_at?: string;
         };
@@ -1103,6 +1109,13 @@ export type Database = {
           target_product_id: string;
         };
         Returns: string;
+      };
+      delete_dashboard_expected_receipt: {
+        Args: {
+          target_product_id: string;
+          target_order_dates: string[];
+        };
+        Returns: number;
       };
       restore_latest_dashboard_receipt_deletion: {
         Args: Record<PropertyKey, never>;

@@ -21,8 +21,10 @@ type ReceiptItem = {
   lastReceivedAt: string | null;
   receiptCheckOnly: boolean;
   status: "expected" | "completed";
+  expectedOrderDates: string[];
 };
 type ConfirmedOrderReceipt = {
+  order_date: string;
   product_id: string;
   product_name: string;
   confirmed_at: string;
@@ -173,7 +175,8 @@ function buildCompletedReceipts(logs: ReceiptHistoryLog[]) {
       quantity: nextQuantity,
       lastReceivedAt: current?.lastReceivedAt ?? log.created_at,
       receiptCheckOnly: current?.receiptCheckOnly ?? log.products?.receipt_check_only ?? false,
-      status: "completed"
+      status: "completed",
+      expectedOrderDates: []
     });
   });
   return Array.from(grouped.values());
@@ -186,17 +189,23 @@ function buildExpectedReceipts(receipts: ConfirmedOrderReceipt[]) {
     quantity: null,
     lastReceivedAt: product.confirmed_at,
     receiptCheckOnly: false,
-    status: "expected" as const
+    status: "expected" as const,
+    expectedOrderDates: [product.order_date]
   }));
 }
 
 function mergeExpectedReceipts(delayedItems: ReceiptItem[], expectedItems: ReceiptItem[]) {
-  const productIds = new Set<string>();
-  return [...delayedItems, ...expectedItems].filter((item) => {
-    if (productIds.has(item.productId)) return false;
-    productIds.add(item.productId);
-    return true;
+  const itemsByProductId = new Map<string, ReceiptItem>();
+  [...delayedItems, ...expectedItems].forEach((item) => {
+    const current = itemsByProductId.get(item.productId);
+    if (!current) {
+      itemsByProductId.set(item.productId, item);
+      return;
+    }
+
+    current.expectedOrderDates = Array.from(new Set([...current.expectedOrderDates, ...item.expectedOrderDates]));
   });
+  return Array.from(itemsByProductId.values());
 }
 
 function SectionHeader({
@@ -315,7 +324,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       Services.DatabaseService.select("confirmed_order_items", "order_date, product_id, products(is_active)")
         .eq("store_id", currentStoreId)
         .gte("order_date", closureLookupStart)
-        .lt("order_date", calendarEnd),
+        .lt("order_date", calendarEnd)
+        .is("receipt_expected_deleted_at", null),
       Services.DatabaseService.select("inventory_logs", "product_id, created_at")
         .eq("store_id", currentStoreId)
         .eq("action", "입고")
@@ -442,20 +452,28 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       const { data: userData } = await Services.AuthService.getUser();
       if (userData.user) {
         const routineIds = dueRoutines.map((routine) => routine.id);
-        const existingTodoResult = await Services.DatabaseService.select("dashboard_todos", "routine_id")
-          .eq("store_id", currentStoreId)
-          .eq("task_date", dashboardDate)
-          .in("routine_id", routineIds);
+        const [existingTodoResult, deletedTodoResult] = await Promise.all([
+          Services.DatabaseService.select("dashboard_todos", "routine_id")
+            .eq("store_id", currentStoreId)
+            .eq("task_date", dashboardDate)
+            .in("routine_id", routineIds),
+          Services.DatabaseService.select("dashboard_todos", "routine_id")
+            .eq("store_id", currentStoreId)
+            .in("routine_id", routineIds)
+            .not("deleted_at", "is", null)
+        ]);
 
-        if (existingTodoResult.error) {
-          setError(existingTodoResult.error.message);
+        const todoLoadError = existingTodoResult.error ?? deletedTodoResult.error;
+        if (todoLoadError) {
+          setError(todoLoadError.message);
           setLoading(false);
           return;
         }
 
         const existingRoutineIds = new Set(((existingTodoResult.data ?? []) as Array<{ routine_id: string | null }>).map((todo) => todo.routine_id).filter(Boolean));
+        const deletedRoutineIds = new Set(((deletedTodoResult.data ?? []) as Array<{ routine_id: string | null }>).map((todo) => todo.routine_id).filter(Boolean));
         const todosToCreate = dueRoutines
-          .filter((routine) => !existingRoutineIds.has(routine.id))
+          .filter((routine) => !existingRoutineIds.has(routine.id) && !deletedRoutineIds.has(routine.id))
           .map((routine) => ({
             store_id: currentStoreId,
             task_date: dashboardDate,
@@ -518,7 +536,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         const productIds = productsForCheck.map((product) => product.id);
 
         if (productIds.length > 0) {
-          const [logResult, existingTodoResult] = await Promise.all([
+          const [logResult, existingTodoResult, deletedTodoResult] = await Promise.all([
             Services.DatabaseService.select("inventory_logs", "product_id, created_at")
               .eq("store_id", currentStoreId)
               .neq("action", "메모")
@@ -528,11 +546,15 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             Services.DatabaseService.select("dashboard_todos", "stale_inventory_product_id")
               .eq("store_id", currentStoreId)
               .eq("task_date", dashboardDate)
+              .in("stale_inventory_product_id", productIds),
+            Services.DatabaseService.select("dashboard_todos", "stale_inventory_product_id")
+              .eq("store_id", currentStoreId)
               .in("stale_inventory_product_id", productIds)
+              .not("deleted_at", "is", null)
           ]);
 
-          if (logResult.error || existingTodoResult.error) {
-            const staleTodoError = logResult.error ?? existingTodoResult.error;
+          if (logResult.error || existingTodoResult.error || deletedTodoResult.error) {
+            const staleTodoError = logResult.error ?? existingTodoResult.error ?? deletedTodoResult.error;
             setError(
               staleTodoError?.message.includes("stale_inventory_product_id") || staleTodoError?.message.includes("schema cache")
                 ? "오래된 재고 파악 To do 기능용 데이터베이스 업데이트가 필요합니다."
@@ -551,8 +573,13 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               .map((todo) => todo.stale_inventory_product_id)
               .filter(Boolean) as string[]
           );
+          const deletedProductIds = new Set(
+            ((deletedTodoResult.data ?? []) as Array<{ stale_inventory_product_id: string | null }>)
+              .map((todo) => todo.stale_inventory_product_id)
+              .filter(Boolean) as string[]
+          );
           const staleProducts = productsForCheck.filter((product) => {
-            if (existingProductIds.has(product.id)) return false;
+            if (existingProductIds.has(product.id) || deletedProductIds.has(product.id)) return false;
             const latestCheckedAt = latestLogByProductId.get(product.id);
             return !latestCheckedAt || latestCheckedAt < cutoffIso;
           });
@@ -589,9 +616,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       .gte("created_at", range.start)
       .lt("created_at", range.end)
       .order("created_at", { ascending: false });
-    const expectedReceiptQuery = Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at, products(is_active)")
+    const expectedReceiptQuery = Services.DatabaseService.select("confirmed_order_items", "order_date, product_id, product_name, confirmed_at, products(is_active)")
       .eq("store_id", currentStoreId)
       .eq("order_date", previousBusinessDate)
+      .is("receipt_expected_deleted_at", null)
       .order("urgent_order_requested", { ascending: false })
       .order("product_name", { ascending: true });
 
@@ -624,9 +652,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     }
     const delayedRange = getDayRange(new Date(`${previousBusinessDate}T00:00:00`));
     const [delayedExpectedResult, delayedLogResult] = await Promise.all([
-      Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at, products(is_active)")
+      Services.DatabaseService.select("confirmed_order_items", "order_date, product_id, product_name, confirmed_at, products(is_active)")
         .eq("store_id", currentStoreId)
         .eq("order_date", delayedSourceDate)
+        .is("receipt_expected_deleted_at", null)
         .order("urgent_order_requested", { ascending: false })
         .order("product_name", { ascending: true }),
       Services.DatabaseService.select("inventory_logs", "*, products(name, barcode, receipt_check_only)")
@@ -697,6 +726,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       || message.includes("restore_latest_dashboard_receipt_deletion")
       || message.includes("dashboard_receipt_deletions")
       ? "금일 입고 삭제 기능을 위한 데이터베이스 업데이트가 필요합니다."
+      : message.includes("delete_dashboard_expected_receipt") || message.includes("receipt_expected_deleted")
+        ? "입고예정 삭제 기능을 위한 데이터베이스 업데이트가 필요합니다."
       : message;
   }
 
@@ -723,6 +754,32 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       setMessage(`${item.name}의 금일 입고 기록을 삭제했습니다.`);
       await loadDashboard();
       setMessage(`${item.name}의 금일 입고 기록을 삭제했습니다.`);
+    }
+
+    setReceiptDeletingIds((current) => {
+      const next = new Set(current);
+      next.delete(item.productId);
+      return next;
+    });
+  }
+
+  async function deleteExpectedReceipt(item: ReceiptItem) {
+    if (!isToday || item.status !== "expected" || item.expectedOrderDates.length === 0) return;
+    if (!window.confirm(`${item.name}을(를) 입고예정 목록에서 삭제할까요?\n삭제한 품목은 다음 날에도 다시 표시되지 않습니다.`)) return;
+
+    setReceiptDeletingIds((current) => new Set(current).add(item.productId));
+    setError("");
+    setMessage("");
+    const { error: deleteError } = await Services.DatabaseService.rpc("delete_dashboard_expected_receipt", {
+      target_product_id: item.productId,
+      target_order_dates: item.expectedOrderDates
+    });
+
+    if (deleteError) {
+      setError(receiptActionError(deleteError.message));
+    } else {
+      await loadDashboard();
+      setMessage(`${item.name}을(를) 입고예정 목록에서 삭제했습니다.`);
     }
 
     setReceiptDeletingIds((current) => {
@@ -1033,9 +1090,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
     const range = getDayRange(new Date(`${targetDate}T00:00:00`));
     const [expectedResult, completedResult] = await Promise.all([
-      Services.DatabaseService.select("confirmed_order_items", "product_id, product_name, confirmed_at, products(is_active)")
+      Services.DatabaseService.select("confirmed_order_items", "order_date, product_id, product_name, confirmed_at, products(is_active)")
         .eq("store_id", currentStoreId)
         .eq("order_date", previousBusinessDate)
+        .is("receipt_expected_deleted_at", null)
         .order("urgent_order_requested", { ascending: false })
         .order("product_name", { ascending: true }),
       Services.DatabaseService.select("inventory_logs", "*, products(name, receipt_check_only)")
@@ -1242,6 +1300,17 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                     className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
                     aria-label={`${item.name} 금일 입고 삭제`}
                     title="금일 입고 삭제"
+                  >
+                    <Trash2 size={17} />
+                  </PressableButton>
+                ) : isToday && item.status === "expected" ? (
+                  <PressableButton
+                    type="button"
+                    disabled={receiptDeletingIds.has(item.productId) || receiptActioning}
+                    onClick={() => void deleteExpectedReceipt(item)}
+                    className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                    aria-label={`${item.name} 입고예정 삭제`}
+                    title="입고예정 삭제"
                   >
                     <Trash2 size={17} />
                   </PressableButton>
