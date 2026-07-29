@@ -547,7 +547,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               .eq("store_id", currentStoreId)
               .eq("task_date", dashboardDate)
               .in("stale_inventory_product_id", productIds),
-            Services.DatabaseService.select("dashboard_todos", "stale_inventory_product_id")
+            Services.DatabaseService.select("dashboard_todos", "task_date, stale_inventory_product_id")
               .eq("store_id", currentStoreId)
               .in("stale_inventory_product_id", productIds)
               .not("deleted_at", "is", null)
@@ -574,7 +574,8 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               .filter(Boolean) as string[]
           );
           const deletedProductIds = new Set(
-            ((deletedTodoResult.data ?? []) as Array<{ stale_inventory_product_id: string | null }>)
+            ((deletedTodoResult.data ?? []) as Array<{ task_date: string; stale_inventory_product_id: string | null }>)
+              .filter((todo) => addDateValueDays(todo.task_date, thresholdDays) > dashboardDate)
               .map((todo) => todo.stale_inventory_product_id)
               .filter(Boolean) as string[]
           );

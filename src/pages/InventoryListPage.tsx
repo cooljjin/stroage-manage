@@ -81,7 +81,7 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
   const [categoryExpanded, setCategoryExpanded] = useState(() => initialState?.categoryExpanded ?? false);
   const [search, setSearch] = useState(() => initialState?.search ?? "");
   const [overviewMode, setOverviewMode] = useState<InventoryOverviewMode>(() => initialState?.overviewMode ?? "list");
-  const [overviewDisplay, setOverviewDisplay] = useState<InventoryOverviewDisplay>(() => initialState?.overviewDisplay ?? "name");
+  const [overviewDisplay, setOverviewDisplay] = useState<InventoryOverviewDisplay>(() => initialState?.overviewDisplay ?? "activity");
   const [overviewCompact, setOverviewCompact] = useState(() => initialState?.overviewCompact ?? false);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(() => initialState?.activityCounts ?? {});
   const [abundantMultiplier, setAbundantMultiplier] = useState(() => initialState?.abundantMultiplier ?? DEFAULT_ABUNDANT_MULTIPLIER);
