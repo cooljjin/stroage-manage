@@ -322,6 +322,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setQuantity((value) => String(quantityNumberOrZero(value) + amount));
   }
 
+  function fillActualQuantity(currentQuantity: number) {
+    setQuantity(String(currentQuantity));
+  }
+
   function decreaseQuantity() {
     setQuantity((value) => String(Math.max(0, quantityNumberOrZero(value) - 1)));
   }
@@ -949,7 +953,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setLocation("창고")}
+                onClick={() => {
+                  setLocation("창고");
+                  fillActualQuantity(item.warehouse_qty);
+                }}
                 className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
                 aria-label={`창고 현재 수량 ${formatInventoryQuantity(item.warehouse_qty)} 선택`}
                 title="창고 선택"
@@ -962,7 +969,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
               </button>
               <button
                 type="button"
-                onClick={() => setLocation("매장")}
+                onClick={() => {
+                  setLocation("매장");
+                  fillActualQuantity(item.store_qty);
+                }}
                 className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
                 aria-label={`매장 현재 수량 ${formatInventoryQuantity(item.store_qty)} 선택`}
                 title="매장 선택"
