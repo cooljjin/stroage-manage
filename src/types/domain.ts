@@ -16,8 +16,9 @@ export type InventoryOverviewDisplay = "name" | "activity" | "important";
 export type RouteName =
   | "landing"
   | "login"
-  | "signup-request"
+  | "password-reset"
   | "privacy"
+  | "support"
   | "home"
   | "timeline-calendar"
   | "scan"

@@ -4,21 +4,28 @@ import { supabase } from "../../lib/supabase";
 
 export type { AuthChangeEvent, Session, User, UserIdentity } from "@supabase/supabase-js";
 
-const NATIVE_AUTH_CALLBACK_URL = "com.jinkim.storeinventory.poc://auth/callback";
+const NATIVE_AUTH_CALLBACK_URL = "com.jinkim.stockly://auth/callback";
 export const ACCOUNT_LINK_RETURN_STORAGE_KEY = "store-inventory-account-link-return";
 
-function getOAuthRedirectUrl() {
+function getAuthRedirectUrl() {
   if (Capacitor.isNativePlatform()) {
     return NATIVE_AUTH_CALLBACK_URL;
   }
   return window.location.origin;
 }
 
+function getPasswordResetRedirectUrl() {
+  if (Capacitor.isNativePlatform()) {
+    return NATIVE_AUTH_CALLBACK_URL;
+  }
+  return `${window.location.origin}/password-reset`;
+}
+
 function signInWithOAuthProvider(provider: Provider, scopes?: string) {
   return supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: getOAuthRedirectUrl(),
+      redirectTo: getAuthRedirectUrl(),
       scopes
     }
   });
@@ -33,7 +40,7 @@ function getOAuthScopes(provider: Provider) {
 
 function getOAuthOptions(provider: Provider) {
   return {
-    redirectTo: getOAuthRedirectUrl(),
+    redirectTo: getAuthRedirectUrl(),
     scopes: getOAuthScopes(provider)
   };
 }
@@ -49,6 +56,16 @@ export const AuthService = {
 
   signUp(credentials: SignUpWithPasswordCredentials) {
     return supabase.auth.signUp(credentials);
+  },
+
+  resetPasswordForEmail(email: string) {
+    return supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getPasswordResetRedirectUrl()
+    });
+  },
+
+  updatePassword(password: string) {
+    return supabase.auth.updateUser({ password });
   },
 
   logout() {
@@ -98,6 +115,12 @@ export const AuthService = {
       data: { session: null, user: null },
       error: new Error("OAuth callback URL에 세션 정보가 없습니다.")
     };
+  },
+
+  isPasswordRecoveryUrl(url: string) {
+    const callbackUrl = new URL(url);
+    const hashParams = new URLSearchParams(callbackUrl.hash.replace(/^#/, ""));
+    return callbackUrl.searchParams.get("type") === "recovery" || hashParams.get("type") === "recovery";
   },
 
   onAuthStateChange(callback: (event: AuthChangeEvent, session: Session | null) => void) {

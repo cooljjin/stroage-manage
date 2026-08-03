@@ -1,5 +1,5 @@
 {
-  "appId": "com.jinkim.storeinventory.poc",
+  "appId": "com.jinkim.stockly",
   "appName": "Stockly",
   "webDir": "dist"
 }

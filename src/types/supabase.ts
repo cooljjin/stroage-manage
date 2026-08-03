@@ -1096,6 +1096,15 @@ export type Database = {
         };
         Returns: undefined;
       };
+      register_and_merge_product: {
+        Args: {
+          product_store_id: string;
+          product_data: Json;
+          existing_product_id: string;
+          keep_new_product: boolean;
+        };
+        Returns: string;
+      };
       restore_inventory_to_log: {
         Args: {
           target_log_id: string;

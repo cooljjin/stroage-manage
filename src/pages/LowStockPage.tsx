@@ -157,7 +157,15 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
   const lowStockItems = useMemo(() => {
     return items
-      .filter((item) => item.fresh_order_selected || item.urgent_order_requested || (!item.receipt_check_only && item.is_low_stock))
+      .filter((item) => {
+        const minimumStock = Number(item.minimum_stock);
+        const totalStock = Number(item.total_stock);
+        const isQuantityLowStock = Number.isFinite(minimumStock)
+          && Number.isFinite(totalStock)
+          && totalStock <= minimumStock;
+        const isLowStock = item.status_enabled ? item.stock_status === "발주 필요" : isQuantityLowStock;
+        return item.fresh_order_selected || item.urgent_order_requested || (!item.receipt_check_only && isLowStock);
+      })
       .sort((a, b) => {
         if (a.urgent_order_requested !== b.urgent_order_requested) {
           return a.urgent_order_requested ? -1 : 1;

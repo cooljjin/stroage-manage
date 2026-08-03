@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Stockly</string>
     <string name="title_activity_main">Stockly</string>
-    <string name="package_name">com.jinkim.storeinventory.poc</string>
-    <string name="custom_url_scheme">com.jinkim.storeinventory.poc</string>
+    <string name="package_name">com.jinkim.stockly</string>
+    <string name="custom_url_scheme">com.jinkim.stockly</string>
 </resources>

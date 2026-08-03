@@ -380,7 +380,12 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
 
     setError("");
     setSuccess("");
-    const nextMinimumStock = Math.max(0, Number(minimumStockDraft || 0));
+    const parsedMinimumStock = Number(minimumStockDraft || 0);
+    if (!Number.isFinite(parsedMinimumStock) || parsedMinimumStock < 0) {
+      setError("최소재고는 0 이상 숫자로 입력해 주세요.");
+      return;
+    }
+    const nextMinimumStock = parsedMinimumStock;
     const { error: updateError } = await Services.DatabaseService.update("products", { minimum_stock: nextMinimumStock }).eq("store_id", currentStoreId).eq("id", item.id);
 
     if (updateError) {
@@ -980,6 +985,8 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                     className="field min-h-0 w-20 px-2 py-1 text-sm"
                     type="number"
                     min={0}
+                    step="0.01"
+                    inputMode="decimal"
                     value={minimumStockDraft}
                     onChange={(event) => setMinimumStockDraft(event.target.value)}
                     aria-label="최소재고"

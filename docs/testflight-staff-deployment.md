@@ -30,7 +30,7 @@ Xcode가 열리면 아래를 확인한다.
 
 1. 왼쪽 프로젝트에서 `App` 타깃을 선택한다.
 2. `Signing & Capabilities`에서 Apple Developer Program에 가입한 팀을 선택한다.
-3. Bundle Identifier는 현재 `com.jinkim.storeinventory.poc`를 사용한다.
+3. Bundle Identifier는 현재 `com.jinkim.stockly`를 사용한다.
 4. `General`에서 Version과 Build를 확인한다.
 5. 상단 실행 대상은 실제 iPhone이 아니라 `Any iOS Device (arm64)` 또는 `Any iOS Device`로 선택한다.
 6. 메뉴에서 `Product > Archive`를 실행한다.
@@ -56,7 +56,7 @@ Archive가 끝나면 Organizer 창이 열린다.
 
 - 앱 이름: `매장 재고관리`
 - 플랫폼: iOS
-- Bundle ID: `com.jinkim.storeinventory.poc`
+- Bundle ID: `com.jinkim.stockly`
 - SKU: 내부 식별용 아무 값. 예: `store-inventory-ios`
 
 Bundle ID는 직원에게 보이지 않는다. 나중에 App Store 정식 공개를 별도 앱 ID로 진행하고 싶으면 그 시점에 새 앱으로 분리할 수 있다.

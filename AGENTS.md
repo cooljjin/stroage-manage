@@ -184,7 +184,7 @@ import * as Services from "../services";
 
 OAuth 네이티브 앱 콜백:
 
-- 앱 전용 콜백 URL: `com.jinkim.storeinventory.poc://auth/callback`
+- 앱 전용 콜백 URL: `com.jinkim.stockly://auth/callback`
 - 웹에서는 `window.location.origin`을 redirect로 사용합니다.
 - 네이티브에서는 Capacitor app URL open event로 OAuth callback을 받아 세션을 처리합니다.
 - iOS URL scheme은 `ios/App/App/Info.plist`에 등록합니다.
@@ -192,7 +192,7 @@ OAuth 네이티브 앱 콜백:
 
 Supabase 설정 시 유의:
 
-- Supabase Auth Redirect URLs에 `com.jinkim.storeinventory.poc://auth/callback`을 등록해야 합니다.
+- Supabase Auth Redirect URLs에 `com.jinkim.stockly://auth/callback`을 등록해야 합니다.
 - Google/Kakao 개발자 콘솔의 OAuth callback은 Supabase callback URL을 사용합니다.
 
 ```text

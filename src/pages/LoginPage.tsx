@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { ArrowRight, MessageCircle, Search } from "lucide-react";
+import { ArrowRight, Mail, MessageCircle, Search } from "lucide-react";
 import * as Services from "../services";
 import { StatusMessage } from "../components/StatusMessage";
 
@@ -34,9 +34,11 @@ const OAUTH_BUTTONS: Array<{
 type Props = {
   initialMode?: "login" | "signup";
   initialEmail?: string;
+  onOpenPrivacy: () => void;
+  onOpenSupport: () => void;
 };
 
-export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
+export function LoginPage({ initialMode = "login", initialEmail = "", onOpenPrivacy, onOpenSupport }: Props) {
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
@@ -45,6 +47,25 @@ export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  async function requestPasswordReset() {
+    setError("");
+    setMessage("");
+
+    if (!email.trim()) {
+      setError("비밀번호를 재설정할 이메일을 입력해 주세요.");
+      return;
+    }
+
+    setLoading(true);
+    const { error: resetError } = await Services.AuthService.resetPasswordForEmail(email.trim());
+    if (resetError) {
+      setError("재설정 메일을 보내지 못했습니다. 이메일 주소를 확인한 뒤 다시 시도해 주세요.");
+    } else {
+      setMessage("비밀번호 재설정 링크를 이메일로 보냈습니다. 메일의 링크를 열어 새 비밀번호를 설정해 주세요.");
+    }
+    setLoading(false);
+  }
 
   async function handleOAuthLogin(provider: OAuthProvider) {
     setError("");
@@ -86,15 +107,12 @@ export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
     } else {
       const { data, error: signUpError } = await Services.AuthService.signUp({
         email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin
-        }
+        password
       });
       if (signUpError) {
         setError(signUpError.message);
       } else if (!data.session) {
-        setError("회원가입은 완료됐지만 자동 로그인이 되지 않았습니다. Supabase Email 설정에서 Confirm email이 꺼져 있는지 확인해 주세요.");
+        setError("회원가입을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       } else {
         setMessage("회원가입이 완료되었습니다.");
       }
@@ -149,6 +167,11 @@ export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
                 {loading ? (mode === "login" ? "로그인 중..." : "가입 중...") : mode === "login" ? "로그인" : "회원가입"}
                 <ArrowRight size={18} />
               </button>
+              {mode === "login" ? (
+                <button type="button" onClick={() => void requestPasswordReset()} disabled={loading} className="touch-button w-full text-center text-sm font-bold text-brand-700 underline-offset-4 hover:underline disabled:opacity-60 dark:text-brand-100">
+                  비밀번호를 잊으셨나요?
+                </button>
+              ) : null}
             </div>
 
             <div className="my-6 flex items-center gap-3">
@@ -174,6 +197,15 @@ export function LoginPage({ initialMode = "login", initialEmail = "" }: Props) {
                   </button>
                 );
               })}
+            </div>
+
+            <div className="mt-6 flex flex-col items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <button type="button" onClick={onOpenPrivacy} className="touch-button underline-offset-4 hover:underline">
+                개인정보 처리방침
+              </button>
+              <button type="button" onClick={onOpenSupport} className="inline-flex items-center gap-1 underline-offset-4 hover:underline">
+                <Mail size={14} /> 지원 문의
+              </button>
             </div>
           </form>
         </section>

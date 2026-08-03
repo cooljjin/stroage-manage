@@ -22,9 +22,11 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
   const warehouse_qty = toFiniteQuantity(inventory?.warehouse_qty);
   const store_qty = toFiniteQuantity(inventory?.store_qty);
   const total_stock = warehouse_qty + store_qty;
+  const minimum_stock = toFiniteQuantity(row.minimum_stock);
 
   return {
     ...row,
+    minimum_stock,
     order_completed: row.order_completed ?? false,
     confirmed_order_pending: row.confirmed_order_pending ?? false,
     urgent_order_requested: row.urgent_order_requested ?? false,
@@ -40,7 +42,7 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
     warehouse_qty,
     store_qty,
     total_stock,
-    is_low_stock: row.receipt_check_only ? false : row.status_enabled ? row.stock_status === "발주 필요" : total_stock <= row.minimum_stock
+    is_low_stock: row.receipt_check_only ? false : row.status_enabled ? row.stock_status === "발주 필요" : total_stock <= minimum_stock
   };
 }
 

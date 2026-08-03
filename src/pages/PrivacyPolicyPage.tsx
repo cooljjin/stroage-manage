@@ -1,6 +1,6 @@
 import { Boxes, Mail, ShieldCheck } from "lucide-react";
 
-const lastUpdated = "2026-07-17";
+const lastUpdated = "2026-08-02";
 
 const sections = [
   {
@@ -68,7 +68,7 @@ export function PrivacyPolicyPage() {
               <ShieldCheck size={21} />
             </div>
             <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
-              StockFlow는 매장 재고관리 서비스를 제공하기 위해 필요한 최소한의 정보를 수집하고, 수집한 정보는 아래 목적에 따라 처리합니다.
+              Stockly는 매장 재고관리 서비스를 제공하기 위해 필요한 최소한의 정보를 수집하고, 수집한 정보는 아래 목적에 따라 처리합니다.
             </p>
           </div>
 

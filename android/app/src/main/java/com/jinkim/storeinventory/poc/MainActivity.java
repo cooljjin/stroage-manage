@@ -1,4 +1,4 @@
-package com.jinkim.storeinventory.poc;
+package com.jinkim.stockly;
 
 import com.getcapacitor.BridgeActivity;
 

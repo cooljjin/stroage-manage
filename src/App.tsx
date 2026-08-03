@@ -8,8 +8,9 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { TopMenu } from "./components/TopMenu";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
-import { SignupRequestPage } from "./pages/SignupRequestPage";
+import { PasswordResetPage } from "./pages/PasswordResetPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { SupportPage } from "./pages/SupportPage";
 import { AccountDeletionRecoveryPage } from "./pages/AccountDeletionRecoveryPage";
 import { HomePage } from "./pages/HomePage";
 import { TimelineCalendarPage } from "./pages/TimelineCalendarPage";
@@ -70,6 +71,7 @@ type BrowserNavigationState = {
 type NavigationOptions = {
   replace?: boolean;
   resetHistory?: boolean;
+  resetToRoot?: boolean;
   restore?: boolean;
   scrollY?: number;
 };
@@ -101,7 +103,10 @@ function hasPendingScanBarcode() {
 }
 
 function initialRoute(): AppRoute {
-  return window.location.pathname === "/privacy" ? { name: "privacy" } : { name: "landing" };
+  if (window.location.pathname === "/privacy") return { name: "privacy" };
+  if (window.location.pathname === "/support") return { name: "support" };
+  if (window.location.pathname === "/password-reset") return { name: "password-reset" };
+  return { name: "landing" };
 }
 
 function normalizeInviteCode(value: string | null) {
@@ -193,7 +198,10 @@ function routeKey(route: AppRoute) {
 }
 
 function browserPathForRoute(nextRoute?: AppRoute) {
-  return nextRoute?.name === "privacy" ? "/privacy" : "/";
+  if (nextRoute?.name === "privacy") return "/privacy";
+  if (nextRoute?.name === "support") return "/support";
+  if (nextRoute?.name === "password-reset") return "/password-reset";
+  return "/";
 }
 
 function isBrowserNavigationState(value: unknown): value is BrowserNavigationState {
@@ -260,9 +268,12 @@ export default function App() {
       setAuthLoading(false);
     });
 
-    const { data: listener } = Services.AuthService.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = Services.AuthService.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       setAuthLoading(false);
+      if (event === "PASSWORD_RECOVERY") {
+        navigateRef.current({ name: "password-reset" }, { resetHistory: true });
+      }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -278,11 +289,14 @@ export default function App() {
       .addListener("appUrlOpen", (event) => {
         const urlOpenEvent = event as URLOpenListenerEvent;
         const url = urlOpenEvent.url;
-        if (!url.startsWith("com.jinkim.storeinventory.poc://auth/callback")) return;
+        if (!url.startsWith("com.jinkim.stockly://auth/callback")) return;
         void Services.AuthService.handleOAuthCallbackUrl(url).then(({ data, error }) => {
           if (cancelled) return;
           if (!error) {
             setSession(data.session);
+            if (Services.AuthService.isPasswordRecoveryUrl(url)) {
+              navigateRef.current({ name: "password-reset" }, { resetHistory: true });
+            }
           }
         });
       })
@@ -347,7 +361,7 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-    if (route.name === "landing" || route.name === "login" || route.name === "signup-request") {
+    if (route.name === "landing" || route.name === "login") {
       const homeRoute = consumeAccountLinkReturnRoute() ?? consumePostScanRoute() ?? defaultSignedInRoute();
       navigateRef.current(homeRoute, { resetHistory: true, replace: true });
     }
@@ -502,7 +516,7 @@ export default function App() {
     }
 
     const currentTab = activeTabRef.current;
-    const targetTab = NAV_ROUTES.includes(next.name) && (options.restore || options.resetHistory)
+    const targetTab = NAV_ROUTES.includes(next.name) && (options.restore || options.resetHistory || options.resetToRoot)
       ? next.name as NavigationTab
       : currentTab;
     const nextStacks: NavigationStacks = Object.fromEntries(
@@ -514,6 +528,13 @@ export default function App() {
     if (options.resetHistory) {
       nextStacks[targetTab] = [{ route: next, scrollY: options.scrollY ?? 0 }];
       commitNavigation(next, targetTab, nextStacks, options.scrollY ?? 0, options.replace ?? false);
+      return;
+    }
+
+    if (options.resetToRoot) {
+      const rootEntry = nextStacks[targetTab]?.[0];
+      nextStacks[targetTab] = [{ route: next, scrollY: options.scrollY ?? rootEntry?.scrollY ?? 0 }];
+      commitNavigation(next, targetTab, nextStacks, options.scrollY ?? rootEntry?.scrollY ?? 0, options.replace ?? false);
       return;
     }
 
@@ -635,22 +656,28 @@ export default function App() {
     return <PrivacyPolicyPage />;
   }
 
+  if (route.name === "support") {
+    return <SupportPage />;
+  }
+
   if (authLoading) {
     return <div className="grid min-h-dvh place-items-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">로딩 중...</div>;
   }
 
-    if (!session) {
+  if (route.name === "password-reset") {
+    return <PasswordResetPage onCompleted={() => void handleLogout()} />;
+  }
+
+  if (!session) {
     if (route.name === "login") {
       return (
         <LoginPage
           initialMode={route.authMode ?? "login"}
           initialEmail={route.authEmail ?? ""}
+          onOpenPrivacy={() => navigate({ name: "privacy" })}
+          onOpenSupport={() => navigate({ name: "support" })}
         />
       );
-    }
-
-    if (route.name === "signup-request") {
-      return <SignupRequestPage onBack={() => navigate({ name: "landing" })} />;
     }
 
     return <LandingPage onLogin={() => navigate({ name: "login" })} />;

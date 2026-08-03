@@ -10,7 +10,7 @@ import type { AppRoute, GroupOrderRouteDraft, Location, PrepItemRouteDraft, Prod
 type Props = {
   productId?: string;
   barcode?: string;
-  navigate: (route: AppRoute, options?: { replace?: boolean; restore?: boolean }) => void;
+  navigate: (route: AppRoute, options?: { replace?: boolean; resetToRoot?: boolean; restore?: boolean }) => void;
   currentStoreId: string;
   returnTo?: "prep-items" | "group-order" | "group-order-recipes";
   prepDraft?: PrepItemRouteDraft;
@@ -58,7 +58,7 @@ function formatProductUpdateError(message: string) {
   return message;
 }
 
-function ProductMergeInfo({ product, title, description }: { product: Product; title: string; description: string }) {
+function ProductMergeInfo({ product, title, description }: { product: Pick<Product, "name" | "barcode" | "category" | "storage_type" | "default_location" | "supplier_name" | "unit_name">; title: string; description: string }) {
   const details = [
     ["상품명", product.name],
     ["바코드", product.barcode ?? "없음"],
@@ -241,11 +241,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     return { name: "operation", productId: productId ?? "" };
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!isRegisterMode && !product) return;
-
-    const nextName = name.trim();
+  function getProductValues() {
     const nextMinimumStock = receiptCheckOnly ? 0 : Number(minimumStock || 0);
     const parsedUnitWeight = Number(unitWeight || 0);
     const nextUnitWeight = unitWeightEnabled ? parsedUnitWeight : null;
@@ -253,48 +249,54 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     const parsedProcessedUnitWeight = Number(processedUnitWeight || 0);
     const nextProcessedUnitWeight = nextProcessingRequired ? parsedProcessedUnitWeight : null;
 
-    if (!nextName) {
-      setError("상품명은 비워둘 수 없습니다.");
-      return;
-    }
-    if (!Number.isInteger(nextMinimumStock) || nextMinimumStock < 0) {
-      setError("최소재고는 0 이상 정수로 입력해 주세요.");
-      return;
-    }
-    if (unitWeightEnabled && (!Number.isFinite(parsedUnitWeight) || parsedUnitWeight <= 0)) {
-      setError("단위당 무게/부피/낱개는 0보다 큰 숫자로 입력해 주세요.");
-      return;
-    }
-    if (nextProcessingRequired && (!Number.isFinite(parsedProcessedUnitWeight) || parsedProcessedUnitWeight <= 0)) {
-      setError("손질 후 단위당 무게/부피는 0보다 큰 숫자로 입력해 주세요.");
+    return {
+      name: name.trim(),
+      barcode: barcode.trim() || null,
+      category,
+      supplier_name: supplierName || null,
+      storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+      default_location: defaultLocation,
+      unit_name: unitName || null,
+      unit_weight_enabled: unitWeightEnabled,
+      unit_weight: unitWeightEnabled ? nextUnitWeight : null,
+      unit_weight_unit: unitWeightEnabled ? unitWeightUnit : null,
+      processing_required: nextProcessingRequired,
+      processed_unit_weight: nextProcessedUnitWeight,
+      processed_unit_weight_unit: nextProcessingRequired ? processedUnitWeightUnit : null,
+      minimum_stock: nextMinimumStock,
+      receipt_check_only: receiptCheckOnly,
+      status_enabled: receiptCheckOnly ? false : product?.status_enabled ?? false,
+      stock_status: receiptCheckOnly ? null : product?.stock_status ?? null,
+      product_url: productUrl.trim() || null
+    };
+  }
+
+  function validateProductValues(productValues: ReturnType<typeof getProductValues>) {
+    const parsedUnitWeight = Number(unitWeight || 0);
+    const parsedProcessedUnitWeight = Number(processedUnitWeight || 0);
+
+    if (!productValues.name) return "상품명은 비워둘 수 없습니다.";
+    if (!Number.isFinite(productValues.minimum_stock) || productValues.minimum_stock < 0) return "최소재고는 0 이상 숫자로 입력해 주세요.";
+    if (unitWeightEnabled && (!Number.isFinite(parsedUnitWeight) || parsedUnitWeight <= 0)) return "단위당 무게/부피/낱개는 0보다 큰 숫자로 입력해 주세요.";
+    if (productValues.processing_required && (!Number.isFinite(parsedProcessedUnitWeight) || parsedProcessedUnitWeight <= 0)) return "손질 후 단위당 무게/부피는 0보다 큰 숫자로 입력해 주세요.";
+    return "";
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!isRegisterMode && !product) return;
+
+    const productValues = getProductValues();
+    const validationError = validateProductValues(productValues);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     setSaving(true);
     setError("");
-    const productValues = {
-        name: nextName,
-        barcode: barcode.trim() || null,
-        category,
-        supplier_name: supplierName || null,
-        storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
-        default_location: defaultLocation,
-        unit_name: unitName || null,
-        unit_weight_enabled: unitWeightEnabled,
-        unit_weight: unitWeightEnabled ? nextUnitWeight : null,
-        unit_weight_unit: unitWeightEnabled ? unitWeightUnit : null,
-        processing_required: nextProcessingRequired,
-        processed_unit_weight: nextProcessedUnitWeight,
-        processed_unit_weight_unit: nextProcessingRequired ? processedUnitWeightUnit : null,
-        minimum_stock: nextMinimumStock,
-        receipt_check_only: receiptCheckOnly,
-        status_enabled: receiptCheckOnly ? false : product?.status_enabled ?? false,
-        stock_status: receiptCheckOnly ? null : product?.stock_status ?? null,
-        product_url: productUrl.trim() || null
-      };
-
     if (isRegisterMode) {
-      const nextBarcode = barcode.trim() || null;
+      const nextBarcode = productValues.barcode;
       if (nextBarcode) {
         const { data: existingProduct, error: existingError } = await Services.DatabaseService.select("products", "id, name, is_active")
           .eq("store_id", currentStoreId)
@@ -390,28 +392,56 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
       return;
     }
 
-    navigate({ name: "inventory" }, { restore: true });
+    navigate({ name: "inventory" }, { resetToRoot: true });
   }
 
-  const mergeCandidates = product && !isRegisterMode
-    ? products
-        .filter((candidate) => candidate.id !== product.id && candidate.is_active !== false)
-        .filter((candidate) => {
-          const keyword = mergeSearch.trim().toLowerCase();
-          return keyword && (candidate.name.toLowerCase().includes(keyword) || (candidate.barcode ?? "").toLowerCase().includes(keyword));
-        })
-        .slice(0, 5)
-    : [];
+  const mergeCandidates = products
+    .filter((candidate) => candidate.id !== product?.id && candidate.is_active !== false)
+    .filter((candidate) => {
+      const keyword = mergeSearch.trim().toLowerCase();
+      return keyword && (candidate.name.toLowerCase().includes(keyword) || (candidate.barcode ?? "").toLowerCase().includes(keyword));
+    })
+    .slice(0, 5);
 
   function formatMergeError(errorMessage: string) {
-    if (errorMessage.includes("merge_products") || errorMessage.includes("product_barcodes") || errorMessage.includes("schema cache")) {
-      return "병합 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 product_barcodes 테이블과 merge_products 함수 추가를 요청해 주세요.";
+    if (errorMessage.includes("merge_products") || errorMessage.includes("register_and_merge_product") || errorMessage.includes("product_barcodes") || errorMessage.includes("schema cache")) {
+      return "병합 기능 DB 업데이트가 아직 적용되지 않았습니다. 관리자에게 product_barcodes 테이블과 병합 함수 업데이트를 요청해 주세요.";
     }
     return errorMessage;
   }
 
   async function mergeProduct() {
-    if (!product || !mergeCandidate) return;
+    if (!mergeCandidate) return;
+
+    if (isRegisterMode) {
+      const productValues = getProductValues();
+      const validationError = validateProductValues(productValues);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
+      setError("");
+      setMessage("");
+      setMerging(true);
+      const { data: mergedProductId, error: mergeError } = await Services.DatabaseService.rpc("register_and_merge_product", {
+        product_store_id: currentStoreId,
+        product_data: productValues,
+        existing_product_id: mergeCandidate.id,
+        keep_new_product: mergeTargetId === "register-draft"
+      });
+      setMerging(false);
+
+      if (mergeError) {
+        setError(formatMergeError(mergeError.message));
+        return;
+      }
+
+      navigate({ name: "operation", productId: mergedProductId }, { replace: true });
+      return;
+    }
+
+    if (!product) return;
 
     const targetProduct = mergeTargetId === mergeCandidate.id ? mergeCandidate : product;
     const sourceProduct = targetProduct.id === product.id ? mergeCandidate : product;
@@ -430,6 +460,11 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
       return;
     }
 
+    if (targetProduct.id !== product.id) {
+      navigate({ name: "inventory" }, { resetToRoot: true });
+      return;
+    }
+
     setMergeSearch("");
     setMergeCandidate(null);
     setMergeTargetId(null);
@@ -439,6 +474,38 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
 
   if (loading) return <StatusMessage>{isRegisterMode ? "상품 등록 화면을 준비하는 중..." : "상품 정보를 불러오는 중..."}</StatusMessage>;
   if (!isRegisterMode && !product) return <StatusMessage type="error">상품을 찾을 수 없습니다.</StatusMessage>;
+
+  const mergeDraftProduct: Product = {
+    id: "register-draft",
+    store_id: currentStoreId,
+    name: name.trim() || "새 상품",
+    barcode: barcode.trim() || null,
+    category,
+    supplier_name: supplierName || null,
+    storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
+    default_location: defaultLocation,
+    unit_name: unitName || null,
+    unit_weight_enabled: unitWeightEnabled,
+    unit_weight: unitWeightEnabled ? Number(unitWeight || 0) : null,
+    unit_weight_unit: unitWeightEnabled ? unitWeightUnit : null,
+    processing_required: processingRequired,
+    processed_unit_weight: processingRequired ? Number(processedUnitWeight || 0) : null,
+    processed_unit_weight_unit: processingRequired ? processedUnitWeightUnit : null,
+    product_url: productUrl.trim() || null,
+    order_completed: false,
+    confirmed_order_pending: false,
+    urgent_order_requested: false,
+    urgent_order_quantity: null,
+    fresh_order_selected: false,
+    fresh_order_selected_at: null,
+    receipt_check_only: receiptCheckOnly,
+    status_enabled: false,
+    stock_status: null,
+    minimum_stock: receiptCheckOnly ? 0 : Number(minimumStock || 0),
+    is_important: false,
+    is_active: true,
+    created_at: new Date(0).toISOString()
+  };
 
   return (
     <section className="min-w-0">
@@ -536,7 +603,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">최소 재고</span>
-            <input className="field" type="number" inputMode="numeric" min={0} step={1} value={receiptCheckOnly ? "0" : minimumStock} disabled={receiptCheckOnly} onChange={(event) => setMinimumStock(event.target.value)} />
+            <input className="field" type="number" inputMode="decimal" min={0} step="0.01" value={receiptCheckOnly ? "0" : minimumStock} disabled={receiptCheckOnly} onChange={(event) => setMinimumStock(event.target.value)} />
           </label>
 
           <label className="block min-w-0 sm:col-span-2">
@@ -689,9 +756,11 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         </div>
       </form>
 
-      {!isRegisterMode ? <div className="panel mt-4 w-full max-w-2xl p-4">
+      <div className="panel mt-4 w-full max-w-2xl p-4">
         <h2 className="text-base font-bold">상품 병합</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">중복 상품을 현재 상품으로 합치고, 선택한 상품은 비활성화합니다.</p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          {isRegisterMode ? "등록 중인 품목을 기존 품목과 합치고, 선택한 품목을 유지합니다." : "중복 상품을 현재 상품으로 합치고, 선택한 상품은 비활성화합니다."}
+        </p>
 
         <label className="mt-3 block">
           <span className="mb-1 block text-sm font-semibold">병합할 품목 검색</span>
@@ -714,7 +783,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
                   setError("");
                   setMessage("");
                   setMergeCandidate(candidate);
-                  setMergeTargetId(product?.id ?? null);
+                  setMergeTargetId(isRegisterMode ? candidate.id : product?.id ?? null);
                 }}
                 className="w-full rounded-md border border-slate-200 bg-white p-3 text-left text-sm disabled:opacity-45 dark:border-slate-800 dark:bg-slate-900"
               >
@@ -726,9 +795,9 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         ) : mergeSearch.trim() ? (
           <p className="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">병합할 품목이 없습니다.</p>
         ) : null}
-      </div> : null}
+      </div>
 
-      {mergeCandidate && product ? (
+      {mergeCandidate ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-3 py-3 sm:px-4 sm:py-6">
           <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white p-3 shadow-xl dark:bg-slate-900 sm:max-h-[90dvh] sm:p-5" role="dialog" aria-modal="true" aria-labelledby="merge-product-dialog-title">
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -736,9 +805,9 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">남길 품목을 선택해 주세요. 선택하지 않은 품목은 병합 후 비활성화됩니다.</p>
 
               <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:gap-3">
-                {([product, mergeCandidate] as const).map((mergeProductItem) => {
+                {([isRegisterMode ? mergeDraftProduct : product, mergeCandidate] as const).filter((item): item is Product => Boolean(item)).map((mergeProductItem) => {
                   const isSelected = mergeTargetId === mergeProductItem.id;
-                  const isCurrentProduct = mergeProductItem.id === product.id;
+                  const isCurrentProduct = isRegisterMode ? mergeProductItem.id === "register-draft" : mergeProductItem.id === product?.id;
                   return (
                     <button
                       key={mergeProductItem.id}
@@ -750,7 +819,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
                     >
                       <ProductMergeInfo
                         product={mergeProductItem}
-                        title={isCurrentProduct ? "현재 품목" : "병합 품목"}
+                        title={isCurrentProduct ? (isRegisterMode ? "등록 예정 품목" : "현재 품목") : "병합 품목"}
                         description={isSelected ? "선택됨 · 병합 후 이 품목을 유지합니다." : "선택하면 이 품목을 유지합니다."}
                       />
                     </button>
