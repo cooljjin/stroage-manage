@@ -588,8 +588,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       const { error: pendingOrderError } = await Services.DatabaseService.update("products", { confirmed_order_pending: true })
         .eq("store_id", currentStoreId)
         .in("id", confirmedProductIds);
+      const pendingStateErrorMessage = pendingOrderError
+        ? `발주 품목은 확정됐지만 진행 상태를 저장하지 못했습니다. ${pendingOrderError.message}`
+        : "";
       if (pendingOrderError) {
-        setError(`발주 품목은 확정됐지만 진행 상태를 저장하지 못했습니다. ${pendingOrderError.message}`);
+        setError(pendingStateErrorMessage);
       } else {
         const confirmedProductIdSet = new Set(confirmedProductIds);
         setItems((current) => current.map((item) => (
@@ -618,6 +621,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
             )
           );
         }
+      }
+
+      if (pendingOrderError) {
+        await loadItems();
+        setError(pendingStateErrorMessage);
       }
 
       if (!addedOrderCleanupFailed && !pendingOrderError) {
@@ -677,6 +685,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       .eq("id", item.id);
     if (updateError) {
       setError(`품목은 확정 목록에 추가됐지만 컨펌 상태를 저장하지 못했습니다. ${updateError.message}`);
+      await loadItems();
     } else {
       setItems((current) => current.map((product) => (product.id === item.id ? { ...product, ...productUpdate } : product)));
     }
@@ -707,6 +716,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       .eq("id", item.product_id);
     if (updateError) {
       setError(`확정 목록에서는 삭제됐지만 컨펌 상태를 되돌리지 못했습니다. ${updateError.message}`);
+      await loadItems();
     } else {
       setItems((current) => current.map((product) => (product.id === item.product_id ? { ...product, ...productUpdate } : product)));
     }
@@ -732,11 +742,13 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
     const confirmedProductIds = itemsToCancel.map((item) => item.product_id);
     const freshProductIds = itemsToCancel.filter((item) => item.fresh_order_selected).map((item) => item.product_id);
+    let confirmationStateNeedsReload = false;
     const { error: clearConfirmationError } = await Services.DatabaseService.update("products", { order_completed: false, confirmed_order_pending: false })
       .eq("store_id", currentStoreId)
       .in("id", confirmedProductIds);
     if (clearConfirmationError) {
       setError(`확정 목록은 취소됐지만 컨펌 상태를 되돌리지 못했습니다. ${clearConfirmationError.message}`);
+      confirmationStateNeedsReload = true;
     } else if (freshProductIds.length > 0) {
       const { error: restoreAddedOrderError } = await Services.DatabaseService.update("products", {
           fresh_order_selected: true,
@@ -746,6 +758,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
         .in("id", freshProductIds);
       if (restoreAddedOrderError) {
         setError(`확정 목록은 취소됐지만 추가 품목을 복원하지 못했습니다. ${restoreAddedOrderError.message}`);
+        confirmationStateNeedsReload = true;
       }
     }
 
@@ -763,7 +776,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     )));
     setConfirmedItems([]);
     setConfirmedEditMode(false);
-    setMessage("오늘 확정한 품목을 모두 취소했습니다.");
+    if (confirmationStateNeedsReload) {
+      await loadItems();
+    } else {
+      setMessage("오늘 확정한 품목을 모두 취소했습니다.");
+    }
     setSavingConfirmedEdit(false);
   }
 
