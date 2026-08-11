@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
-import { StatusMessage } from "../components/StatusMessage";
-import * as Services from "../services";
-import type { Store } from "../types/domain";
+import { PageTitle } from "../../../src/components/PageTitle";
+import { StatusMessage } from "../../../src/components/StatusMessage";
+import * as Services from "../../../src/services";
+import type { Store } from "../../../src/types/domain";
 
 export function MasterStoresPage() {
   const [stores, setStores] = useState<Store[]>([]);

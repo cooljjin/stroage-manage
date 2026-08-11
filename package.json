@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:admin": "vite --config admin-console/vite.config.ts",
     "build": "tsc -b && vite build",
+    "build:admin": "tsc -p admin-console/tsconfig.json --noEmit && vite build --config admin-console/vite.config.ts",
     "preview": "vite preview",
+    "preview:admin": "vite preview --outDir dist-admin",
     "lint": "eslint .",
     "cap:sync": "npx cap sync",
     "ios:prepare": "npm run build && npx cap copy ios",

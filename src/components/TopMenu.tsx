@@ -1,4 +1,4 @@
-import { Calculator, ClipboardCheck, CookingPot, ListTodo, Package, Settings, Store, Tags, Truck, Users } from "lucide-react";
+import { Calculator, ClipboardCheck, CookingPot, ListTodo, Package, Settings, Tags, Truck, Users } from "lucide-react";
 import { StocklyMenuButton } from "./StocklyMenuButton";
 import { hasStaffPermission } from "../lib/staffPermissions";
 import type { ProfileRole, RouteName, StaffPermissionKey } from "../types/domain";
@@ -26,27 +26,6 @@ export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate
 
       {open ? (
         <div className="absolute left-0 top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950">
-          {role === "master" ? (
-            <>
-              <button
-                type="button"
-                onClick={() => go("master-stores")}
-                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-              >
-                <Store size={19} />
-                전체 매장
-              </button>
-              <button
-                type="button"
-                onClick={() => go("master-users")}
-                className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
-              >
-                <Users size={19} />
-                전체 사용자
-              </button>
-            </>
-          ) : null}
-          {role === "master" ? <div className="my-1 border-t border-slate-100 dark:border-slate-800" /> : null}
           <button
             type="button"
             onClick={() => go("prep-mode")}

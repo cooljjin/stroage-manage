@@ -12,6 +12,7 @@ import { PasswordResetPage } from "./pages/PasswordResetPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { SupportPage } from "./pages/SupportPage";
 import { AccountDeletionRecoveryPage } from "./pages/AccountDeletionRecoveryPage";
+import { MasterAccountBlockedPage } from "./pages/MasterAccountBlockedPage";
 import { HomePage } from "./pages/HomePage";
 import { TimelineCalendarPage } from "./pages/TimelineCalendarPage";
 import { ScanPage } from "./pages/ScanPage";
@@ -29,11 +30,8 @@ import { CategoryManagementPage } from "./pages/CategoryManagementPage";
 import { ProductUnitManagementPage } from "./pages/ProductUnitManagementPage";
 import { SupplierManagementPage } from "./pages/SupplierManagementPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { AdminPage } from "./pages/AdminPage";
 import { StaffManagementPage } from "./pages/StaffManagementPage";
 import { StaffPermissionsPage } from "./pages/StaffPermissionsPage";
-import { MasterStoresPage } from "./pages/MasterStoresPage";
-import { MasterUsersPage } from "./pages/MasterUsersPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
 import { hasStaffPermission, permissionForRoute } from "./lib/staffPermissions";
 import { pageTransitionMotion, reducedPageTransitionMotion } from "./lib/animations";
@@ -179,15 +177,11 @@ function getProfileRole(profile: StaffProfile): ProfileRole {
 
 function canAccess(routeName: RouteName, profile: StaffProfile, staffPermissions: readonly StaffPermissionKey[]) {
   const role = getProfileRole(profile);
-  if (role === "master") return true;
-
-  const masterRoutes: RouteName[] = ["master-stores", "master-store-detail", "master-users"];
-  if (masterRoutes.includes(routeName)) return false;
 
   const permission = permissionForRoute(routeName);
   if (permission) return role === "store_admin" || hasStaffPermission(staffPermissions, permission);
 
-  const adminRoutes: RouteName[] = ["admin", "prep-items", "staff-management", "staff-permissions"];
+  const adminRoutes: RouteName[] = ["prep-items", "staff-management", "staff-permissions"];
   if (adminRoutes.includes(routeName)) return role === "store_admin";
 
   return true;
@@ -751,6 +745,10 @@ export default function App() {
     return <AccountDeletionRecoveryPage onRecovered={(nextProfile) => setProfile(nextProfile)} />;
   }
 
+  if (getProfileRole(profile) === "master") {
+    return <MasterAccountBlockedPage onLogout={() => void handleLogout()} />;
+  }
+
   const permittedRoute = canAccess(route.name, profile, staffPermissions) ? route : { name: "home" as const };
   const profileRole = getProfileRole(profile);
   const routeMotionProps = shouldReduceMotion ? reducedPageTransitionMotion : pageTransitionMotion;
@@ -844,9 +842,6 @@ export default function App() {
             {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
             {permittedRoute.name === "staff-management" && <StaffManagementPage />}
             {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "master-stores" && <MasterStoresPage />}
-            {permittedRoute.name === "master-users" && <MasterUsersPage />}
-            {permittedRoute.name === "admin" && <AdminPage />}
           </m.div>
         </LazyMotion>
       </main>

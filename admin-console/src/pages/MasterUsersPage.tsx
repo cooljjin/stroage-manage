@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Save, Share2, Trash2, UserPlus, X } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
-import { StatusMessage } from "../components/StatusMessage";
-import * as Services from "../services";
-import type { ProfileRole, StaffProfile, Store, StoreInvite } from "../types/domain";
+import { PageTitle } from "../../../src/components/PageTitle";
+import { StatusMessage } from "../../../src/components/StatusMessage";
+import * as Services from "../../../src/services";
+import type { ProfileRole, StaffProfile, Store, StoreInvite } from "../../../src/types/domain";
 
 const ROLE_LABEL: Record<ProfileRole, string> = {
   master: "마스터",
@@ -14,7 +14,6 @@ const ROLE_LABEL: Record<ProfileRole, string> = {
 function roleOf(profile: StaffProfile): ProfileRole {
   return profile.role ?? (profile.is_admin ? "store_admin" : "staff");
 }
-
 function formatDeleteUserError(message: string | undefined) {
   if (!message) return "사용자 삭제에 실패했습니다.";
   if (message.includes("Failed to send a request")) {

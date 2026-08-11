@@ -39,11 +39,7 @@ export type RouteName =
   | "supplier-management"
   | "settings"
   | "staff-management"
-  | "staff-permissions"
-  | "master-stores"
-  | "master-store-detail"
-  | "master-users"
-  | "admin";
+  | "staff-permissions";
 
 export type Product = {
   id: string;
