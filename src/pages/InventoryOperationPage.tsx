@@ -374,7 +374,6 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             }
           : current
       );
-      setSuccess("상태를 저장했습니다.");
     }
     setStatusSaving(false);
   }
@@ -421,9 +420,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setLocation(nextLocation);
     setError("");
     setSuccess("");
+    const locationSubject = nextLocation === "매장" ? "매장이" : "창고가";
 
     if (item.default_location === nextLocation) {
-      setSuccess(`${nextLocation}가 기본값으로 선택되어 있습니다.`);
+      setSuccess(`${locationSubject} 기본값으로 선택되어 있습니다.`);
       return;
     }
 
@@ -436,7 +436,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setError(updateError.message);
     } else {
       setItem((current) => current ? { ...current, default_location: nextLocation } : current);
-      setSuccess(`다음 재고 작업부터 ${nextLocation}가 기본값으로 선택됩니다.`);
+      setSuccess(`다음 재고 작업부터 ${locationSubject} 기본값으로 선택됩니다.`);
     }
     setDefaultLocationSaving(false);
   }
@@ -864,7 +864,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
         </div>
       </div>
 
-      <div className="-mt-2 mb-2 flex min-w-0 items-start justify-between gap-2">
+      <div className="mb-3 flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="break-words text-2xl font-bold leading-tight text-slate-950 dark:text-slate-100">{item.name}</p>
         </div>
@@ -948,8 +948,8 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           </button>
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
-          <div className="panel p-3">
+        <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="panel p-4">
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -957,9 +957,20 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                   setLocation("창고");
                   fillActualQuantity(item.warehouse_qty);
                 }}
-                className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+                onPointerDown={() => {
+                  if (action !== "이동") startDefaultLocationPress("창고");
+                }}
+                onPointerUp={clearDefaultLocationPressTimer}
+                onPointerLeave={clearDefaultLocationPressTimer}
+                onPointerCancel={clearDefaultLocationPressTimer}
+                onContextMenu={(event) => event.preventDefault()}
+                disabled={defaultLocationSaving}
+                draggable={false}
+                className={`rounded-md border-2 p-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-60 ${location === "창고" ? "border-violet-500 bg-violet-50 hover:bg-violet-100 dark:border-violet-400 dark:bg-violet-950/40 dark:hover:bg-violet-950/60" : "border-slate-200 bg-slate-100 hover:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"}`}
                 aria-label={`창고 현재 수량 ${formatInventoryQuantity(item.warehouse_qty)} 선택`}
-                title="창고 선택"
+                aria-pressed={location === "창고"}
+                title="짧게 눌러 창고 선택 · 길게 누르면 기본값으로 저장"
+                style={{ WebkitUserSelect: "none", userSelect: "none" }}
               >
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">창고</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.warehouse_qty)}</p>
@@ -973,9 +984,20 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                   setLocation("매장");
                   fillActualQuantity(item.store_qty);
                 }}
-                className="rounded-md bg-slate-100 p-2 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+                onPointerDown={() => {
+                  if (action !== "이동") startDefaultLocationPress("매장");
+                }}
+                onPointerUp={clearDefaultLocationPressTimer}
+                onPointerLeave={clearDefaultLocationPressTimer}
+                onPointerCancel={clearDefaultLocationPressTimer}
+                onContextMenu={(event) => event.preventDefault()}
+                disabled={defaultLocationSaving}
+                draggable={false}
+                className={`rounded-md border-2 p-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-60 ${location === "매장" ? "border-violet-500 bg-violet-50 hover:bg-violet-100 dark:border-violet-400 dark:bg-violet-950/40 dark:hover:bg-violet-950/60" : "border-slate-200 bg-slate-100 hover:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"}`}
                 aria-label={`매장 현재 수량 ${formatInventoryQuantity(item.store_qty)} 선택`}
-                title="매장 선택"
+                aria-pressed={location === "매장"}
+                title="짧게 눌러 매장 선택 · 길게 누르면 기본값으로 저장"
+                style={{ WebkitUserSelect: "none", userSelect: "none" }}
               >
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">매장</p>
                 <p className="text-xl font-bold">{formatInventoryQuantity(item.store_qty)}</p>
@@ -1031,39 +1053,17 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="panel p-2.5">
+        <form onSubmit={handleSubmit} className="panel flex flex-col p-4">
           <div className="grid grid-cols-4 gap-1.5">
             {ACTIONS.map((name) => (
               <label key={name} className={`min-h-10 rounded-md border px-2 py-2 text-center text-sm font-bold ${action === name ? "border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100" : "border-slate-200 dark:border-slate-800"}`}>
                 <input className="sr-only" type="radio" checked={action === name} onChange={() => setAction(name)} />
-                {name === "조정" ? "실사" : name}
+                {name === "조정" ? "실사" : name === "출고" ? "사용" : name}
               </label>
             ))}
           </div>
 
-          {action !== "이동" ? (
-            <div className="mt-2 grid grid-cols-2 gap-1.5">
-              {(["창고", "매장"] as Location[]).map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => setLocation(name)}
-                  onPointerDown={() => startDefaultLocationPress(name)}
-                  onPointerUp={clearDefaultLocationPressTimer}
-                  onPointerLeave={clearDefaultLocationPressTimer}
-                  onPointerCancel={clearDefaultLocationPressTimer}
-                  onContextMenu={(event) => event.preventDefault()}
-                  disabled={defaultLocationSaving}
-                  draggable={false}
-                  className={`${location === name ? "primary-button" : "secondary-button"} min-h-10 select-none px-3 py-1.5 text-sm touch-manipulation disabled:cursor-not-allowed disabled:opacity-60`}
-                  style={{ WebkitUserSelect: "none", userSelect: "none" }}
-                  title="길게 누르면 기본값으로 저장"
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          ) : (
+          {action === "이동" ? (
             <div className="mt-2 grid grid-cols-2 gap-1.5">
               <button type="button" onClick={() => setMoveDirection("warehouse-to-store")} className={`${moveDirection === "warehouse-to-store" ? "primary-button" : "secondary-button"} min-h-10 px-3 py-1.5 text-sm`}>
                 창고 → 매장
@@ -1072,9 +1072,9 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                 매장 → 창고
               </button>
             </div>
-          )}
+          ) : null}
 
-          <label className="mt-2 block">
+          <label className="mt-3 block">
             <span className="mb-0.5 block text-xs font-semibold">{action === "조정" ? "실제 재고 수량" : "수량"}</span>
             <div className="flex gap-1.5">
               <button type="button" onClick={decreaseQuantity} className="secondary-button inline-flex min-h-10 w-12 items-center justify-center px-2 py-1.5" aria-label="수량 감소">
@@ -1094,7 +1094,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             </div>
           </label>
 
-          <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
             {QUICK_AMOUNTS.map((amount) => (
               <button key={amount} type="button" onClick={() => addQuickAmount(amount)} className="secondary-button min-h-10 px-3 py-1.5 text-sm">
                 +{amount}
@@ -1107,11 +1107,11 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           {error ? <div className="mt-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
           {success ? <div className="mt-3"><StatusMessage type="success">{success}</StatusMessage></div> : null}
 
-          <button className="primary-button mt-2 min-h-11 w-full py-2" type="submit" disabled={saving || quantityValue < 0 || Boolean(quantityStepError) || Boolean(negativeError)}>
+          <button className="primary-button order-12 mt-4 min-h-11 w-full py-2 sm:order-none sm:mt-3" type="submit" disabled={saving || quantityValue < 0 || Boolean(quantityStepError) || Boolean(negativeError)}>
             {saving ? "저장 중..." : "저장"}
           </button>
 
-          <div className="mt-4 rounded-md border border-slate-200 p-3 dark:border-slate-800">
+          <div className="order-10 mt-5 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:order-none">
             <label className="flex items-center justify-between gap-3 text-sm font-bold">
               <span>상태</span>
               <input
@@ -1121,32 +1121,42 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                 onChange={(event) => void updateStockStatus(event.target.checked)}
                 className="h-6 w-6 accent-brand-600 disabled:opacity-45"
                 aria-label="상태 기능 활성화"
+                aria-controls="inventory-status-options"
+                aria-expanded={item.status_enabled}
               />
             </label>
 
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {STOCK_STATUSES.map((status) => {
-                const selected = item.status_enabled && item.stock_status === status;
+            <div
+              id="inventory-status-options"
+              className={`status-options ${item.status_enabled ? "status-options-open" : ""}`}
+              aria-hidden={!item.status_enabled}
+            >
+              <div className="status-options-inner">
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {STOCK_STATUSES.map((status) => {
+                    const selected = item.status_enabled && item.stock_status === status;
 
-                return (
-                  <button
-                    key={status}
-                    type="button"
-                    disabled={!item.status_enabled || statusSaving}
-                    onClick={() => void updateStockStatus(true, status)}
-                    className={`touch-button rounded-md px-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-45 ${
-                      selected ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
-                    }`}
-                  >
-                    {status}
-                  </button>
-                );
-              })}
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        disabled={!item.status_enabled || statusSaving}
+                        onClick={() => void updateStockStatus(true, status)}
+                        className={`touch-button rounded-md px-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-45 ${
+                          selected ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
           {action === "이동" ? (
-            <div className="mt-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <div className="order-11 mt-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 sm:order-none">
               <ArrowLeftRight size={18} />
               이동은 한쪽 재고를 줄이고 반대쪽 재고를 늘립니다.
             </div>
@@ -1156,7 +1166,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       </div>
       )}
 
-      <form onSubmit={handleMemoSubmit} className="panel mt-4 p-3">
+      <form onSubmit={handleMemoSubmit} className="panel mt-4 p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <label htmlFor="inventory-memo" className="text-sm font-bold">
             메모

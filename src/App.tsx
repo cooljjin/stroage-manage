@@ -746,10 +746,11 @@ export default function App() {
   }
 
   if (getProfileRole(profile) === "master") {
-    return <MasterAccountBlockedPage onLogout={() => void handleLogout()} />;
+    return <MasterAccountBlockedPage onLogout={() => void handleLogout()} onOpenSupport={() => navigate({ name: "support" }, { resetHistory: true })} />;
   }
 
-  const permittedRoute = canAccess(route.name, profile, staffPermissions) ? route : { name: "home" as const };
+  const hasRouteAccess = canAccess(route.name, profile, staffPermissions);
+  const permittedRoute = hasRouteAccess ? route : { name: "home" as const };
   const profileRole = getProfileRole(profile);
   const routeMotionProps = shouldReduceMotion ? reducedPageTransitionMotion : pageTransitionMotion;
 
@@ -766,6 +767,11 @@ export default function App() {
       </header>
 
       <main className="mx-auto min-w-0 max-w-6xl px-4 py-4">
+        {!hasRouteAccess ? (
+          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100" role="status">
+            현재 계정 권한으로 사용할 수 없는 메뉴입니다. 매장 관리자에게 필요한 권한을 요청해 주세요.
+          </div>
+        ) : null}
         {canGoBack && permittedRoute.name !== "operation" ? (
           <button
             type="button"

@@ -11,6 +11,18 @@ import type { InventoryOverviewSetting, ProfileRole, StoreClosureDate, WeeklySto
 const APP_VERSION = "1.0.1";
 type LinkProvider = "google" | "kakao";
 
+const ROLE_LABEL: Record<ProfileRole, string> = {
+  master: "운영자",
+  store_admin: "관리자",
+  staff: "직원"
+};
+
+const ROLE_DESCRIPTION: Record<ProfileRole, string> = {
+  master: "운영 전용 계정입니다. 고객용 매장 기능은 제공되지 않습니다.",
+  store_admin: "매장 운영과 직원·권한 관리를 포함한 고객용 기능을 사용할 수 있습니다.",
+  staff: "관리자가 부여한 매장 운영 기능을 사용할 수 있습니다."
+};
+
 const LINK_PROVIDERS: Array<{
   provider: LinkProvider;
   label: string;
@@ -90,6 +102,7 @@ export function SettingsPage({ currentRole, currentStoreId, darkMode, onToggleDa
   const [accountLoading, setAccountLoading] = useState(true);
   const [accountError, setAccountError] = useState("");
   const [currentUserEmail, setCurrentUserEmail] = useState("");
+  const [currentStoreName, setCurrentStoreName] = useState("");
   const [identities, setIdentities] = useState<UserIdentity[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -159,9 +172,10 @@ export function SettingsPage({ currentRole, currentStoreId, darkMode, onToggleDa
     setAccountLoading(true);
     setAccountError("");
 
-    const [userResult, identitiesResult] = await Promise.all([
+    const [userResult, identitiesResult, storeResult] = await Promise.all([
       Services.AuthService.getUser(),
-      Services.AuthService.getUserIdentities()
+      Services.AuthService.getUserIdentities(),
+      Services.DatabaseService.select("stores", "name").eq("id", currentStoreId).maybeSingle()
     ]);
 
     const loadError = userResult.error ?? identitiesResult.error;
@@ -169,11 +183,12 @@ export function SettingsPage({ currentRole, currentStoreId, darkMode, onToggleDa
       setAccountError(authErrorMessage(loadError.message));
     } else {
       setCurrentUserEmail(userResult.data.user?.email ?? "");
+      setCurrentStoreName(storeResult.error ? "" : ((storeResult.data as { name: string } | null)?.name ?? ""));
       setIdentities(identitiesResult.data?.identities ?? []);
     }
 
     setAccountLoading(false);
-  }, []);
+  }, [currentStoreId]);
 
   useEffect(() => {
     void loadAccountIdentities();
@@ -342,6 +357,33 @@ export function SettingsPage({ currentRole, currentStoreId, darkMode, onToggleDa
 
       {!loading ? (
         <div className="space-y-4">
+          <div className="panel overflow-hidden">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100">
+                <UserRound size={21} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-extrabold">현재 계정</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">현재 연결된 매장과 권한을 확인합니다.</p>
+              </div>
+            </div>
+            <div className="grid gap-3 p-4 text-sm sm:grid-cols-3">
+              <div className="min-w-0 rounded-md bg-slate-50 px-3 py-3 dark:bg-slate-950">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">로그인 이메일</p>
+                <p className="mt-1 truncate font-extrabold">{currentUserEmail || "확인 중..."}</p>
+              </div>
+              <div className="min-w-0 rounded-md bg-slate-50 px-3 py-3 dark:bg-slate-950">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">현재 매장</p>
+                <p className="mt-1 truncate font-extrabold">{currentStoreName || "확인 중..."}</p>
+              </div>
+              <div className="min-w-0 rounded-md bg-slate-50 px-3 py-3 dark:bg-slate-950">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">권한</p>
+                <p className="mt-1 font-extrabold">{ROLE_LABEL[currentRole]}</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">{ROLE_DESCRIPTION[currentRole]}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="panel overflow-hidden">
             <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100">

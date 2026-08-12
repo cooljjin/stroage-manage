@@ -134,6 +134,25 @@
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
   }
 
+  .status-options {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows 240ms ease,
+      opacity 180ms ease;
+  }
+
+  .status-options-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  .status-options-inner {
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .dark .panel {
     border-color: rgb(30 41 59);
     background: rgb(2 6 23);
@@ -177,6 +196,10 @@
     .skeleton-block {
       animation: none;
       background-size: 100% 100%;
+    }
+
+    .status-options {
+      transition: none;
     }
   }
 }

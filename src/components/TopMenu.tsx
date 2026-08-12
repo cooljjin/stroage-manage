@@ -3,6 +3,12 @@ import { StocklyMenuButton } from "./StocklyMenuButton";
 import { hasStaffPermission } from "../lib/staffPermissions";
 import type { ProfileRole, RouteName, StaffPermissionKey } from "../types/domain";
 
+const ROLE_LABEL: Record<ProfileRole, string> = {
+  master: "운영자",
+  store_admin: "관리자",
+  staff: "직원"
+};
+
 type Props = {
   open: boolean;
   role: ProfileRole;
@@ -21,8 +27,14 @@ export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate
   }
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-1">
       <StocklyMenuButton open={open} onClick={() => onOpenChange(!open)} />
+      <span
+        className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-extrabold text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+        title={`현재 권한: ${ROLE_LABEL[role]}`}
+      >
+        {ROLE_LABEL[role]}
+      </span>
 
       {open ? (
         <div className="absolute left-0 top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950">
