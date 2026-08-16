@@ -6,7 +6,7 @@ import { StatusMessage } from "./StatusMessage";
 
 type Member = Pick<StaffProfile, "id" | "display_name" | "email" | "role">;
 type Eligibility = {
-  kind: "personal" | "shared";
+  kind: "personal" | "shared" | "staff";
   members: Member[];
   purgeAfter: string | null;
 };
@@ -40,7 +40,9 @@ export function AccountDeletionSection({ onLogout }: Props) {
     if (!eligibility) return;
     const warning = eligibility.kind === "personal"
       ? "탈퇴를 요청하면 매장과 계정이 30일 동안 비활성화됩니다. 이 기간 안에 로그인하여 복구할 수 있습니다. 계속할까요?"
-      : "선택한 구성원을 관리자로 이관하고 내 계정을 완전히 삭제할까요? 이 작업은 되돌릴 수 없습니다.";
+      : eligibility.kind === "staff"
+        ? "내 계정을 완전히 삭제할까요? 매장의 다른 직원 권한에는 영향을 주지 않으며, 이 작업은 되돌릴 수 없습니다."
+        : "선택한 구성원을 관리자로 이관하고 내 계정을 완전히 삭제할까요? 이 작업은 되돌릴 수 없습니다.";
     if (!window.confirm(warning)) return;
 
     setLoading(true);
@@ -65,7 +67,7 @@ export function AccountDeletionSection({ onLogout }: Props) {
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-200"><AlertTriangle size={21} /></span>
         <div className="min-w-0 flex-1">
           <h2 className="font-extrabold">계정 탈퇴</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">개인 매장은 30일 내 복구할 수 있으며, 공동 매장은 관리자 이관 후 탈퇴합니다.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">직원은 본인 계정만 삭제하며, 매장 관리자는 필요한 경우 권한을 이관합니다.</p>
         </div>
       </div>
       <div className="space-y-3 p-4">
@@ -81,6 +83,14 @@ export function AccountDeletionSection({ onLogout }: Props) {
             <button type="button" onClick={() => void requestDeletion()} disabled={loading} className="touch-button inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
               <Trash2 size={17} />
               {loading ? "처리 중..." : "30일 복구 기간으로 탈퇴 요청"}
+            </button>
+          </>
+        ) : eligibility.kind === "staff" ? (
+          <>
+            <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">일반 직원 탈퇴는 내 계정만 삭제합니다. 다른 직원을 관리자로 바꾸거나 매장 데이터를 삭제하지 않습니다.</p>
+            <button type="button" onClick={() => void requestDeletion()} disabled={loading} className="touch-button inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
+              <Trash2 size={17} />
+              {loading ? "처리 중..." : "내 계정 탈퇴"}
             </button>
           </>
         ) : (

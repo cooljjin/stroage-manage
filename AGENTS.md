@@ -29,6 +29,12 @@
 - 단체 주문 계산
 - 직원/매장/master 관리
 
+앱 구성:
+
+- 고객용 앱은 `src/`에 있습니다.
+- `master` 계정은 고객용 앱에서 차단되며 전체 매장/사용자 관리는 `admin-console/`의 별도 운영 콘솔에서 수행합니다.
+- 운영 콘솔 명령은 `npm run dev:admin`, `npm run build:admin`입니다.
+
 ## 기술 스택
 
 - React 18
@@ -519,7 +525,7 @@ rg "import \\{ supabase \\}|supabase\\." src
 초대 링크/초대코드 관련 작업 후:
 
 ```bash
-rg "accept_store_invite|get_store_invite_public|inviteToken|InviteAcceptPage" src
+rg "create_store_invite|accept_store_invite_code|create_personal_store|inviteCode" src admin-console supabase/migrations
 ```
 
 스캔/입고 관련 수동 확인:

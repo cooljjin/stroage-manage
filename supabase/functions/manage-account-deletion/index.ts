@@ -67,6 +67,10 @@ Deno.serve(async (req) => {
 })
 
 async function getEligibility(adminClient: ReturnType<typeof createClient>, profile: Profile, store: Store) {
+  if (profile.role === "master") {
+    return jsonResponse({ error: "운영자 계정은 이 화면에서 탈퇴할 수 없습니다." }, 403)
+  }
+
   const { data: members, error } = await adminClient
     .from("profiles")
     .select("id, display_name, email, role")
@@ -75,15 +79,33 @@ async function getEligibility(adminClient: ReturnType<typeof createClient>, prof
     .order("created_at", { ascending: true })
 
   if (error) return jsonResponse({ error: error.message }, 400)
+  if (profile.role === "staff") {
+    return jsonResponse({ kind: "staff", members: [], purgeAfter: null })
+  }
   const isPersonalStore = store.created_by === profile.id && (members ?? []).length === 0
   return jsonResponse({
     kind: isPersonalStore ? "personal" : "shared",
-    members: isPersonalStore ? [] : (members ?? []),
+    members: isPersonalStore ? [] : (members ?? []).filter((member) => member.role === "staff"),
     purgeAfter: store.purge_after
   })
 }
 
 async function requestDeletion(adminClient: ReturnType<typeof createClient>, profile: Profile, store: Store, transferToUserId?: string) {
+  if (profile.role === "master") {
+    return jsonResponse({ error: "운영자 계정은 이 화면에서 탈퇴할 수 없습니다." }, 403)
+  }
+
+  if (profile.role === "staff") {
+    if (transferToUserId) return jsonResponse({ error: "일반 직원은 관리자 권한을 이관할 수 없습니다." }, 403)
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(profile.id)
+    if (deleteError) return jsonResponse({ error: deleteError.message }, 400)
+    return jsonResponse({ kind: "staff" })
+  }
+
+  if (profile.role !== "store_admin") {
+    return jsonResponse({ error: "관리자 탈퇴 권한을 확인할 수 없습니다." }, 403)
+  }
+
   const eligibility = await getEligibilityData(adminClient, profile, store)
   if (eligibility.error) return jsonResponse({ error: eligibility.error }, 400)
 
@@ -107,6 +129,16 @@ async function requestDeletion(adminClient: ReturnType<typeof createClient>, pro
   if (!transferToUserId) return jsonResponse({ error: "탈퇴 전에 이관할 관리자를 선택해 주세요." }, 400)
   const target = eligibility.members.find((member) => member.id === transferToUserId)
   if (!target) return jsonResponse({ error: "같은 매장의 구성원만 관리자로 이관할 수 있습니다." }, 400)
+  if (target.role !== "staff") return jsonResponse({ error: "일반 직원에게만 관리자 권한을 이관할 수 있습니다." }, 400)
+
+  const { data: verifiedTarget, error: targetError } = await adminClient
+    .from("profiles")
+    .select("id, store_id, role")
+    .eq("id", target.id)
+    .eq("store_id", profile.store_id)
+    .eq("role", "staff")
+    .single()
+  if (targetError || !verifiedTarget) return jsonResponse({ error: "이관 대상의 매장과 권한을 다시 확인해 주세요." }, 400)
 
   const { error: transferError } = await adminClient
     .from("profiles")
@@ -115,7 +147,10 @@ async function requestDeletion(adminClient: ReturnType<typeof createClient>, pro
   if (transferError) return jsonResponse({ error: transferError.message }, 400)
 
   const { error: deleteError } = await adminClient.auth.admin.deleteUser(profile.id)
-  if (deleteError) return jsonResponse({ error: deleteError.message }, 400)
+  if (deleteError) {
+    await adminClient.from("profiles").update({ role: "staff", updated_at: new Date().toISOString() }).eq("id", target.id).eq("role", "store_admin")
+    return jsonResponse({ error: deleteError.message }, 400)
+  }
   return jsonResponse({ kind: "shared" })
 }
 
@@ -152,7 +187,7 @@ async function getEligibilityData(adminClient: ReturnType<typeof createClient>, 
   return {
     error: "",
     kind: store.created_by === profile.id && (members ?? []).length === 0 ? "personal" as const : "shared" as const,
-    members: members ?? []
+    members: (members ?? []).filter((member) => member.role === "staff")
   }
 }
 

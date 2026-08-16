@@ -1,15 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { RotateCcw, Search } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
-import { formatLogContent } from "../lib/inventory";
+import { formatInventoryActionLabel, formatInventoryQuantity, formatLogContent } from "../lib/inventory";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
 import type { AppRoute, InventoryLog, InventoryLogWithStaff, StaffProfile } from "../types/domain";
 
 type LogPeriod = "day" | "week" | "month";
 type LogKind = "all" | "basic" | "prep";
+
+function getMobileSessionModes(logs: InventoryLogWithStaff[]): string[] {
+  return Array.from(new Set(logs.map((log) => log.action === "이동" ? "이동" : log.action === "조정" ? "실사" : "자동")));
+}
+
+function formatMobileSessionAction(logs: InventoryLogWithStaff[]): string {
+  return getMobileSessionModes(logs).join("/") || "재고 작업";
+}
+
+function formatMobileSessionContent(logs: InventoryLogWithStaff[]): string {
+  const first = [...logs].sort((left, right) => (left.mobile_session_sequence ?? 0) - (right.mobile_session_sequence ?? 0))[0];
+  const last = [...logs].sort((left, right) => (right.mobile_session_sequence ?? 0) - (left.mobile_session_sequence ?? 0))[0];
+  const warehouseBefore = first?.warehouse_qty_before ?? 0;
+  const storeBefore = first?.store_qty_before ?? 0;
+  const warehouseAfter = last?.warehouse_qty_after ?? warehouseBefore;
+  const storeAfter = last?.store_qty_after ?? storeBefore;
+  return `${formatMobileSessionAction(logs)} · 창고 ${formatInventoryQuantity(warehouseBefore)} → ${formatInventoryQuantity(warehouseAfter)} · 매장 ${formatInventoryQuantity(storeBefore)} → ${formatInventoryQuantity(storeAfter)}`;
+}
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -59,19 +77,64 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
   const [logKind, setLogKind] = useState<LogKind>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [restoringSessionId, setRestoringSessionId] = useState<string | null>(null);
+  const [restoreMessage, setRestoreMessage] = useState("");
 
   const range = useMemo(() => getLogRange(period, baseDate), [baseDate, period]);
   const filteredLogs = useMemo(() => {
     const keyword = productSearch.trim().toLocaleLowerCase("ko");
 
-    return logs.filter((log) => {
+    const matchingLogs = logs.filter((log) => {
       const productName = log.products?.name ?? "삭제된 상품";
       const barcode = log.products?.barcode ?? "";
       const keywordMatch = !keyword || productName.toLocaleLowerCase("ko").includes(keyword) || barcode.toLocaleLowerCase("ko").includes(keyword);
       const kindMatch = logKind === "all" || (logKind === "prep" ? log.action.startsWith("프랩") : !log.action.startsWith("프랩"));
       return keywordMatch && kindMatch;
     });
+    const seenSessions = new Set<string>();
+    return matchingLogs.filter((log) => {
+      if (!log.mobile_session_id) return true;
+      if (seenSessions.has(log.mobile_session_id)) return false;
+      seenSessions.add(log.mobile_session_id);
+      return true;
+    });
   }, [logKind, logs, productSearch]);
+
+  const mobileSessionLogs = useMemo(() => {
+    const grouped = new Map<string, InventoryLogWithStaff[]>();
+    logs.forEach((log) => {
+      if (!log.mobile_session_id) return;
+      const current = grouped.get(log.mobile_session_id) ?? [];
+      current.push(log);
+      grouped.set(log.mobile_session_id, current);
+    });
+    return grouped;
+  }, [logs]);
+
+  async function restoreMobileSession(log: InventoryLogWithStaff) {
+    if (!log.mobile_session_id) return;
+    const sessionLogs = mobileSessionLogs.get(log.mobile_session_id) ?? [log];
+    const last = [...sessionLogs].sort((left, right) => (right.mobile_session_sequence ?? 0) - (left.mobile_session_sequence ?? 0))[0] ?? log;
+    const restoredWarehouseQty = last.warehouse_qty_after ?? last.warehouse_qty_before ?? 0;
+    const restoredStoreQty = last.store_qty_after ?? last.store_qty_before ?? 0;
+    if (!window.confirm(`재고 작업을 ${formatDateTime(last.created_at)} 시점으로 복원하시겠습니까?\n창고 ${formatInventoryQuantity(restoredWarehouseQty)} / 매장 ${formatInventoryQuantity(restoredStoreQty)}\n선택 시점 이후 작업은 히스토리에서 취소 처리됩니다.`)) return;
+
+    setRestoringSessionId(log.mobile_session_id);
+    setRestoreMessage("");
+    const { error: restoreError } = await Services.DatabaseService.rpc("restore_inventory_to_mobile_session", {
+      target_session_id: log.mobile_session_id,
+      restored_warehouse_qty: restoredWarehouseQty,
+      restored_store_qty: restoredStoreQty
+    });
+
+    if (restoreError) {
+      setError(restoreError.message);
+    } else {
+      setRestoreMessage("재고 작업을 복원했습니다.");
+      await loadLogs();
+    }
+    setRestoringSessionId(null);
+  }
 
   const loadProfiles = useCallback(async () => {
     const profileResult = await Services.DatabaseService.select("profiles", "*").eq("store_id", currentStoreId).order("display_name", { ascending: true });
@@ -144,7 +207,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-[0.9fr_1.4fr_1fr_0.9fr]">
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">기준일</span>
-            <input className="field min-w-0 max-w-full" type="date" value={baseDate} onChange={(event) => setBaseDate(event.target.value)} />
+            <input className="field block min-w-0 max-w-full appearance-none" type="date" value={baseDate} onChange={(event) => setBaseDate(event.target.value)} />
           </label>
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500 dark:text-slate-400">상품</span>
@@ -182,6 +245,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
 
       {loading ? <StatusMessage>작업 로그를 불러오는 중...</StatusMessage> : null}
       {error ? <StatusMessage type="error">{error}</StatusMessage> : null}
+      {restoreMessage ? <StatusMessage type="success">{restoreMessage}</StatusMessage> : null}
 
       {!loading && !error ? (
         <div className="panel overflow-hidden">
@@ -193,6 +257,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
                 <th className="px-3 py-3">상품</th>
                 <th className="w-16 px-3 py-3">작업</th>
                 <th className="hidden px-3 py-3 sm:table-cell">내용</th>
+                <th className="w-16 px-3 py-3">복원</th>
               </tr>
             </thead>
             <tbody>
@@ -214,10 +279,26 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
                     ) : (
                       <span className="block truncate font-semibold">삭제된 상품</span>
                     )}
-                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400 sm:hidden">{formatLogContent(log)}</span>
+                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400 sm:hidden">
+                      {log.mobile_session_id ? formatMobileSessionContent(mobileSessionLogs.get(log.mobile_session_id) ?? [log]) : formatLogContent(log)}
+                    </span>
                   </td>
-                  <td className="px-3 py-3 font-bold">{log.action}</td>
-                  <td className="hidden px-3 py-3 sm:table-cell">{formatLogContent(log)}</td>
+                  <td className="px-3 py-3 font-bold">{log.mobile_session_id ? formatMobileSessionAction(mobileSessionLogs.get(log.mobile_session_id) ?? [log]) : formatInventoryActionLabel(log.action)}</td>
+                  <td className="hidden px-3 py-3 sm:table-cell">{log.mobile_session_id ? formatMobileSessionContent(mobileSessionLogs.get(log.mobile_session_id) ?? [log]) : formatLogContent(log)}</td>
+                  <td className="px-3 py-3">
+                    {log.mobile_session_id ? (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => void restoreMobileSession(log)}
+                        disabled={restoringSessionId === log.mobile_session_id}
+                        aria-label="재고 작업 복원"
+                        title="재고 작업 복원"
+                      >
+                        <RotateCcw size={16} />
+                      </button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

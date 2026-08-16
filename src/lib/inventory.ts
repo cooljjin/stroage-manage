@@ -46,6 +46,10 @@ export function normalizeInventoryItem(row: ProductWithInventory): InventoryItem
   };
 }
 
+export function formatInventoryActionLabel(action: string): string {
+  return action === "조정" ? "실사" : action;
+}
+
 export function formatLogContent(log: {
   action: string;
   source_location: string | null;

@@ -11,60 +11,20 @@ export function formatReceiptCheckError(message: string) {
 
 async function recordReceiptWithoutStockChange(
   productId: string,
-  storeId: string,
+  _storeId: string,
   quantity: number | null,
   note: string
 ): Promise<{ errorMessage: string; logId: string | null }> {
-  const { data: userData, error: userError } = await Services.AuthService.getUser();
-  if (userError || !userData.user) {
-    return { errorMessage: userError?.message ?? "로그인이 필요합니다.", logId: null };
-  }
+  const { data: logId, error } = await Services.DatabaseService.rpc("record_receipt_check", {
+    target_product_id: productId,
+    receipt_quantity: quantity,
+    receipt_note: note
+  });
 
-  const { data: inventory, error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: productId, store_id: storeId }, { onConflict: "product_id" })
-    .select()
-    .single();
-
-  if (inventoryError) {
-    return { errorMessage: inventoryError.message, logId: null };
-  }
-
-  const warehouseQty = Number(inventory?.warehouse_qty ?? 0);
-  const storeQty = Number(inventory?.store_qty ?? 0);
-  const { data: savedLog, error: logError } = await Services.DatabaseService.insert("inventory_logs", {
-      store_id: storeId,
-      product_id: productId,
-      user_id: userData.user.id,
-      action: "입고",
-      source_location: null,
-      destination_location: null,
-      previous_quantity: null,
-      new_quantity: null,
-      quantity,
-      note,
-      warehouse_qty_before: warehouseQty,
-      store_qty_before: storeQty,
-      warehouse_qty_after: warehouseQty,
-      store_qty_after: storeQty
-    })
-    .select("id")
-    .single();
-
-  if (logError) {
-    return { errorMessage: formatReceiptCheckError(logError.message), logId: null };
-  }
-
-  const { error: freshOrderError } = await Services.DatabaseService.update("products", {
-      fresh_order_selected: false,
-      fresh_order_selected_at: null,
-      urgent_order_requested: false,
-      urgent_order_quantity: null,
-      order_completed: false,
-      confirmed_order_pending: false
-    })
-    .eq("store_id", storeId)
-    .eq("id", productId);
-
-  return { errorMessage: freshOrderError ? formatReceiptCheckError(freshOrderError.message) : "", logId: savedLog?.id ?? null };
+  return {
+    errorMessage: error ? formatReceiptCheckError(error.message) : "",
+    logId: error ? null : logId ?? null
+  };
 }
 
 export async function recordReceiptCheckOnly(productId: string, storeId: string, quantity?: number | null): Promise<{ errorMessage: string; logId: string | null }> {

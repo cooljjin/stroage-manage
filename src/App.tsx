@@ -5,7 +5,7 @@ import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { ArrowLeft, KeyRound, Plus } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
-import { TopMenu } from "./components/TopMenu";
+import { RoleBadge, TopMenu } from "./components/TopMenu";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PasswordResetPage } from "./pages/PasswordResetPage";
@@ -15,6 +15,7 @@ import { AccountDeletionRecoveryPage } from "./pages/AccountDeletionRecoveryPage
 import { MasterAccountBlockedPage } from "./pages/MasterAccountBlockedPage";
 import { HomePage } from "./pages/HomePage";
 import { TimelineCalendarPage } from "./pages/TimelineCalendarPage";
+import { recoverMobileInventorySessions } from "./lib/mobileInventorySession";
 import { ScanPage } from "./pages/ScanPage";
 import { ProductEditPage } from "./pages/ProductEditPage";
 import { InventoryOperationPage } from "./pages/InventoryOperationPage";
@@ -73,6 +74,8 @@ type NavigationOptions = {
   restore?: boolean;
   scrollY?: number;
 };
+
+type RouteLeaveHandler = () => Promise<void>;
 
 type StoredRouteEntry = {
   route: AppRoute;
@@ -238,6 +241,8 @@ export default function App() {
   const routeRef = useRef(route);
   const navigateRef = useRef<(next: AppRoute, options?: NavigationOptions) => void>(() => undefined);
   const goBackRef = useRef<() => boolean>(() => false);
+  const routeLeaveHandlerRef = useRef<RouteLeaveHandler | null>(null);
+  const routeLeaveInFlightRef = useRef<Promise<void> | null>(null);
   const shouldReduceMotion = useReducedMotion();
 
   routeRef.current = route;
@@ -330,6 +335,9 @@ export default function App() {
 
       if (existingProfile) {
         setProfile(existingProfile);
+        if (import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false") {
+          void recoverMobileInventorySessions();
+        }
         const { data: permissions } = await Services.DatabaseService.select("staff_permissions", "permission_key")
           .eq("store_id", existingProfile.store_id)
           .eq("user_id", existingProfile.id);
@@ -420,13 +428,14 @@ export default function App() {
     };
     window.history.replaceState(browserState, "", browserPathForRoute(routeRef.current));
 
-    function handlePopState(event: PopStateEvent) {
+    async function handlePopState(event: PopStateEvent) {
       if (!isBrowserNavigationState(event.state)) return;
 
       const restoredEntries = event.state.stacks[event.state.activeTab];
       const restoredEntry = restoredEntries?.[restoredEntries.length - 1];
       if (!restoredEntry) return;
 
+      await runRouteLeaveHandler();
       navigationStacksRef.current = event.state.stacks;
       activeTabRef.current = event.state.activeTab;
       pendingScrollYRef.current = restoredEntry.scrollY;
@@ -471,6 +480,29 @@ export default function App() {
 
   const canGoBack = (navigationStacksRef.current[activeTab]?.length ?? 0) > 1;
 
+  function registerBeforeLeave(handler: RouteLeaveHandler) {
+    routeLeaveHandlerRef.current = handler;
+    return () => {
+      if (routeLeaveHandlerRef.current === handler) routeLeaveHandlerRef.current = null;
+    };
+  }
+
+  async function runRouteLeaveHandler() {
+    if (!routeLeaveHandlerRef.current) return;
+    if (routeLeaveInFlightRef.current) {
+      await routeLeaveInFlightRef.current;
+      return;
+    }
+
+    const pendingLeave = routeLeaveHandlerRef.current();
+    routeLeaveInFlightRef.current = pendingLeave;
+    try {
+      await pendingLeave;
+    } finally {
+      routeLeaveInFlightRef.current = null;
+    }
+  }
+
   function writeBrowserNavigationState(nextRoute: AppRoute, browserState: BrowserNavigationState, replace = false) {
     const method = replace ? "replaceState" : "pushState";
     window.history[method](browserState, "", browserPathForRoute(nextRoute));
@@ -503,7 +535,7 @@ export default function App() {
     navigate(nextRoute, isActiveTab ? { resetHistory: true } : { restore: true });
   }
 
-  function navigate(next: AppRoute, options: NavigationOptions = {}) {
+  function commitRequestedNavigation(next: AppRoute, options: NavigationOptions = {}) {
     setMenuOpen(false);
     if (route.name === "scan") {
       savePostScanRoute(next);
@@ -557,12 +589,20 @@ export default function App() {
     commitNavigation(next, targetTab, nextStacks, options.scrollY ?? 0, options.replace ?? false);
   }
 
+  function navigate(next: AppRoute, options: NavigationOptions = {}) {
+    if (routeRef.current.name === "operation" && routeKey(routeRef.current) !== routeKey(next)) {
+      void runRouteLeaveHandler().then(() => commitRequestedNavigation(next, options));
+      return;
+    }
+    commitRequestedNavigation(next, options);
+  }
+
   function resetNavigation(next: AppRoute) {
     const nextTab = NAV_ROUTES.includes(next.name) ? next.name as NavigationTab : "home";
     commitNavigation(next, nextTab, { [nextTab]: [{ route: next, scrollY: 0 }] }, 0, true);
   }
 
-  function goBack() {
+  function commitGoBack() {
     const currentTab = activeTabRef.current;
     const currentEntries = navigationStacksRef.current[currentTab];
     if (!currentEntries || currentEntries.length <= 1) return false;
@@ -580,10 +620,21 @@ export default function App() {
     return true;
   }
 
+  function goBack() {
+    if (routeRef.current.name === "operation") {
+      void runRouteLeaveHandler().then(() => {
+        commitGoBack();
+      });
+      return true;
+    }
+    return commitGoBack();
+  }
+
   navigateRef.current = navigate;
   goBackRef.current = goBack;
 
   async function handleLogout() {
+    await runRouteLeaveHandler();
     await Services.AuthService.signOut();
     setProfile(null);
     setStaffPermissions([]);
@@ -761,12 +812,13 @@ export default function App() {
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 flex-1 items-center gap-0">
             <TopMenu open={menuOpen} role={profileRole} staffPermissions={staffPermissions} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
-            <img src="/stockly-logo.png" alt="Stockly" className="-ml-1 h-10 w-auto min-w-0 object-contain sm:h-12" />
+            <img src="/stockly-logo.png" alt="Stockly" className="ml-2 h-10 w-auto min-w-0 shrink-0 object-contain sm:h-12" />
+            <RoleBadge role={profileRole} />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto min-w-0 max-w-6xl px-4 py-4">
+      <main className={`mx-auto min-w-0 max-w-6xl px-4 py-4 ${permittedRoute.name === "operation" ? "inventory-operation-main" : ""}`}>
         {!hasRouteAccess ? (
           <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100" role="status">
             현재 계정 권한으로 사용할 수 없는 메뉴입니다. 매장 관리자에게 필요한 권한을 요청해 주세요.
@@ -807,7 +859,15 @@ export default function App() {
               />
             )}
             {permittedRoute.name === "operation" && (
-              <InventoryOperationPage productId={permittedRoute.productId ?? ""} navigate={navigate} canGoBack={canGoBack} onBack={goBack} currentStoreId={profile.store_id} />
+              <InventoryOperationPage
+                productId={permittedRoute.productId ?? ""}
+                navigate={navigate}
+                canGoBack={canGoBack}
+                onBack={goBack}
+                currentStoreId={profile.store_id}
+                initialInventoryMode={permittedRoute.initialInventoryMode}
+                registerBeforeLeave={registerBeforeLeave}
+              />
             )}
             {permittedRoute.name === "inventory" && (
               <InventoryListPage
@@ -843,7 +903,7 @@ export default function App() {
             {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
             {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
             {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "unit-management" && <ProductUnitManagementPage />}
+            {permittedRoute.name === "unit-management" && <ProductUnitManagementPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
             {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
             {permittedRoute.name === "staff-management" && <StaffManagementPage />}

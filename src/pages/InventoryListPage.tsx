@@ -7,11 +7,10 @@ import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { getSeoulDateValue } from "../lib/businessCalendar";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
+import { DEFAULT_ABUNDANT_MULTIPLIER, getAutomaticStockState } from "../lib/inventoryStock";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, CategoryFilter, InventoryItem, InventoryOverviewDisplay, InventoryOverviewMode, ProductSupplier } from "../types/domain";
-
-const DEFAULT_ABUNDANT_MULTIPLIER = 1.5;
 
 type OverviewStockState = "부족" | "주의" | "넉넉" | "입고 확인";
 type InventoryActivityLog = {
@@ -53,9 +52,7 @@ function overviewStockState(item: InventoryItem, abundantMultiplier: number): Ov
     if (item.stock_status === "절반 이하") return "주의";
     return "넉넉";
   }
-  if (item.total_stock <= item.minimum_stock) return "부족";
-  if (item.total_stock <= item.minimum_stock * abundantMultiplier) return "주의";
-  return "넉넉";
+  return getAutomaticStockState(item.total_stock, item.minimum_stock, abundantMultiplier);
 }
 
 function overviewStateClass(state: OverviewStockState) {

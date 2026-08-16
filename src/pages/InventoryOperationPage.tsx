@@ -1,14 +1,23 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { ArrowLeft, ArrowLeftRight, Check, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
+import { MobileInventoryControls } from "../components/MobileInventoryControls";
+import { QuantityKeypadSheet } from "../components/QuantityKeypadSheet";
+import { InventoryStockRangeBar } from "../components/InventoryStockRangeBar";
 import { ACTIONS, QUICK_AMOUNTS } from "../lib/constants";
 import { getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
-import { formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryActionLabel, formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
+import { DEFAULT_ABUNDANT_MULTIPLIER } from "../lib/inventoryStock";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
+import { applyMobileInventoryChange, finalizeMobileInventorySession, recoverMobileInventorySessions, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
+import { buildAuditTarget, buildAutoTarget, buildMobileHistoryTarget, buildMoveTarget, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
+import { useMobileViewport } from "../hooks/useMobileViewport";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
-import type { AppRoute, InventoryItem, InventoryLog, Location, StockStatus } from "../types/domain";
+import type { AppRoute, InventoryItem, InventoryLog, Location, MobileInventoryEntryMode, MobileInventoryMode, StockStatus } from "../types/domain";
 
 type Props = {
   productId: string;
@@ -16,6 +25,14 @@ type Props = {
   canGoBack?: boolean;
   onBack?: () => void;
   currentStoreId: string;
+  initialInventoryMode?: MobileInventoryEntryMode;
+  registerBeforeLeave?: (handler: () => Promise<void>) => () => void;
+};
+
+type ConfirmedInventorySnapshot = {
+  warehouseQty: number;
+  storeQty: number;
+  updatedAt: string;
 };
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
@@ -26,6 +43,174 @@ type InventoryHistoryPoint = {
   warehouseQty: number;
   storeQty: number;
 };
+
+type InventoryQuantityState = {
+  warehouseQty: number;
+  storeQty: number;
+};
+
+function getStateBeforeInventoryLog(log: InventoryLog, warehouseQty: number, storeQty: number): InventoryQuantityState {
+  if (log.warehouse_qty_before !== null && log.store_qty_before !== null) {
+    return { warehouseQty: log.warehouse_qty_before, storeQty: log.store_qty_before };
+  }
+
+  if (log.action === "이동" && log.source_location && log.destination_location && log.quantity !== null) {
+    if (log.source_location === "창고") {
+      return { warehouseQty: warehouseQty + log.quantity, storeQty: storeQty - log.quantity };
+    }
+    return { warehouseQty: warehouseQty - log.quantity, storeQty: storeQty + log.quantity };
+  }
+
+  const targetLocation = log.destination_location ?? log.source_location;
+  if (targetLocation === "창고" && log.previous_quantity !== null) {
+    return { warehouseQty: log.previous_quantity, storeQty };
+  }
+  if (targetLocation === "매장" && log.previous_quantity !== null) {
+    return { warehouseQty, storeQty: log.previous_quantity };
+  }
+  return { warehouseQty, storeQty };
+}
+
+function buildInventoryHistoryPoints(logs: InventoryLog[], warehouseQty: number, storeQty: number): InventoryHistoryPoint[] {
+  let currentWarehouseQty = warehouseQty;
+  let currentStoreQty = storeQty;
+
+  return logs.map((log) => {
+    const point = {
+      log,
+      warehouseQty: log.warehouse_qty_after ?? currentWarehouseQty,
+      storeQty: log.store_qty_after ?? currentStoreQty
+    };
+    const before = getStateBeforeInventoryLog(log, point.warehouseQty, point.storeQty);
+    currentWarehouseQty = before.warehouseQty;
+    currentStoreQty = before.storeQty;
+    return point;
+  });
+}
+
+function buildMobileEditPointFromLog(
+  log: InventoryLog,
+  after: InventoryQuantityState,
+  before: InventoryQuantityState
+): MobileInventoryEditPoint {
+  const warehouseChanged = after.warehouseQty !== before.warehouseQty;
+  const storeChanged = after.storeQty !== before.storeQty;
+  const totalUnchanged = after.warehouseQty + after.storeQty === before.warehouseQty + before.storeQty;
+  const mode: MobileInventoryEditPoint["mode"] = log.action === "이동" || (warehouseChanged && storeChanged && totalUnchanged)
+    ? "move"
+    : log.action === "입고" || log.action === "출고"
+      ? "auto"
+      : "audit";
+  const inferredMoveDirection = getMoveDirectionForQuantities(
+    after.warehouseQty,
+    after.storeQty,
+    before.warehouseQty,
+    before.storeQty
+  );
+  const moveDirection: MobileMoveDirection | null = mode === "move"
+    ? log.source_location === "창고"
+      ? "warehouse-to-store"
+      : log.source_location === "매장"
+        ? "store-to-warehouse"
+        : inferredMoveDirection
+    : null;
+  const targetLocation: Location = mode === "move"
+    ? moveDirection === "warehouse-to-store" ? "창고" : "매장"
+    : log.destination_location ?? log.source_location ?? (warehouseChanged ? "창고" : "매장");
+
+  return {
+    warehouseQty: after.warehouseQty,
+    storeQty: after.storeQty,
+    editAt: log.created_at,
+    mode,
+    targetLocation,
+    moveDirection
+  };
+}
+
+function buildMobileEditHistoryPoints(logs: InventoryLog[], snapshot: ConfirmedInventorySnapshot): MobileInventoryEditPoint[] {
+  const latestLog = logs[0] ?? null;
+  const latestBefore = latestLog
+    ? getStateBeforeInventoryLog(latestLog, snapshot.warehouseQty, snapshot.storeQty)
+    : snapshot;
+  const reversePoints: MobileInventoryEditPoint[] = [latestLog
+    ? buildMobileEditPointFromLog(latestLog, snapshot, latestBefore)
+    : {
+        warehouseQty: snapshot.warehouseQty,
+        storeQty: snapshot.storeQty,
+        editAt: snapshot.updatedAt,
+        mode: "auto",
+        targetLocation: null,
+        moveDirection: null
+      }];
+  let currentWarehouseQty = snapshot.warehouseQty;
+  let currentStoreQty = snapshot.storeQty;
+
+  logs.forEach((log) => {
+    const after = {
+      warehouseQty: log.warehouse_qty_after ?? currentWarehouseQty,
+      storeQty: log.store_qty_after ?? currentStoreQty
+    };
+    const before = getStateBeforeInventoryLog(log, after.warehouseQty, after.storeQty);
+    reversePoints.push(buildMobileEditPointFromLog(log, after, before));
+    currentWarehouseQty = before.warehouseQty;
+    currentStoreQty = before.storeQty;
+  });
+
+  return reversePoints.reverse().reduce<MobileInventoryEditPoint[]>((points, point) => {
+    const previous = points[points.length - 1];
+    if (previous && previous.warehouseQty === point.warehouseQty && previous.storeQty === point.storeQty) {
+      points[points.length - 1] = point;
+      return points;
+    }
+    points.push(point);
+    return points;
+  }, []);
+}
+
+function collapseMobileHistoryLogs(logs: InventoryLog[]): InventoryLog[] {
+  const seenSessions = new Set<string>();
+  const collapsed: InventoryLog[] = [];
+
+  logs.forEach((log) => {
+    if (!log.mobile_session_id) {
+      collapsed.push(log);
+      return;
+    }
+    if (seenSessions.has(log.mobile_session_id)) return;
+    seenSessions.add(log.mobile_session_id);
+    const sessionLogs = logs
+      .filter((candidate) => candidate.mobile_session_id === log.mobile_session_id)
+      .sort((left, right) => (left.mobile_session_sequence ?? 0) - (right.mobile_session_sequence ?? 0));
+    const first = sessionLogs[0] ?? log;
+    const last = sessionLogs[sessionLogs.length - 1] ?? log;
+    const modes = Array.from(new Set(sessionLogs.map((candidate) => candidate.action === "이동" ? "이동" : candidate.action === "조정" ? "실사" : "자동")));
+    collapsed.push({
+      ...last,
+      action: sessionLogs.length > 1 ? "조정" : last.action,
+      previous_quantity: null,
+      new_quantity: null,
+      quantity: null,
+      note: modes.join("/"),
+      warehouse_qty_before: first.warehouse_qty_before,
+      store_qty_before: first.store_qty_before,
+      warehouse_qty_after: last.warehouse_qty_after,
+      store_qty_after: last.store_qty_after
+    });
+  });
+
+  return collapsed;
+}
+
+function formatHistoryPointAction(log: InventoryLog): string {
+  if (!log.mobile_session_id) return formatInventoryActionLabel(log.action);
+  return log.note?.split(" · ")[0] || formatInventoryActionLabel(log.action);
+}
+
+function formatHistoryPointContent(log: InventoryLog): string {
+  if (!log.mobile_session_id) return formatLogContent(log);
+  return `${log.note ?? "재고 작업"} · 창고 ${formatInventoryQuantity(log.warehouse_qty_before)} → ${formatInventoryQuantity(log.warehouse_qty_after)} · 매장 ${formatInventoryQuantity(log.store_qty_before)} → ${formatInventoryQuantity(log.store_qty_after)}`;
+}
 
 type LocationCheckInfo = {
   checkedAt: string | null;
@@ -92,7 +277,15 @@ async function completeStaleInventoryTodo(productId: string, storeId: string, us
     .eq("is_completed", false);
 }
 
-export function InventoryOperationPage({ productId, navigate, canGoBack = false, onBack, currentStoreId }: Props) {
+export function InventoryOperationPage({
+  productId,
+  navigate,
+  canGoBack = false,
+  onBack,
+  currentStoreId,
+  initialInventoryMode = "auto",
+  registerBeforeLeave
+}: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -117,6 +310,8 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [memoSuccess, setMemoSuccess] = useState("");
   const [editingMinimumStock, setEditingMinimumStock] = useState(false);
   const [minimumStockDraft, setMinimumStockDraft] = useState("");
+  const [abundantMultiplier, setAbundantMultiplier] = useState(DEFAULT_ABUNDANT_MULTIPLIER);
+  const [minimumStockSaving, setMinimumStockSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [receiptSaving, setReceiptSaving] = useState(false);
@@ -128,6 +323,32 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const defaultLocationPressTimerRef = useRef<number | null>(null);
+  const isMobileViewport = useMobileViewport();
+  const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
+  const [mobileMode, setMobileMode] = useState<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
+  const [mobileWarehouseQty, setMobileWarehouseQty] = useState(0);
+  const [mobileStoreQty, setMobileStoreQty] = useState(0);
+  const [mobileConfirmedSnapshot, setMobileConfirmedSnapshot] = useState<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, updatedAt: "" });
+  const [mobileSaveState, setMobileSaveState] = useState<"idle" | "dragging" | "pending" | "saved" | "error">("idle");
+  const [mobileSaveStatusLabel, setMobileSaveStatusLabel] = useState<"서버에 저장됨" | "수정 시점">("서버에 저장됨");
+  const [mobileSaveError, setMobileSaveError] = useState("");
+  const [mobileEditPointAt, setMobileEditPointAt] = useState("");
+  const [mobileEditHistory, setMobileEditHistory] = useState<MobileInventoryEditPoint[]>([]);
+  const [mobileEditHistoryIndex, setMobileEditHistoryIndex] = useState(-1);
+  const [mobileKeypadTarget, setMobileKeypadTarget] = useState<"warehouse" | "store" | null>(null);
+  const mobileSessionIdRef = useRef<string | null>(null);
+  const mobileSaveInFlightRef = useRef(false);
+  const mobileQueuedTargetRef = useRef<MobileInventoryTarget | null>(null);
+  const mobileDraftTargetRef = useRef<MobileInventoryTarget | null>(null);
+  const mobileSavePromiseRef = useRef<Promise<void> | null>(null);
+  const mobileFinalizeRef = useRef<() => Promise<void>>(async () => undefined);
+  const mobileConfirmedRef = useRef<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, updatedAt: "" });
+  const mobileEditPointAtRef = useRef<string | null>(null);
+  const mobileEditHistoryRef = useRef<MobileInventoryEditPoint[]>([]);
+  const mobileEditHistoryIndexRef = useRef(-1);
+  const mobileHistoryNavigationRef = useRef<number | null>(null);
+  const mobileEditHistoryLoadedRef = useRef(false);
+  const mobileEditHistoryLoadingRef = useRef(false);
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
@@ -161,6 +382,389 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     }
     setLoading(false);
   }, [currentStoreId, productId]);
+
+  const loadOverviewMultiplier = useCallback(async () => {
+    const { data } = await Services.DatabaseService.select("inventory_overview_settings", "abundant_multiplier")
+      .eq("store_id", currentStoreId)
+      .maybeSingle();
+    const nextMultiplier = Number(data?.abundant_multiplier);
+    setAbundantMultiplier(Number.isFinite(nextMultiplier) && nextMultiplier > 1 ? nextMultiplier : DEFAULT_ABUNDANT_MULTIPLIER);
+  }, [currentStoreId]);
+
+  const mobileTouchUI = mobileTouchEnabled && isMobileViewport;
+
+  function isMissingMobileSessionError(message: string | null | undefined): boolean {
+    return message?.includes("모바일 재고 작업 세션을 찾을 수 없습니다.") ?? false;
+  }
+
+  function updateMobileConfirmedSnapshot(nextSnapshot: ConfirmedInventorySnapshot) {
+    mobileConfirmedRef.current = nextSnapshot;
+    setMobileConfirmedSnapshot(nextSnapshot);
+    setMobileEditPointAt(mobileEditPointAtRef.current ?? nextSnapshot.updatedAt);
+  }
+
+  function syncMobileEditHistory(nextHistory: MobileInventoryEditPoint[], nextIndex: number) {
+    mobileEditHistoryRef.current = nextHistory;
+    mobileEditHistoryIndexRef.current = nextIndex;
+    setMobileEditHistory(nextHistory);
+    setMobileEditHistoryIndex(nextIndex);
+  }
+
+  function recordMobileEditResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget) {
+    const navigationIndex = mobileHistoryNavigationRef.current;
+    mobileHistoryNavigationRef.current = null;
+    const history = mobileEditHistoryRef.current;
+
+    if (navigationIndex !== null && history[navigationIndex]) {
+      const currentPoint = history[navigationIndex];
+      const nextHistory = [...history];
+      nextHistory[navigationIndex] = {
+        ...currentPoint,
+        warehouseQty: result.warehouse_qty,
+        storeQty: result.store_qty
+      };
+      syncMobileEditHistory(nextHistory, navigationIndex);
+      setMobileEditPointAt(currentPoint.editAt);
+      setMobileSaveStatusLabel("수정 시점");
+      return;
+    }
+
+    const currentIndex = mobileEditHistoryIndexRef.current;
+    const nextHistory = history.slice(0, Math.max(0, currentIndex + 1));
+    const nextPoint: MobileInventoryEditPoint = {
+      warehouseQty: result.warehouse_qty,
+      storeQty: result.store_qty,
+      editAt: result.inventory_updated_at,
+      mode: target.mode,
+      targetLocation: target.targetLocation,
+      moveDirection: target.moveDirection
+    };
+    nextHistory.push(nextPoint);
+    syncMobileEditHistory(nextHistory, nextHistory.length - 1);
+    setMobileEditPointAt(nextPoint.editAt);
+    setMobileSaveStatusLabel("서버에 저장됨");
+  }
+
+  const loadMobileEditHistory = useCallback(async (snapshot: ConfirmedInventorySnapshot) => {
+    if (!mobileTouchUI || mobileEditHistoryLoadedRef.current || mobileEditHistoryLoadingRef.current || mobileSessionIdRef.current) return;
+
+    mobileEditHistoryLoadingRef.current = true;
+    try {
+      const { data, error: historyError } = await Services.DatabaseService.select("inventory_logs", "*")
+        .eq("store_id", currentStoreId)
+        .eq("product_id", productId)
+        .neq("action", "메모")
+        .is("reverted_at", null)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(200);
+
+      if (historyError || mobileSaveInFlightRef.current || mobileDraftTargetRef.current || mobileSessionIdRef.current) return;
+
+      const nextHistory = buildMobileEditHistoryPoints((data ?? []) as InventoryLog[], snapshot);
+      if (nextHistory.length === 0) return;
+
+      mobileEditHistoryRef.current = nextHistory;
+      mobileEditHistoryIndexRef.current = nextHistory.length - 1;
+      setMobileEditHistory(nextHistory);
+      setMobileEditHistoryIndex(nextHistory.length - 1);
+      setMobileEditPointAt(nextHistory[nextHistory.length - 1].editAt || snapshot.updatedAt);
+      mobileEditHistoryLoadedRef.current = true;
+    } finally {
+      mobileEditHistoryLoadingRef.current = false;
+    }
+  }, [currentStoreId, mobileTouchUI, productId]);
+
+  function updateItemInventory(nextResult: MobileInventoryApplyResult) {
+    setItem((current) => {
+      if (!current?.inventory) return current;
+      return normalizeInventoryItem({
+        ...current,
+        inventory: {
+          ...current.inventory,
+          warehouse_qty: nextResult.warehouse_qty,
+          store_qty: nextResult.store_qty,
+          updated_at: nextResult.inventory_updated_at
+        }
+      });
+    });
+  }
+
+  useEffect(() => {
+    mobileEditPointAtRef.current = null;
+    mobileHistoryNavigationRef.current = null;
+    mobileEditHistoryRef.current = [];
+    mobileEditHistoryIndexRef.current = -1;
+    mobileEditHistoryLoadedRef.current = false;
+    mobileEditHistoryLoadingRef.current = false;
+    setMobileEditHistory([]);
+    setMobileEditHistoryIndex(-1);
+    setMobileSaveStatusLabel("서버에 저장됨");
+    setMobileEditPointAt("");
+    setMobileMode(initialInventoryMode === "audit" ? "audit" : "auto");
+  }, [initialInventoryMode, productId]);
+
+  useEffect(() => {
+    if (!item?.inventory) return;
+    if (mobileSessionIdRef.current) return;
+    const nextSnapshot = {
+      warehouseQty: item.warehouse_qty,
+      storeQty: item.store_qty,
+      updatedAt: item.inventory.updated_at
+    };
+    updateMobileConfirmedSnapshot(nextSnapshot);
+    if (mobileEditHistoryRef.current.length === 0) {
+      const editAt = mobileEditPointAtRef.current ?? nextSnapshot.updatedAt;
+      const initialHistory: MobileInventoryEditPoint[] = [{
+        warehouseQty: nextSnapshot.warehouseQty,
+        storeQty: nextSnapshot.storeQty,
+        editAt,
+        mode: "auto",
+        targetLocation: null,
+        moveDirection: null
+      }];
+      mobileEditHistoryRef.current = initialHistory;
+      mobileEditHistoryIndexRef.current = 0;
+      setMobileEditHistory(initialHistory);
+      setMobileEditHistoryIndex(0);
+      setMobileEditPointAt(editAt);
+    }
+    setMobileWarehouseQty(item.warehouse_qty);
+    setMobileStoreQty(item.store_qty);
+    void loadMobileEditHistory(nextSnapshot);
+  }, [item, loadMobileEditHistory]);
+
+  useEffect(() => {
+    if (!mobileTouchEnabled) return;
+    void recoverMobileInventorySessions();
+  }, [mobileTouchEnabled]);
+
+  function resetMobileDraft(preserveQueuedTarget = false) {
+    if (!preserveQueuedTarget) mobileQueuedTargetRef.current = null;
+    mobileDraftTargetRef.current = null;
+    const snapshot = mobileConfirmedRef.current;
+    setMobileWarehouseQty(snapshot.warehouseQty);
+    setMobileStoreQty(snapshot.storeQty);
+    setMobileSaveError("");
+    setMobileSaveState("idle");
+    setMobileSaveStatusLabel("서버에 저장됨");
+  }
+
+  function commitUnsettledMobileDraft() {
+    const target = mobileDraftTargetRef.current;
+    if (!target || !hasMobileInventoryChange(
+      target.warehouseQty,
+      target.storeQty,
+      mobileConfirmedRef.current.warehouseQty,
+      mobileConfirmedRef.current.storeQty
+    )) return;
+    queueMobileTarget(target);
+  }
+
+  function applyMobileResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget) {
+    mobileEditPointAtRef.current = null;
+    const nextSnapshot = {
+      warehouseQty: result.warehouse_qty,
+      storeQty: result.store_qty,
+      updatedAt: result.inventory_updated_at
+    };
+    mobileSessionIdRef.current = result.session_id;
+    updateMobileConfirmedSnapshot(nextSnapshot);
+    setMobileWarehouseQty(result.warehouse_qty);
+    setMobileStoreQty(result.store_qty);
+    updateItemInventory(result);
+    recordMobileEditResult(result, target);
+  }
+
+  async function flushMobileTargets() {
+    if (mobileSaveInFlightRef.current) return;
+    mobileSaveInFlightRef.current = true;
+    setMobileSaveState("pending");
+    setMobileSaveError("");
+
+    const savePromise = (async () => {
+      let hadError = false;
+      try {
+        while (mobileQueuedTargetRef.current) {
+          const target = mobileQueuedTargetRef.current;
+          mobileQueuedTargetRef.current = null;
+          const snapshot = mobileConfirmedRef.current;
+          if (!hasMobileInventoryChange(target.warehouseQty, target.storeQty, snapshot.warehouseQty, snapshot.storeQty)) {
+            if (mobileDraftTargetRef.current === target) mobileDraftTargetRef.current = null;
+            continue;
+          }
+
+          const requestId = crypto.randomUUID();
+          const applyInput = {
+            targetSessionId: mobileSessionIdRef.current,
+            targetProductId: productId,
+            operationMode: target.mode,
+            targetLocation: target.targetLocation,
+            moveDirection: target.moveDirection,
+            requestedWarehouseQty: target.warehouseQty,
+            requestedStoreQty: target.storeQty,
+            expectedInventoryUpdatedAt: snapshot.updatedAt,
+            requestId,
+            entrySource: initialInventoryMode === "audit" ? "scan_audit" as const : "operation" as const
+          };
+          let applyResult = await applyMobileInventoryChange(applyInput);
+
+          if (isMissingMobileSessionError(applyResult.error?.message) && applyInput.targetSessionId) {
+            mobileSessionIdRef.current = null;
+            applyResult = await applyMobileInventoryChange({
+              ...applyInput,
+              targetSessionId: null
+            });
+          }
+
+          const { data, error: saveError } = applyResult;
+
+          if (saveError || !data) {
+            mobileHistoryNavigationRef.current = null;
+            if (saveError?.message.includes("다른 직원이 먼저 재고를 변경했습니다")) {
+              await finalizeMobileInventorySession(mobileSessionIdRef.current);
+              mobileSessionIdRef.current = null;
+              await loadProduct();
+            }
+            resetMobileDraft();
+            setMobileSaveState("error");
+            setMobileSaveError(saveError?.message ?? "재고를 저장하지 못했습니다.");
+            hadError = true;
+            break;
+          }
+
+          applyMobileResult(data, target);
+          if (mobileDraftTargetRef.current === target) mobileDraftTargetRef.current = null;
+          setMobileSaveState("saved");
+        }
+      } finally {
+        mobileSaveInFlightRef.current = false;
+        mobileSavePromiseRef.current = null;
+        if (!mobileQueuedTargetRef.current && !hadError) {
+          setMobileSaveState("saved");
+        }
+      }
+    })();
+
+    mobileSavePromiseRef.current = savePromise;
+    await savePromise;
+  }
+
+  function queueMobileTarget(target: MobileInventoryTarget) {
+    mobileDraftTargetRef.current = target;
+    mobileQueuedTargetRef.current = target;
+    setMobileSaveState("pending");
+    if (!mobileSaveInFlightRef.current) void flushMobileTargets();
+  }
+
+  async function finalizeMobileSession() {
+    const pendingDraft = mobileDraftTargetRef.current;
+    if (pendingDraft && hasMobileInventoryChange(
+      pendingDraft.warehouseQty,
+      pendingDraft.storeQty,
+      mobileConfirmedRef.current.warehouseQty,
+      mobileConfirmedRef.current.storeQty
+    )) {
+      mobileQueuedTargetRef.current = pendingDraft;
+      if (!mobileSaveInFlightRef.current) void flushMobileTargets();
+    }
+    if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
+    const sessionId = mobileSessionIdRef.current;
+    if (!sessionId) return;
+    const { error: finalizeError } = await finalizeMobileInventorySession(sessionId);
+    if (finalizeError) {
+      if (isMissingMobileSessionError(finalizeError.message)) {
+        mobileSessionIdRef.current = null;
+        setMobileSaveError("");
+        setMobileSaveState("idle");
+        return;
+      }
+      setMobileSaveState("error");
+      setMobileSaveError(finalizeError.message);
+      return;
+    }
+    mobileSessionIdRef.current = null;
+    setMobileSaveState("idle");
+  }
+
+  mobileFinalizeRef.current = finalizeMobileSession;
+
+  function handleMobileDraft(target: MobileInventoryTarget) {
+    mobileHistoryNavigationRef.current = null;
+    mobileDraftTargetRef.current = target;
+    setMobileWarehouseQty(target.warehouseQty);
+    setMobileStoreQty(target.storeQty);
+    setMobileSaveState("dragging");
+    setMobileSaveStatusLabel("서버에 저장됨");
+  }
+
+  function handleMobileCommit(target: MobileInventoryTarget, historyNavigationIndex: number | null = null) {
+    mobileHistoryNavigationRef.current = historyNavigationIndex;
+    mobileDraftTargetRef.current = target;
+    setMobileWarehouseQty(target.warehouseQty);
+    setMobileStoreQty(target.storeQty);
+    setMobileSaveStatusLabel(historyNavigationIndex === null ? "서버에 저장됨" : "수정 시점");
+    queueMobileTarget(target);
+  }
+
+  function handleMobileHistoryNavigation(direction: "undo" | "redo") {
+    if (mobileSaveInFlightRef.current || mobileQueuedTargetRef.current || mobileDraftTargetRef.current) return;
+
+    const history = mobileEditHistoryRef.current;
+    const currentIndex = mobileEditHistoryIndexRef.current;
+    const targetIndex = direction === "undo" ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= history.length) return;
+
+    const targetPoint = history[targetIndex];
+    const operationPoint = direction === "undo" ? history[currentIndex] : targetPoint;
+    const snapshot = mobileConfirmedRef.current;
+    const target = buildMobileHistoryTarget(
+      snapshot.warehouseQty,
+      snapshot.storeQty,
+      targetPoint,
+      operationPoint
+    );
+
+    if (!hasMobileInventoryChange(
+      target.warehouseQty,
+      target.storeQty,
+      snapshot.warehouseQty,
+      snapshot.storeQty
+    )) {
+      mobileHistoryNavigationRef.current = null;
+      syncMobileEditHistory(history, targetIndex);
+      setMobileEditPointAt(targetPoint.editAt);
+      setMobileSaveState("saved");
+      setMobileSaveStatusLabel("수정 시점");
+      return;
+    }
+
+    handleMobileCommit(target, targetIndex);
+  }
+
+  function handleMobileKeypadConfirm(value: number) {
+    const snapshot = mobileConfirmedRef.current;
+    if (mobileKeypadTarget === "warehouse") {
+      if (mobileMode === "move") {
+        handleMobileCommit(buildMoveTarget("창고", value, snapshot.warehouseQty, snapshot.storeQty));
+      } else {
+        const target = mobileMode === "audit"
+          ? buildAuditTarget("창고", value, mobileWarehouseQty, mobileStoreQty)
+          : buildAutoTarget("창고", value, mobileWarehouseQty, mobileStoreQty);
+        handleMobileCommit({ ...target, storeQty: mobileStoreQty });
+      }
+    } else if (mobileKeypadTarget === "store") {
+      if (mobileMode === "move") {
+        handleMobileCommit(buildMoveTarget("매장", value, snapshot.warehouseQty, snapshot.storeQty));
+      } else {
+        const target = mobileMode === "audit"
+          ? buildAuditTarget("매장", value, mobileWarehouseQty, mobileStoreQty)
+          : buildAutoTarget("매장", value, mobileWarehouseQty, mobileStoreQty);
+        handleMobileCommit({ ...target, warehouseQty: mobileWarehouseQty });
+      }
+    }
+    setMobileKeypadTarget(null);
+  }
 
   const loadMemoStaffNames = useCallback(async (memos: InventoryLog[]) => {
     const missingUserIds = Array.from(
@@ -251,7 +855,8 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
 
   useEffect(() => {
     void loadProduct();
-  }, [loadProduct]);
+    void loadOverviewMultiplier();
+  }, [loadOverviewMultiplier, loadProduct]);
 
   useEffect(() => {
     let active = true;
@@ -275,8 +880,52 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       if (defaultLocationPressTimerRef.current !== null) {
         window.clearTimeout(defaultLocationPressTimerRef.current);
       }
+      void mobileFinalizeRef.current();
     };
   }, []);
+
+  useEffect(() => {
+    if (!registerBeforeLeave) return;
+    return registerBeforeLeave(() => mobileFinalizeRef.current());
+  }, [registerBeforeLeave]);
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") void mobileFinalizeRef.current();
+    }
+    function handlePageHide() {
+      void mobileFinalizeRef.current();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mobileTouchEnabled || !Capacitor.isNativePlatform()) return;
+
+    let listenerHandle: PluginListenerHandle | null = null;
+    let cancelled = false;
+    CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) void mobileFinalizeRef.current();
+    })
+      .then((handle) => {
+        if (cancelled) {
+          void handle.remove();
+        } else {
+          listenerHandle = handle;
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      if (listenerHandle) void listenerHandle.remove();
+    };
+  }, [mobileTouchEnabled]);
 
   useEffect(() => {
     void loadLatestMemo();
@@ -363,6 +1012,10 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     if (updateError) {
       setError(formatStatusUpdateError(updateError.message));
     } else {
+      if (nextStatusEnabled) {
+        setEditingMinimumStock(false);
+        setMinimumStockDraft(String(item.minimum_stock));
+      }
       setItem((current) =>
         current
           ? {
@@ -379,7 +1032,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   }
 
   async function saveMinimumStock() {
-    if (!item) return;
+    if (!item || item.status_enabled || minimumStockSaving) return;
 
     setError("");
     setSuccess("");
@@ -389,6 +1042,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       return;
     }
     const nextMinimumStock = parsedMinimumStock;
+    setMinimumStockSaving(true);
     const { error: updateError } = await Services.DatabaseService.update("products", { minimum_stock: nextMinimumStock }).eq("store_id", currentStoreId).eq("id", item.id);
 
     if (updateError) {
@@ -398,6 +1052,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       setSuccess("최소재고를 수정했습니다.");
       await loadProduct();
     }
+    setMinimumStockSaving(false);
   }
 
   function clearDefaultLocationPressTimer() {
@@ -441,30 +1096,13 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setDefaultLocationSaving(false);
   }
 
-  function getStateBeforeLog(log: InventoryLog, warehouseQty: number, storeQty: number) {
-    if (log.warehouse_qty_before !== null && log.store_qty_before !== null) {
-      return { warehouseQty: log.warehouse_qty_before, storeQty: log.store_qty_before };
-    }
-
-    if (log.action === "이동" && log.source_location && log.destination_location && log.quantity !== null) {
-      if (log.source_location === "창고") {
-        return { warehouseQty: warehouseQty + log.quantity, storeQty: storeQty - log.quantity };
-      }
-      return { warehouseQty: warehouseQty - log.quantity, storeQty: storeQty + log.quantity };
-    }
-
-    const targetLocation = log.destination_location ?? log.source_location;
-    if (targetLocation === "창고" && log.previous_quantity !== null) {
-      return { warehouseQty: log.previous_quantity, storeQty };
-    }
-    if (targetLocation === "매장" && log.previous_quantity !== null) {
-      return { warehouseQty, storeQty: log.previous_quantity };
-    }
-    return { warehouseQty, storeQty };
-  }
-
   async function openHistory() {
     if (!item) return;
+
+    if (mobileTouchUI) {
+      commitUnsettledMobileDraft();
+      if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
+    }
 
     setHistoryOpen(true);
     setHistoryLoading(true);
@@ -486,19 +1124,11 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       );
       setHistory([]);
     } else {
-      let warehouseQty = item.warehouse_qty;
-      let storeQty = item.store_qty;
-      const points = ((data ?? []) as InventoryLog[]).map((log) => {
-        const point = {
-          log,
-          warehouseQty: log.warehouse_qty_after ?? warehouseQty,
-          storeQty: log.store_qty_after ?? storeQty
-        };
-        const before = getStateBeforeLog(log, point.warehouseQty, point.storeQty);
-        warehouseQty = before.warehouseQty;
-        storeQty = before.storeQty;
-        return point;
-      });
+      const points = buildInventoryHistoryPoints(
+        collapseMobileHistoryLogs((data ?? []) as InventoryLog[]),
+        item.warehouse_qty,
+        item.store_qty
+      );
       setHistory(points);
     }
     setHistoryLoading(false);
@@ -514,24 +1144,32 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
     setRestoring(true);
     setError("");
     setSuccess("");
-    const { error: restoreError } = await Services.DatabaseService.rpc("restore_inventory_to_log", {
-      target_log_id: point.log.id,
-      restored_warehouse_qty: point.warehouseQty,
-      restored_store_qty: point.storeQty
-    });
+    const { error: restoreError } = point.log.mobile_session_id
+      ? await Services.DatabaseService.rpc("restore_inventory_to_mobile_session", {
+          target_session_id: point.log.mobile_session_id,
+          restored_warehouse_qty: point.warehouseQty,
+          restored_store_qty: point.storeQty
+        })
+      : await Services.DatabaseService.rpc("restore_inventory_to_log", {
+          target_log_id: point.log.id,
+          restored_warehouse_qty: point.warehouseQty,
+          restored_store_qty: point.storeQty
+        });
 
     if (restoreError) {
       setError(
-        restoreError.message.includes("restore_inventory_to_log")
+        restoreError.message.includes("restore_inventory_to_log") || restoreError.message.includes("restore_inventory_to_mobile_session")
           ? "상세 되돌리기 기능을 위한 데이터베이스 업데이트가 필요합니다."
           : restoreError.message
       );
     } else {
+      if (mobileTouchUI) mobileEditPointAtRef.current = point.log.created_at;
       setHistoryOpen(false);
       setSuccess(`${formatDateTime(point.log.created_at)} 시점으로 재고를 복원했습니다.`);
       setQuantity("");
       await loadProduct();
       await loadLatestInventoryCheck();
+      if (mobileTouchUI) setMobileEditPointAt(point.log.created_at);
     }
     setRestoring(false);
   }
@@ -703,55 +1341,6 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       return;
     }
 
-    const source = action === "출고" ? location : action === "이동" ? (moveDirection === "warehouse-to-store" ? "창고" : "매장") : action === "조정" ? location : null;
-    const destination = action === "입고" ? location : action === "이동" ? (moveDirection === "warehouse-to-store" ? "매장" : "창고") : null;
-    let nextWarehouseQty = item.warehouse_qty;
-    let nextStoreQty = item.store_qty;
-    let previousQuantity = location === "창고" ? item.warehouse_qty : item.store_qty;
-    let newQuantity = previousQuantity;
-
-    if (action === "입고") {
-      if (location === "창고") {
-        previousQuantity = item.warehouse_qty;
-        nextWarehouseQty += quantityValue;
-        newQuantity = nextWarehouseQty;
-      } else {
-        previousQuantity = item.store_qty;
-        nextStoreQty += quantityValue;
-        newQuantity = nextStoreQty;
-      }
-    } else if (action === "출고") {
-      if (location === "창고") {
-        previousQuantity = item.warehouse_qty;
-        nextWarehouseQty -= quantityValue;
-        newQuantity = nextWarehouseQty;
-      } else {
-        previousQuantity = item.store_qty;
-        nextStoreQty -= quantityValue;
-        newQuantity = nextStoreQty;
-      }
-    } else if (action === "이동") {
-      if (moveDirection === "warehouse-to-store") {
-        previousQuantity = item.warehouse_qty;
-        nextWarehouseQty -= quantityValue;
-        nextStoreQty += quantityValue;
-        newQuantity = nextWarehouseQty;
-      } else {
-        previousQuantity = item.store_qty;
-        nextStoreQty -= quantityValue;
-        nextWarehouseQty += quantityValue;
-        newQuantity = nextStoreQty;
-      }
-    } else if (location === "창고") {
-      previousQuantity = item.warehouse_qty;
-      nextWarehouseQty = quantityValue;
-      newQuantity = nextWarehouseQty;
-    } else {
-      previousQuantity = item.store_qty;
-      nextStoreQty = quantityValue;
-      newQuantity = nextStoreQty;
-    }
-
     const { data: userData, error: userError } = await Services.AuthService.getUser();
     if (userError || !userData.user) {
       setError(userError?.message ?? "로그인이 필요합니다.");
@@ -759,70 +1348,21 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       return;
     }
 
-    const { error: updateError } = await Services.DatabaseService.update("inventory", { warehouse_qty: nextWarehouseQty, store_qty: nextStoreQty })
-      .eq("store_id", currentStoreId)
-      .eq("id", currentInventory.id);
-
-    if (updateError) {
-      setError(updateError.message);
-      setSaving(false);
-      return;
-    }
-
-    const { error: logError } = await Services.DatabaseService.insert("inventory_logs", {
-      store_id: currentStoreId,
-      product_id: item.id,
-      user_id: userData.user.id,
-      action,
-      source_location: source,
-      destination_location: destination,
-      previous_quantity: previousQuantity,
-      new_quantity: newQuantity,
-      quantity: quantityValue,
-      note: null,
-      warehouse_qty_before: item.warehouse_qty,
-      store_qty_before: item.store_qty,
-      warehouse_qty_after: nextWarehouseQty,
-      store_qty_after: nextStoreQty
+    const { error: operationError } = await Services.DatabaseService.rpc("record_inventory_operation", {
+      target_product_id: item.id,
+      operation_action: action,
+      target_location: location,
+      move_direction: moveDirection,
+      operation_quantity: quantityValue,
+      expected_inventory_updated_at: currentInventory.updated_at
     });
 
-    if (logError) {
-      setError(logError.message);
-    } else {
-      const isNoLongerLowStockAfterOperation = item.status_enabled
-        ? item.stock_status !== "발주 필요"
-        : nextWarehouseQty + nextStoreQty > item.minimum_stock;
-      const shouldClearConfirmedOrderPending = item.confirmed_order_pending && (
-        action === "입고" || (action === "조정" && !item.receipt_check_only && isNoLongerLowStockAfterOperation)
-      );
-      if (action === "입고" && (item.fresh_order_selected || item.urgent_order_requested || item.order_completed || item.confirmed_order_pending)) {
-        const { error: freshCompleteError } = await Services.DatabaseService.update("products", {
-            fresh_order_selected: false,
-            fresh_order_selected_at: null,
-            urgent_order_requested: false,
-            urgent_order_quantity: null,
-            order_completed: false,
-            confirmed_order_pending: false
-          })
-          .eq("store_id", currentStoreId)
-          .eq("id", item.id);
-
-        if (freshCompleteError) {
-          setError(freshCompleteError.message);
-          setSaving(false);
-          return;
-        }
-      } else if (shouldClearConfirmedOrderPending) {
-        const { error: clearPendingError } = await Services.DatabaseService.update("products", { confirmed_order_pending: false, order_completed: false })
-          .eq("store_id", currentStoreId)
-          .eq("id", item.id);
-
-        if (clearPendingError) {
-          setError(clearPendingError.message);
-          setSaving(false);
-          return;
-        }
+    if (operationError) {
+      setError(operationError.message);
+      if (operationError.message.includes("다른 직원이 먼저 재고를 변경했습니다")) {
+        await loadProduct();
       }
+    } else {
       setSuccess("저장되었습니다.");
       setQuantity("");
       await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
@@ -836,15 +1376,15 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
   if (!item) return <StatusMessage type="error">상품을 찾을 수 없습니다.</StatusMessage>;
 
   return (
-    <section>
-      <div className="mb-4 flex min-w-0 items-center gap-2">
+    <section className={isMobileViewport ? "mobile-inventory-page" : undefined}>
+      <div className="inventory-operation-header mb-2 flex min-w-0 items-center gap-1.5 sm:mb-4 sm:gap-2">
         {canGoBack && onBack ? (
           <button className="touch-button icon-button shrink-0" type="button" onClick={onBack} aria-label="뒤로가기" title="뒤로가기">
             <ArrowLeft size={18} />
           </button>
         ) : null}
-        <h1 className="min-w-0 flex-1 truncate text-2xl font-bold tracking-normal">재고 작업</h1>
-        <div className="flex shrink-0 items-center gap-2">
+        <h1 className="min-w-0 flex-1 truncate text-xl font-bold tracking-normal sm:text-2xl">재고 작업</h1>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })} aria-label="상품 수정" title="수정">
             <Pencil size={18} />
           </button>
@@ -864,20 +1404,20 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
         </div>
       </div>
 
-      <div className="mb-3 flex min-w-0 items-start justify-between gap-2">
+      <div className="inventory-product-summary mb-2 flex min-w-0 items-start justify-between gap-1.5 sm:mb-3 sm:gap-2">
         <div className="min-w-0 flex-1">
-          <p className="break-words text-2xl font-bold leading-tight text-slate-950 dark:text-slate-100">{item.name}</p>
+          <p className="break-words text-xl font-bold leading-tight text-slate-950 dark:text-slate-100 sm:text-2xl">{item.name}</p>
         </div>
-        <div className="flex max-w-[56%] shrink-0 flex-col items-end gap-1.5 text-xs sm:max-w-none sm:text-sm">
-          <div className="flex flex-wrap justify-end gap-1.5">
-            <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex max-w-[58%] shrink-0 flex-col items-end gap-1 text-[11px] sm:max-w-none sm:gap-1.5 sm:text-sm">
+          <div className="flex flex-wrap justify-end gap-1">
+            <span className="inventory-product-badge rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-semibold dark:border-slate-800 dark:bg-slate-900 sm:px-2 sm:py-1">
               <strong className="text-slate-950 dark:text-slate-100">{item.storage_type ?? "미지정"}</strong>
             </span>
-            <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
+            <span className="inventory-product-badge rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-semibold dark:border-slate-800 dark:bg-slate-900 sm:px-2 sm:py-1">
               <strong className="text-slate-950 dark:text-slate-100">{item.supplier_name ?? "미지정"}</strong>
             </span>
             {item.unit_name ? (
-              <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold dark:border-slate-800 dark:bg-slate-900">
+              <span className="inventory-product-badge rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-semibold dark:border-slate-800 dark:bg-slate-900 sm:px-2 sm:py-1">
                 <strong className="text-slate-950 dark:text-slate-100">{item.unit_name}</strong>
               </span>
             ) : null}
@@ -886,7 +1426,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       </div>
 
       {item.receipt_check_only ? (
-        <div className="panel p-4">
+        <div className="panel p-3 sm:p-4">
           <div className="rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-900 dark:bg-sky-950/40">
             <p className="text-sm font-extrabold text-sky-800 dark:text-sky-100">입고여부만 확인</p>
             <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -947,9 +1487,97 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
             {receiptSaving ? "처리 중..." : "입고완료"}
           </button>
         </div>
+      ) : mobileTouchUI ? (
+        <div className="space-y-1.5 sm:space-y-4">
+          <MobileInventoryControls
+            mode={mobileMode}
+            warehouseQty={mobileWarehouseQty}
+            storeQty={mobileStoreQty}
+            confirmedWarehouseQty={mobileConfirmedSnapshot.warehouseQty}
+            confirmedStoreQty={mobileConfirmedSnapshot.storeQty}
+            lastInventoryCheckDates={lastInventoryCheckDates}
+            disabled={false}
+            saveState={mobileSaveState}
+            saveError={mobileSaveError}
+            savedAtLabel={mobileEditPointAt ? formatDateTime(mobileEditPointAt) : null}
+            saveStatusLabel={mobileSaveStatusLabel}
+            canUndo={mobileEditHistoryIndex > 0}
+            canRedo={mobileEditHistoryIndex >= 0 && mobileEditHistoryIndex < mobileEditHistory.length - 1}
+            onModeChange={(nextMode) => {
+              commitUnsettledMobileDraft();
+              setMobileMode(nextMode);
+              resetMobileDraft(true);
+            }}
+            onDraftChange={handleMobileDraft}
+            onCommit={handleMobileCommit}
+            onOpenKeypad={setMobileKeypadTarget}
+            onUndo={() => handleMobileHistoryNavigation("undo")}
+            onRedo={() => handleMobileHistoryNavigation("redo")}
+          />
+
+          <div className="mobile-inventory-summary panel p-2 sm:p-4">
+            {!item.status_enabled ? (
+              <InventoryStockRangeBar
+                totalStock={mobileWarehouseQty + mobileStoreQty}
+                minimumStock={item.minimum_stock}
+                abundantMultiplier={abundantMultiplier}
+                editing={editingMinimumStock}
+                minimumStockDraft={minimumStockDraft}
+                saving={minimumStockSaving}
+                onStartEdit={() => {
+                  setMinimumStockDraft(String(item.minimum_stock));
+                  setEditingMinimumStock(true);
+                }}
+                onDraftChange={setMinimumStockDraft}
+                onSave={() => void saveMinimumStock()}
+                onCancel={() => {
+                  setEditingMinimumStock(false);
+                  setMinimumStockDraft(String(item.minimum_stock));
+                }}
+              />
+            ) : null}
+            <div className={`${item.status_enabled ? "" : "mt-2"} flex items-center justify-between gap-2 text-sm`}>
+              <label className="mobile-inventory-status-row flex shrink-0 items-center gap-2 text-sm font-bold">
+                <span>상태</span>
+                <input
+                  type="checkbox"
+                  checked={item.status_enabled}
+                  disabled={statusSaving}
+                  onChange={(event) => void updateStockStatus(event.target.checked)}
+                  className="h-5 w-5 accent-brand-600 disabled:opacity-45 sm:h-6 sm:w-6"
+                  aria-label="상태 기능 활성화"
+                  aria-controls="mobile-inventory-status-options"
+                  aria-expanded={item.status_enabled}
+                />
+              </label>
+            </div>
+            <div id="mobile-inventory-status-options" className={`status-options ${item.status_enabled ? "status-options-open" : ""}`} aria-hidden={!item.status_enabled}>
+              <div className="status-options-inner">
+                <div className="mt-2 grid grid-cols-3 gap-1.5 sm:mt-3 sm:gap-2">
+                  {STOCK_STATUSES.map((status) => {
+                    const selected = item.status_enabled && item.stock_status === status;
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        disabled={!item.status_enabled || statusSaving}
+                        onClick={() => void updateStockStatus(true, status)}
+                        className={`touch-button rounded-md px-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-45 ${selected ? "bg-brand-600 text-white" : "border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"}`}
+                      >
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            {error ? <div className="mt-2"><StatusMessage type="error">{error}</StatusMessage></div> : null}
+            {success ? <div className="mt-2"><StatusMessage type="success">{success}</StatusMessage></div> : null}
+          </div>
+        </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-          <div className="panel p-4">
+        <div className="grid gap-3 sm:gap-4 md:grid-cols-[0.8fr_1.2fr]">
+          <div className="panel p-3 sm:p-4">
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -1006,59 +1634,34 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                 </p>
               </button>
             </div>
-            <div className="mt-2 rounded-md border border-slate-200 p-2 text-sm dark:border-slate-800">
-              <div className="flex flex-wrap items-center gap-2">
-                <span>
-                  총재고 <strong>{formatInventoryQuantity(item.total_stock)}</strong> · 최소재고 <strong>{item.minimum_stock}</strong>
-                </span>
-              {editingMinimumStock ? (
-                <span className="inline-flex items-center gap-1">
-                  <input
-                    className="field min-h-0 w-20 px-2 py-1 text-sm"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={minimumStockDraft}
-                    onChange={(event) => setMinimumStockDraft(event.target.value)}
-                    aria-label="최소재고"
-                  />
-                  <button type="button" onClick={saveMinimumStock} className="rounded border border-brand-600 px-2 py-1 text-sm font-bold text-brand-700 dark:text-brand-100">
-                    저장
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingMinimumStock(false);
-                      setMinimumStockDraft(String(item.minimum_stock));
-                    }}
-                    className="rounded border border-slate-300 px-2 py-1 text-sm font-bold dark:border-slate-700"
-                  >
-                    취소
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMinimumStockDraft(String(item.minimum_stock));
-                    setEditingMinimumStock(true);
-                  }}
-                  className="rounded border border-slate-300 px-2 py-1 text-sm font-bold dark:border-slate-700"
-                >
-                  수정
-                </button>
-              )}
-            </div>
+            {!item.status_enabled ? (
+              <InventoryStockRangeBar
+                totalStock={item.total_stock}
+                minimumStock={item.minimum_stock}
+                abundantMultiplier={abundantMultiplier}
+                editing={editingMinimumStock}
+                minimumStockDraft={minimumStockDraft}
+                saving={minimumStockSaving}
+                onStartEdit={() => {
+                  setMinimumStockDraft(String(item.minimum_stock));
+                  setEditingMinimumStock(true);
+                }}
+                onDraftChange={setMinimumStockDraft}
+                onSave={() => void saveMinimumStock()}
+                onCancel={() => {
+                  setEditingMinimumStock(false);
+                  setMinimumStockDraft(String(item.minimum_stock));
+                }}
+              />
+            ) : null}
           </div>
-        </div>
 
-        <form onSubmit={handleSubmit} className="panel flex flex-col p-4">
+        <form onSubmit={handleSubmit} className="panel flex flex-col p-3 sm:p-4">
           <div className="grid grid-cols-4 gap-1.5">
             {ACTIONS.map((name) => (
               <label key={name} className={`min-h-10 rounded-md border px-2 py-2 text-center text-sm font-bold ${action === name ? "border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-100" : "border-slate-200 dark:border-slate-800"}`}>
                 <input className="sr-only" type="radio" checked={action === name} onChange={() => setAction(name)} />
-                {name === "조정" ? "실사" : name === "출고" ? "사용" : name}
+                {formatInventoryActionLabel(name)}
               </label>
             ))}
           </div>
@@ -1119,7 +1722,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                 checked={item.status_enabled}
                 disabled={statusSaving}
                 onChange={(event) => void updateStockStatus(event.target.checked)}
-                className="h-6 w-6 accent-brand-600 disabled:opacity-45"
+                className="h-5 w-5 accent-brand-600 disabled:opacity-45 sm:h-6 sm:w-6"
                 aria-label="상태 기능 활성화"
                 aria-controls="inventory-status-options"
                 aria-expanded={item.status_enabled}
@@ -1166,7 +1769,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
       </div>
       )}
 
-      <form onSubmit={handleMemoSubmit} className="panel mt-4 p-4">
+      <form onSubmit={handleMemoSubmit} className="inventory-memo-panel panel mt-2 p-3 sm:mt-4 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <label htmlFor="inventory-memo" className="text-sm font-bold">
             메모
@@ -1208,7 +1811,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
         ) : null}
         <textarea
           id="inventory-memo"
-          className="field min-h-28 resize-y"
+          className="field min-h-20 resize-y sm:min-h-28"
           value={memoText}
           onChange={(event) => {
             setMemoText(event.target.value);
@@ -1219,7 +1822,7 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
         />
         {memoError ? <div className="mt-2"><StatusMessage type="error">{memoError}</StatusMessage></div> : null}
         {memoSuccess ? <div className="mt-2"><StatusMessage type="success">{memoSuccess}</StatusMessage></div> : null}
-        <button className="primary-button mt-2 min-h-11 w-full py-2" type="submit" disabled={memoSaving || memoIsEmpty}>
+        <button className="primary-button mt-2 min-h-10 w-full py-2 sm:min-h-11" type="submit" disabled={memoSaving || memoIsEmpty}>
           {memoSaving ? "저장 중..." : editingMemoId ? "수정 저장" : "저장"}
         </button>
       </form>
@@ -1255,11 +1858,11 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded bg-slate-100 px-2 py-1 text-xs font-extrabold dark:bg-slate-800">{point.log.action}</span>
+                          <span className="rounded bg-slate-100 px-2 py-1 text-xs font-extrabold dark:bg-slate-800">{formatHistoryPointAction(point.log)}</span>
                           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(point.log.created_at)}</span>
                           {index === 0 ? <span className="rounded bg-brand-100 px-2 py-1 text-[10px] font-extrabold text-brand-700 dark:bg-brand-950 dark:text-brand-100">현재 상태</span> : null}
                         </div>
-                        <p className="mt-2 text-sm font-bold">{formatLogContent(point.log)}</p>
+                        <p className="mt-2 text-sm font-bold">{formatHistoryPointContent(point.log)}</p>
                       </div>
                       {index > 0 ? <RotateCcw className="mt-1 shrink-0 text-brand-700 dark:text-brand-100" size={18} /> : null}
                     </div>
@@ -1278,6 +1881,16 @@ export function InventoryOperationPage({ productId, navigate, canGoBack = false,
           </div>
         </div>
       ) : null}
+
+      <QuantityKeypadSheet
+        open={mobileTouchUI && mobileKeypadTarget !== null}
+        title={`${mobileKeypadTarget === "warehouse" ? "창고" : "매장"} 수량 입력`}
+        initialValue={mobileKeypadTarget === "warehouse" ? mobileWarehouseQty : mobileStoreQty}
+        max={mobileMode === "move" ? mobileConfirmedSnapshot.warehouseQty + mobileConfirmedSnapshot.storeQty : undefined}
+        onClose={() => setMobileKeypadTarget(null)}
+        onConfirm={handleMobileKeypadConfirm}
+        formatValue={formatInventoryQuantity}
+      />
 
       {memoHistoryOpen ? (
         <div className="fixed inset-0 z-50 flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="메모 히스토리">

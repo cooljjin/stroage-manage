@@ -386,6 +386,7 @@ export type Database = {
       product_units: {
         Row: {
           id: string;
+          store_id: string;
           name: string;
           is_active: boolean;
           sort_order: number;
@@ -393,12 +394,14 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          store_id?: string;
           name: string;
           is_active?: boolean;
           sort_order?: number;
           created_at?: string;
         };
         Update: {
+          store_id?: string;
           name?: string;
           is_active?: boolean;
           sort_order?: number;
@@ -660,6 +663,8 @@ export type Database = {
           reverted_at: string | null;
           reverted_by: string | null;
           restored_to_log_id: string | null;
+          mobile_session_id: string | null;
+          mobile_session_sequence: number | null;
           created_at: string;
         };
         Insert: {
@@ -681,6 +686,8 @@ export type Database = {
           reverted_at?: string | null;
           reverted_by?: string | null;
           restored_to_log_id?: string | null;
+          mobile_session_id?: string | null;
+          mobile_session_sequence?: number | null;
           created_at?: string;
         };
         Update: {
@@ -688,6 +695,8 @@ export type Database = {
           store_id?: string;
           reverted_at?: string | null;
           reverted_by?: string | null;
+          mobile_session_id?: string | null;
+          mobile_session_sequence?: number | null;
         };
         Relationships: [
           {
@@ -698,6 +707,81 @@ export type Database = {
             referencedColumns: ["id"];
           }
         ];
+      };
+      mobile_inventory_sessions: {
+        Row: {
+          id: string;
+          store_id: string;
+          product_id: string;
+          user_id: string;
+          entry_source: string;
+          status: string;
+          warehouse_qty_started: number;
+          store_qty_started: number;
+          warehouse_qty_current: number;
+          store_qty_current: number;
+          inventory_updated_at: string;
+          started_at: string;
+          last_activity_at: string;
+          finalized_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          product_id: string;
+          user_id: string;
+          entry_source: string;
+          status?: string;
+          warehouse_qty_started: number;
+          store_qty_started: number;
+          warehouse_qty_current: number;
+          store_qty_current: number;
+          inventory_updated_at: string;
+          started_at?: string;
+          last_activity_at?: string;
+          finalized_at?: string | null;
+        };
+        Update: {
+          status?: string;
+          warehouse_qty_current?: number;
+          store_qty_current?: number;
+          inventory_updated_at?: string;
+          last_activity_at?: string;
+          finalized_at?: string | null;
+        };
+        Relationships: [];
+      };
+      mobile_inventory_session_events: {
+        Row: {
+          id: string;
+          session_id: string;
+          sequence: number;
+          request_id: string;
+          mode: string;
+          target_location: Location | null;
+          move_direction: string | null;
+          warehouse_qty_before: number;
+          store_qty_before: number;
+          warehouse_qty_after: number;
+          store_qty_after: number;
+          occurred_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          sequence: number;
+          request_id: string;
+          mode: string;
+          target_location?: Location | null;
+          move_direction?: string | null;
+          warehouse_qty_before: number;
+          store_qty_before: number;
+          warehouse_qty_after: number;
+          store_qty_after: number;
+          occurred_at?: string;
+        };
+        Update: never;
+        Relationships: [];
       };
       prep_items: {
         Row: {
@@ -1112,6 +1196,106 @@ export type Database = {
           restored_store_qty: number;
         };
         Returns: undefined;
+      };
+      apply_mobile_inventory_change: {
+        Args: {
+          target_session_id: string | null;
+          target_product_id: string;
+          operation_mode: string;
+          target_location: string | null;
+          move_direction: string | null;
+          requested_warehouse_qty: number;
+          requested_store_qty: number;
+          expected_inventory_updated_at: string;
+          request_id: string;
+          entry_source: string;
+        };
+        Returns: {
+          session_id: string;
+          warehouse_qty: number;
+          store_qty: number;
+          inventory_updated_at: string;
+          last_activity_at: string;
+        }[];
+      };
+      finalize_mobile_inventory_session: {
+        Args: {
+          target_session_id: string;
+          finalization_reason?: string;
+        };
+        Returns: string[];
+      };
+      recover_mobile_inventory_sessions: {
+        Args: {
+          active_session_id?: string | null;
+        };
+        Returns: string[];
+      };
+      restore_inventory_to_mobile_session: {
+        Args: {
+          target_session_id: string;
+          restored_warehouse_qty: number;
+          restored_store_qty: number;
+        };
+        Returns: undefined;
+      };
+      record_inventory_operation: {
+        Args: {
+          target_product_id: string;
+          operation_action: string;
+          target_location: string;
+          move_direction: string;
+          operation_quantity: number;
+          expected_inventory_updated_at: string;
+        };
+        Returns: string;
+      };
+      record_receipt_check: {
+        Args: {
+          target_product_id: string;
+          receipt_quantity: number | null;
+          receipt_note?: string;
+        };
+        Returns: string;
+      };
+      replace_confirmed_order_items: {
+        Args: {
+          target_store_id: string;
+          target_order_date: string;
+          item_rows: Json;
+          confirmation_note?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"][];
+      };
+      add_confirmed_order_item: {
+        Args: {
+          target_store_id: string;
+          target_order_date: string;
+          target_product_id: string;
+          required_quantity_value?: number | null;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
+      remove_confirmed_order_item: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+        };
+        Returns: string;
+      };
+      cancel_confirmed_order: {
+        Args: {
+          target_store_id: string;
+          target_order_date: string;
+        };
+        Returns: number;
+      };
+      rename_product_unit: {
+        Args: {
+          target_unit_id: string;
+          next_name: string;
+        };
+        Returns: Database["public"]["Tables"]["product_units"]["Row"];
       };
       delete_today_product_receipts: {
         Args: {

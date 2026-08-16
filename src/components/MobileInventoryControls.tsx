@@ -1,0 +1,170 @@
+import { ArrowLeftRight, Check, Redo2, Undo2 } from "lucide-react";
+import { formatInventoryQuantity } from "../lib/inventory";
+import { buildAuditTarget, buildAutoTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, type MobileInventoryTarget } from "../lib/mobileInventory";
+import type { Location, MobileInventoryMode } from "../types/domain";
+import { VerticalQuantityWheel } from "./VerticalQuantityWheel";
+
+type LocationCheckInfo = {
+  checkedAt: string | null;
+  staffName: string | null;
+};
+
+type LocationCheckDates = {
+  warehouse: LocationCheckInfo;
+  store: LocationCheckInfo;
+};
+
+type Props = {
+  mode: MobileInventoryMode;
+  warehouseQty: number;
+  storeQty: number;
+  confirmedWarehouseQty: number;
+  confirmedStoreQty: number;
+  lastInventoryCheckDates: LocationCheckDates;
+  disabled?: boolean;
+  saveState: "idle" | "dragging" | "pending" | "saved" | "error";
+  saveError?: string;
+  savedAtLabel?: string | null;
+  saveStatusLabel?: "서버에 저장됨" | "수정 시점";
+  canUndo: boolean;
+  canRedo: boolean;
+  onModeChange: (mode: MobileInventoryMode) => void;
+  onDraftChange: (target: MobileInventoryTarget) => void;
+  onCommit: (target: MobileInventoryTarget) => void;
+  onOpenKeypad: (target: "warehouse" | "store") => void;
+  onUndo: () => void;
+  onRedo: () => void;
+};
+
+function formatCheckLabel(info: LocationCheckInfo): string {
+  if (!info.checkedAt) return "마지막 실사 -";
+  const date = new Intl.DateTimeFormat("ko-KR", { month: "2-digit", day: "2-digit" }).format(new Date(info.checkedAt));
+  return `마지막 실사 ${date}${info.staffName ? ` · ${info.staffName}` : ""}`;
+}
+
+export function MobileInventoryControls({
+  mode,
+  warehouseQty,
+  storeQty,
+  confirmedWarehouseQty,
+  confirmedStoreQty,
+  lastInventoryCheckDates,
+  disabled = false,
+  saveState,
+  saveError,
+  savedAtLabel,
+  saveStatusLabel = "서버에 저장됨",
+  canUndo,
+  canRedo,
+  onModeChange,
+  onDraftChange,
+  onCommit,
+  onOpenKeypad,
+  onUndo,
+  onRedo
+}: Props) {
+  const isMove = mode === "move";
+  const totalQty = clampMobileQuantity(confirmedWarehouseQty + confirmedStoreQty);
+  const inferredMoveDirection = isMove
+    ? getMoveDirectionForQuantities(warehouseQty, storeQty, confirmedWarehouseQty, confirmedStoreQty)
+    : null;
+
+  function handleLocationDraft(location: Location, nextValue: number) {
+    const target = mode === "move"
+      ? buildMoveTarget(location, nextValue, confirmedWarehouseQty, confirmedStoreQty)
+      : mode === "audit"
+        ? buildAuditTarget(location, nextValue, warehouseQty, storeQty)
+        : buildAutoTarget(location, nextValue, warehouseQty, storeQty);
+    onDraftChange(target);
+  }
+
+  function handleLocationCommit(location: Location, nextValue: number) {
+    const target = mode === "move"
+      ? buildMoveTarget(location, nextValue, confirmedWarehouseQty, confirmedStoreQty)
+      : mode === "audit"
+        ? buildAuditTarget(location, nextValue, warehouseQty, storeQty)
+        : buildAutoTarget(location, nextValue, warehouseQty, storeQty);
+    onCommit(target);
+  }
+
+  return (
+    <section className="panel p-1.5 sm:p-4" aria-label="모바일 재고 작업">
+      <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900 sm:gap-1.5 sm:p-1">
+        {([
+          ["auto", "입,출고"],
+          ["move", "이동"],
+          ["audit", "실사"]
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onModeChange(value)}
+            disabled={disabled}
+            className={`touch-button h-10 min-h-10 rounded-md px-2 text-sm font-extrabold sm:h-auto sm:min-h-11 ${mode === value ? "bg-brand-600 text-white" : "text-slate-600 dark:text-slate-300"}`}
+            aria-pressed={mode === value}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-1 grid grid-cols-2 gap-1.5 sm:mt-3 sm:gap-3">
+        <VerticalQuantityWheel
+          label="창고"
+          value={warehouseQty}
+          max={isMove ? totalQty : undefined}
+          disabled={disabled}
+          hint={formatCheckLabel(lastInventoryCheckDates.warehouse)}
+          ariaLabel={`창고 수량 ${formatInventoryQuantity(warehouseQty)}`}
+          formatValue={formatInventoryQuantity}
+          onDraftChange={(value) => handleLocationDraft("창고", value)}
+          onCommit={(value) => handleLocationCommit("창고", value)}
+          onOpenKeypad={() => onOpenKeypad("warehouse")}
+          onDragStart={() => undefined}
+        />
+        <VerticalQuantityWheel
+          label="매장"
+          value={storeQty}
+          max={isMove ? totalQty : undefined}
+          disabled={disabled}
+          hint={formatCheckLabel(lastInventoryCheckDates.store)}
+          ariaLabel={`매장 수량 ${formatInventoryQuantity(storeQty)}`}
+          formatValue={formatInventoryQuantity}
+          onDraftChange={(value) => handleLocationDraft("매장", value)}
+          onCommit={(value) => handleLocationCommit("매장", value)}
+          onOpenKeypad={() => onOpenKeypad("store")}
+          onDragStart={() => undefined}
+        />
+      </div>
+
+      <div className="mt-1 flex min-h-10 items-center gap-1.5 sm:mt-3 sm:gap-2">
+        <div className="min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 px-2 py-1 text-[11px] dark:border-slate-800 sm:px-3 sm:py-2 sm:text-sm" role="status" aria-live="polite">
+          {saveState === "dragging" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">수량을 조정하는 중...</span> : null}
+          {saveState === "pending" ? <span className="block w-full truncate font-semibold text-brand-700 dark:text-brand-100">재고를 저장하는 중...</span> : null}
+          {saveState === "saved" ? <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300" title={savedAtLabel ? `${saveStatusLabel} · ${savedAtLabel}` : saveStatusLabel}><Check className="shrink-0" size={16} /><span className="truncate">{saveStatusLabel}{savedAtLabel ? ` · ${savedAtLabel}` : ""}</span></span> : null}
+          {saveState === "error" ? <span className="block w-full truncate font-semibold text-rose-700 dark:text-rose-300" title={saveError ?? "저장하지 못했습니다."}>{saveError ?? "저장하지 못했습니다."}</span> : null}
+          {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{savedAtLabel ? `편집 시점 ${savedAtLabel}` : mode === "auto" ? "위로 밀면 입고, 아래로 밀면 사용" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요."}</span> : null}
+        </div>
+        <button type="button" onClick={onUndo} disabled={disabled || !canUndo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="뒤로가기" title="뒤로가기">
+          <Undo2 size={18} />
+        </button>
+        <button type="button" onClick={onRedo} disabled={disabled || !canRedo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="되돌리기" title="되돌리기">
+          <Redo2 size={18} />
+        </button>
+      </div>
+
+      {mode === "move" ? (
+        <p className="mt-2 flex min-w-0 items-center gap-2 truncate text-xs font-semibold text-slate-500 dark:text-slate-400 sm:mt-3">
+          <ArrowLeftRight className="shrink-0" size={16} />
+          <span className="truncate">
+            {inferredMoveDirection === "warehouse-to-store"
+              ? "창고에서 매장으로 이동"
+              : inferredMoveDirection === "store-to-warehouse"
+                ? "매장에서 창고로 이동"
+                : `총재고 ${formatInventoryQuantity(totalQty)} 안에서 자유롭게 조정`}
+          </span>
+        </p>
+      ) : null}
+    </section>
+  );
+}

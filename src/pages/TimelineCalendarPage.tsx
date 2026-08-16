@@ -23,7 +23,7 @@ const TIMELINE_SECTIONS: TimelineSection[] = [
   { type: "group-order", label: "단체주문", icon: Users, className: "text-violet-700 dark:text-violet-200" },
   { type: "prep-production", label: "프랩 제조", icon: CalendarDays, className: "text-brand-700 dark:text-brand-100" },
   { type: "prep-disposal", label: "프랩 폐기", icon: Trash2, className: "text-rose-700 dark:text-rose-200" },
-  { type: "inventory-adjustment", label: "재고 실사/조정", icon: ClipboardCheck, className: "text-amber-700 dark:text-amber-200" },
+  { type: "inventory-adjustment", label: "재고 실사", icon: ClipboardCheck, className: "text-amber-700 dark:text-amber-200" },
   { type: "todo-completed", label: "To do 완료", icon: CheckCircle2, className: "text-sky-700 dark:text-sky-200" },
   { type: "todo-planned", label: "예정 To do", icon: Clock, className: "text-slate-600 dark:text-slate-300" },
   { type: "memo", label: "메모", icon: StickyNote, className: "text-slate-600 dark:text-slate-300" }

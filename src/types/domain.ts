@@ -5,6 +5,9 @@ export type Category = string;
 export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
 export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "메모" | "프랩 제조" | "프랩 소진" | "프랩 폐기";
+export type MobileInventoryMode = "auto" | "move" | "audit";
+export type MobileInventoryEntryMode = "auto" | "audit";
+export type MobileInventorySessionStatus = "open" | "finalized" | "recovered";
 export type StorageType = "냉장" | "냉동" | "상온";
 export type StockStatus = "충분" | "절반 이하" | "발주 필요";
 export type UnitWeightUnit = "g" | "kg" | "ml" | "L" | "개";
@@ -93,6 +96,7 @@ export type ProductSupplier = {
 
 export type ProductUnit = {
   id: string;
+  store_id: string;
   name: string;
   is_active: boolean;
   sort_order: number;
@@ -311,12 +315,46 @@ export type InventoryLog = {
   reverted_at: string | null;
   reverted_by: string | null;
   restored_to_log_id: string | null;
+  mobile_session_id: string | null;
+  mobile_session_sequence: number | null;
   created_at: string;
   products: Pick<Product, "name" | "barcode" | "receipt_check_only"> | null;
 };
 
 export type InventoryLogWithStaff = InventoryLog & {
   staff_name: string;
+};
+
+export type MobileInventorySession = {
+  id: string;
+  store_id: string;
+  product_id: string;
+  user_id: string;
+  entry_source: "operation" | "scan_audit";
+  status: MobileInventorySessionStatus;
+  warehouse_qty_started: number;
+  store_qty_started: number;
+  warehouse_qty_current: number;
+  store_qty_current: number;
+  inventory_updated_at: string;
+  started_at: string;
+  last_activity_at: string;
+  finalized_at: string | null;
+};
+
+export type MobileInventorySessionEvent = {
+  id: string;
+  session_id: string;
+  sequence: number;
+  request_id: string;
+  mode: MobileInventoryMode;
+  target_location: Location | null;
+  move_direction: "warehouse-to-store" | "store-to-warehouse" | null;
+  warehouse_qty_before: number;
+  store_qty_before: number;
+  warehouse_qty_after: number;
+  store_qty_after: number;
+  occurred_at: string;
 };
 
 export type DashboardTodo = {
@@ -391,6 +429,7 @@ export type AppRoute = {
   authEmail?: string;
   barcode?: string;
   scanLaunchId?: number;
+  initialInventoryMode?: MobileInventoryEntryMode;
   productId?: string;
   prepItemId?: string;
   returnTo?: "prep-items" | "group-order" | "group-order-recipes";

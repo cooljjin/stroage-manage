@@ -17,6 +17,17 @@ type Props = {
   onNavigate: (route: RouteName) => void;
 };
 
+export function RoleBadge({ role }: { role: ProfileRole }) {
+  return (
+    <span
+      className="ml-2 shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-extrabold text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+      title={`현재 권한: ${ROLE_LABEL[role]}`}
+    >
+      {ROLE_LABEL[role]}
+    </span>
+  );
+}
+
 export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate }: Props) {
   function canManage(permission: StaffPermissionKey) {
     return role !== "staff" || hasStaffPermission(staffPermissions, permission);
@@ -27,14 +38,8 @@ export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate
   }
 
   return (
-    <div className="relative flex items-center gap-1">
+    <div className="relative flex items-center">
       <StocklyMenuButton open={open} onClick={() => onOpenChange(!open)} />
-      <span
-        className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-extrabold text-slate-600 dark:bg-slate-900 dark:text-slate-300"
-        title={`현재 권한: ${ROLE_LABEL[role]}`}
-      >
-        {ROLE_LABEL[role]}
-      </span>
 
       {open ? (
         <div className="absolute left-0 top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950">

@@ -527,110 +527,25 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     setError("");
     setMessage("");
 
-    const { error: deleteError } = await Services.DatabaseService.delete("confirmed_order_items")
-      .eq("store_id", currentStoreId)
-      .eq("order_date", todayOrderDate);
-
-    if (deleteError) {
-      setError(deleteError.message);
-      setSavingConfirmation(false);
-      return;
-    }
-
-    const { data: userData, error: userError } = await Services.AuthService.getUser();
-    if (userError || !userData.user) {
-      setError(userError?.message ?? "로그인이 필요합니다.");
-      setSavingConfirmation(false);
-      return;
-    }
-
-    const confirmedAt = new Date().toISOString();
     const trimmedConfirmationMemo = confirmationMemo.trim();
     const rows = confirmCheckedItems.map((item) => ({
-      store_id: currentStoreId,
-      order_date: todayOrderDate,
       product_id: item.id,
-      product_name: item.name,
-      category: item.category || "기타",
-      supplier_name: item.supplier_name,
-      total_stock: item.receipt_check_only ? null : item.total_stock,
-      minimum_stock: item.receipt_check_only ? null : item.minimum_stock,
-      required_quantity: parseRequiredQuantity(requiredQuantities[item.id] ?? ""),
-      is_low_stock: !item.receipt_check_only && item.is_low_stock,
-      fresh_order_selected: item.fresh_order_selected,
-      urgent_order_requested: item.urgent_order_requested,
-      urgent_order_quantity: item.urgent_order_quantity,
-      order_completed: item.order_completed,
-      confirmation_note: trimmedConfirmationMemo || null,
-      receipt_expected_deleted_at: null,
-      receipt_expected_deleted_by: null,
-      confirmed_by: userData.user.id,
-      confirmed_at: confirmedAt
+      required_quantity: parseRequiredQuantity(requiredQuantities[item.id] ?? "")
     }));
 
-    const { error: insertError } = await Services.DatabaseService.insert("confirmed_order_items", rows);
-    if (insertError) {
-      setError(insertError.message);
+    const { data: savedItems, error: saveError } = await Services.DatabaseService.rpc("replace_confirmed_order_items", {
+      target_store_id: currentStoreId,
+      target_order_date: todayOrderDate,
+      item_rows: rows,
+      confirmation_note: trimmedConfirmationMemo || null
+    });
+    if (saveError) {
+      setError(saveError.message);
     } else {
-      setConfirmedItems(rows.map((row, index) => ({
-        id: `${row.product_id}-${index}`,
-        created_at: confirmedAt,
-        ...row
-      })));
-      const names = await resolveStoreStaffNames(currentStoreId, [userData.user.id]);
-      setConfirmedByNames((current) => new Map([...current, ...names]));
+      setConfirmedItems((savedItems ?? []) as ConfirmedOrderItem[]);
       setConfirmationModalOpen(false);
-
-      const addedOrderProductIds = confirmCheckedItems
-        .filter((item) => item.fresh_order_selected)
-        .map((item) => item.id);
-      const confirmedProductIds = confirmCheckedItems.map((item) => item.id);
-      const { error: pendingOrderError } = await Services.DatabaseService.update("products", { confirmed_order_pending: true })
-        .eq("store_id", currentStoreId)
-        .in("id", confirmedProductIds);
-      const pendingStateErrorMessage = pendingOrderError
-        ? `발주 품목은 확정됐지만 진행 상태를 저장하지 못했습니다. ${pendingOrderError.message}`
-        : "";
-      if (pendingOrderError) {
-        setError(pendingStateErrorMessage);
-      } else {
-        const confirmedProductIdSet = new Set(confirmedProductIds);
-        setItems((current) => current.map((item) => (
-          confirmedProductIdSet.has(item.id) ? { ...item, confirmed_order_pending: true } : item
-        )));
-      }
-      let addedOrderCleanupFailed = false;
-      if (addedOrderProductIds.length > 0) {
-        const { error: clearAddedOrderError } = await Services.DatabaseService.update("products", {
-          fresh_order_selected: false,
-          fresh_order_selected_at: null
-        })
-          .eq("store_id", currentStoreId)
-          .in("id", addedOrderProductIds);
-
-        if (clearAddedOrderError) {
-          addedOrderCleanupFailed = true;
-          setError(`발주 품목은 확정됐지만 추가 품목 목록을 정리하지 못했습니다. ${clearAddedOrderError.message}`);
-        } else {
-          const addedOrderProductIdSet = new Set(addedOrderProductIds);
-          setItems((current) =>
-            current.map((item) =>
-              addedOrderProductIdSet.has(item.id)
-                ? { ...item, fresh_order_selected: false, fresh_order_selected_at: null }
-                : item
-            )
-          );
-        }
-      }
-
-      if (pendingOrderError) {
-        await loadItems();
-        setError(pendingStateErrorMessage);
-      }
-
-      if (!addedOrderCleanupFailed && !pendingOrderError) {
-        setMessage(`오늘 발주 품목 ${rows.length}개를 확정했습니다.`);
-      }
+      await loadItems();
+      setMessage(`오늘 발주 품목 ${rows.length}개를 확정했습니다.`);
     }
     setSavingConfirmation(false);
   }
@@ -640,56 +555,19 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
     setSavingConfirmedEdit(true);
     setError("");
-    const { data: userData, error: userError } = await Services.AuthService.getUser();
-    if (userError || !userData.user) {
-      setError(userError?.message ?? "로그인이 필요합니다.");
+    const { data: addedConfirmedItem, error: addError } = await Services.DatabaseService.rpc("add_confirmed_order_item", {
+      target_store_id: currentStoreId,
+      target_order_date: todayOrderDate,
+      target_product_id: item.id,
+      required_quantity_value: parseRequiredQuantity(requiredQuantities[item.id] ?? "")
+    });
+    if (addError) {
+      setError(addError.message);
       setSavingConfirmedEdit(false);
       return;
-    }
-
-    const referenceItem = confirmedItems[0];
-    const row = {
-      store_id: currentStoreId,
-      order_date: todayOrderDate,
-      product_id: item.id,
-      product_name: item.name,
-      category: item.category || "기타",
-      supplier_name: item.supplier_name,
-      total_stock: item.receipt_check_only ? null : item.total_stock,
-      minimum_stock: item.receipt_check_only ? null : item.minimum_stock,
-      required_quantity: parseRequiredQuantity(requiredQuantities[item.id] ?? ""),
-      is_low_stock: !item.receipt_check_only && item.is_low_stock,
-      fresh_order_selected: item.fresh_order_selected,
-      urgent_order_requested: item.urgent_order_requested,
-      urgent_order_quantity: item.urgent_order_quantity,
-      order_completed: true,
-      confirmation_note: referenceItem?.confirmation_note ?? null,
-      confirmed_by: referenceItem?.confirmed_by ?? userData.user.id,
-      confirmed_at: referenceItem?.confirmed_at ?? new Date().toISOString()
-    };
-
-    const { data: addedConfirmedItem, error: insertError } = await Services.DatabaseService.insert("confirmed_order_items", row)
-      .select("*")
-      .single();
-    if (insertError) {
-      setError(insertError.message);
-      setSavingConfirmedEdit(false);
-      return;
-    }
-
-    const productUpdate = item.fresh_order_selected
-      ? { order_completed: true, confirmed_order_pending: true, fresh_order_selected: false, fresh_order_selected_at: null }
-      : { order_completed: true, confirmed_order_pending: true };
-    const { error: updateError } = await Services.DatabaseService.update("products", productUpdate)
-      .eq("store_id", currentStoreId)
-      .eq("id", item.id);
-    if (updateError) {
-      setError(`품목은 확정 목록에 추가됐지만 컨펌 상태를 저장하지 못했습니다. ${updateError.message}`);
-      await loadItems();
-    } else {
-      setItems((current) => current.map((product) => (product.id === item.id ? { ...product, ...productUpdate } : product)));
     }
     setConfirmedItems((current) => [...current, addedConfirmedItem as ConfirmedOrderItem]);
+    await loadItems();
     setSavingConfirmedEdit(false);
   }
 
@@ -699,28 +577,17 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
     setSavingConfirmedEdit(true);
     setError("");
-    const { error: deleteError } = await Services.DatabaseService.delete("confirmed_order_items")
-      .eq("store_id", currentStoreId)
-      .eq("id", item.id);
-    if (deleteError) {
-      setError(deleteError.message);
+    const { error: removeError } = await Services.DatabaseService.rpc("remove_confirmed_order_item", {
+      target_store_id: currentStoreId,
+      target_confirmed_item_id: item.id
+    });
+    if (removeError) {
+      setError(removeError.message);
       setSavingConfirmedEdit(false);
       return;
     }
-
-    const productUpdate = item.fresh_order_selected
-      ? { order_completed: false, confirmed_order_pending: false, fresh_order_selected: true, fresh_order_selected_at: new Date().toISOString() }
-      : { order_completed: false, confirmed_order_pending: false };
-    const { error: updateError } = await Services.DatabaseService.update("products", productUpdate)
-      .eq("store_id", currentStoreId)
-      .eq("id", item.product_id);
-    if (updateError) {
-      setError(`확정 목록에서는 삭제됐지만 컨펌 상태를 되돌리지 못했습니다. ${updateError.message}`);
-      await loadItems();
-    } else {
-      setItems((current) => current.map((product) => (product.id === item.product_id ? { ...product, ...productUpdate } : product)));
-    }
     setConfirmedItems((current) => current.filter((confirmedItem) => confirmedItem.id !== item.id));
+    await loadItems();
     setSavingConfirmedEdit(false);
   }
 
@@ -730,57 +597,19 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
     setSavingConfirmedEdit(true);
     setError("");
-    const itemsToCancel = [...confirmedItems];
-    const { error: deleteError } = await Services.DatabaseService.delete("confirmed_order_items")
-      .eq("store_id", currentStoreId)
-      .eq("order_date", todayOrderDate);
-    if (deleteError) {
-      setError(deleteError.message);
+    const { error: cancelError } = await Services.DatabaseService.rpc("cancel_confirmed_order", {
+      target_store_id: currentStoreId,
+      target_order_date: todayOrderDate
+    });
+    if (cancelError) {
+      setError(cancelError.message);
       setSavingConfirmedEdit(false);
       return;
     }
-
-    const confirmedProductIds = itemsToCancel.map((item) => item.product_id);
-    const freshProductIds = itemsToCancel.filter((item) => item.fresh_order_selected).map((item) => item.product_id);
-    let confirmationStateNeedsReload = false;
-    const { error: clearConfirmationError } = await Services.DatabaseService.update("products", { order_completed: false, confirmed_order_pending: false })
-      .eq("store_id", currentStoreId)
-      .in("id", confirmedProductIds);
-    if (clearConfirmationError) {
-      setError(`확정 목록은 취소됐지만 컨펌 상태를 되돌리지 못했습니다. ${clearConfirmationError.message}`);
-      confirmationStateNeedsReload = true;
-    } else if (freshProductIds.length > 0) {
-      const { error: restoreAddedOrderError } = await Services.DatabaseService.update("products", {
-          fresh_order_selected: true,
-          fresh_order_selected_at: new Date().toISOString()
-        })
-        .eq("store_id", currentStoreId)
-        .in("id", freshProductIds);
-      if (restoreAddedOrderError) {
-        setError(`확정 목록은 취소됐지만 추가 품목을 복원하지 못했습니다. ${restoreAddedOrderError.message}`);
-        confirmationStateNeedsReload = true;
-      }
-    }
-
-    const freshProductIdSet = new Set(freshProductIds);
-    const confirmedProductIdSet = new Set(confirmedProductIds);
-    setItems((current) => current.map((item) => (
-      confirmedProductIdSet.has(item.id)
-        ? {
-            ...item,
-            order_completed: false,
-            confirmed_order_pending: false,
-            ...(freshProductIdSet.has(item.id) ? { fresh_order_selected: true, fresh_order_selected_at: new Date().toISOString() } : {})
-          }
-        : item
-    )));
     setConfirmedItems([]);
     setConfirmedEditMode(false);
-    if (confirmationStateNeedsReload) {
-      await loadItems();
-    } else {
-      setMessage("오늘 확정한 품목을 모두 취소했습니다.");
-    }
+    await loadItems();
+    setMessage("오늘 확정한 품목을 모두 취소했습니다.");
     setSavingConfirmedEdit(false);
   }
 

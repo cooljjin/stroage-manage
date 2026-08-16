@@ -3,9 +3,10 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
+import { useMobileViewport } from "../hooks/useMobileViewport";
 import { isNativeBarcodeScannerAvailable, scanNativeBarcode } from "../lib/nativeBarcodeScanner";
 import * as Services from "../services";
-import type { AppRoute, Product } from "../types/domain";
+import type { AppRoute, MobileInventoryEntryMode, Product } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -37,12 +38,13 @@ type PendingScanEntry = {
   barcode: string;
   storeId: string;
   savedAt: number;
+  initialInventoryMode?: MobileInventoryEntryMode;
 };
 
-function savePendingScanBarcode(barcode: string, storeId: string) {
+function savePendingScanBarcode(barcode: string, storeId: string, initialInventoryMode: MobileInventoryEntryMode) {
   const normalized = barcode.trim();
   if (!normalized) return;
-  const entry: PendingScanEntry = { barcode: normalized, storeId, savedAt: Date.now() };
+  const entry: PendingScanEntry = { barcode: normalized, storeId, savedAt: Date.now(), initialInventoryMode };
   localStorage.setItem(PENDING_SCAN_STORAGE_KEY, JSON.stringify(entry));
 }
 
@@ -50,7 +52,7 @@ function clearPendingScanBarcode() {
   localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
 }
 
-function consumePendingScanBarcode(storeId: string): string | null {
+function consumePendingScanBarcode(storeId: string): PendingScanEntry | null {
   const rawEntry = localStorage.getItem(PENDING_SCAN_STORAGE_KEY);
   if (!rawEntry) return null;
 
@@ -58,7 +60,7 @@ function consumePendingScanBarcode(storeId: string): string | null {
     const entry = JSON.parse(rawEntry) as PendingScanEntry;
     localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
     if (entry.storeId !== storeId || Date.now() - entry.savedAt > PENDING_SCAN_TTL_MS) return null;
-    return entry.barcode.trim() || null;
+    return entry.barcode.trim() ? { ...entry, initialInventoryMode: entry.initialInventoryMode ?? "auto" } : null;
   } catch {
     localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
     return null;
@@ -99,6 +101,9 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_CAMERA_ZOOM);
   const [nativeScanBusy, setNativeScanBusy] = useState(false);
+  const [auditModeEnabled, setAuditModeEnabled] = useState(false);
+  const isMobileViewport = useMobileViewport();
+  const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
   const nativeScannerAvailable = useMemo(() => isNativeBarcodeScannerAvailable(), []);
   const [showFallbackUi, setShowFallbackUi] = useState(!nativeScannerAvailable);
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -121,10 +126,10 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     };
   }, []);
 
-  const handleBarcode = useCallback(async (barcode: string) => {
+  const handleBarcode = useCallback(async (barcode: string, initialInventoryMode: MobileInventoryEntryMode = auditModeEnabled && mobileTouchEnabled && isMobileViewport ? "audit" : "auto") => {
     if (barcodeHandlingRef.current) return;
     barcodeHandlingRef.current = true;
-    savePendingScanBarcode(barcode, currentStoreId);
+    savePendingScanBarcode(barcode, currentStoreId, initialInventoryMode);
     setMessage(`스캔됨: ${barcode}`);
     if (scannerRef.current?.isScanning) {
       await scannerRef.current.stop().catch(() => undefined);
@@ -143,13 +148,13 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (product) {
       clearPendingScanBarcode();
       completedNavigationRef.current = true;
-      navigate({ name: "operation", productId: product.id });
+      navigate({ name: "operation", productId: product.id, initialInventoryMode });
     } else {
       clearPendingScanBarcode();
       completedNavigationRef.current = true;
       navigate({ name: "register", barcode });
     }
-  }, [currentStoreId, navigate]);
+  }, [auditModeEnabled, currentStoreId, isMobileViewport, mobileTouchEnabled, navigate]);
 
   const startWebScanner = useCallback(async (initialMessage = "", scanAttempt = scanAttemptRef.current) => {
     if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
@@ -272,11 +277,11 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   }, [canScan, handleBarcode, nativeScannerAvailable, navigate, startWebScanner]);
 
   useEffect(() => {
-    const pendingBarcode = consumePendingScanBarcode(currentStoreId);
-    if (pendingBarcode) {
+    const pendingScan = consumePendingScanBarcode(currentStoreId);
+    if (pendingScan) {
       const timer = window.setTimeout(() => {
         if (!mountedRef.current || completedNavigationRef.current) return;
-        void handleBarcode(pendingBarcode);
+        void handleBarcode(pendingScan.barcode, pendingScan.initialInventoryMode);
       }, 0);
 
       return () => window.clearTimeout(timer);
@@ -393,6 +398,22 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
         <>
           <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
 
+          {isMobileViewport && mobileTouchEnabled ? (
+            <label className="mb-4 flex items-center justify-between gap-3 rounded-md border border-brand-200 bg-brand-50 px-3 py-3 text-sm font-bold text-brand-900 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-100">
+              <span>
+                실사모드
+                <span className="mt-0.5 block text-xs font-semibold text-brand-700/80 dark:text-brand-200/80">등록 상품을 열 때 실사 화면으로 시작합니다.</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={auditModeEnabled}
+                onChange={(event) => setAuditModeEnabled(event.target.checked)}
+                className="h-6 w-6 accent-brand-600"
+                aria-label="스캔 실사모드"
+              />
+            </label>
+          ) : null}
+
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="panel p-4">
               <div className="relative overflow-hidden rounded-md bg-slate-900">
@@ -464,7 +485,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
                   <button
                     key={product.id}
                     type="button"
-                    onClick={() => navigate({ name: "operation", productId: product.id })}
+                    onClick={() => navigate({ name: "operation", productId: product.id, initialInventoryMode: auditModeEnabled ? "audit" : "auto" })}
                     className="w-full rounded-md border border-slate-200 bg-white p-3 text-left dark:border-slate-800 dark:bg-slate-900"
                   >
                     <span className="block font-semibold">{product.name}</span>

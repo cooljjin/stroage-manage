@@ -126,7 +126,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     const [categoryResult, supplierResult, unitResult, productsResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => fallbackSuppliers()),
-      loadProductUnits({ activeOnly: true }).catch(() => fallbackProductUnits()),
+      loadProductUnits(currentStoreId, { activeOnly: true }).catch(() => fallbackProductUnits(currentStoreId)),
       Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).order("name", { ascending: true })
     ]);
 
@@ -138,7 +138,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
 
     const nextCategories = categoryResult.length > 0 ? categoryResult : fallbackCategories();
     const nextSuppliers = supplierResult.length > 0 ? supplierResult : fallbackSuppliers();
-    const nextUnits = unitResult.length > 0 ? unitResult : fallbackProductUnits();
+    const nextUnits = unitResult.length > 0 ? unitResult : fallbackProductUnits(currentStoreId);
     setProducts((productsResult.data ?? []) as Product[]);
 
     if (isRegisterMode) {
@@ -177,7 +177,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
           ]
         : nextSuppliers;
       const unitsWithProduct = nextProduct.unit_name && !nextUnits.some((item) => item.name === nextProduct.unit_name)
-        ? [...nextUnits, { id: nextProduct.unit_name, name: nextProduct.unit_name, is_active: true, sort_order: nextUnits.length + 1, created_at: new Date(0).toISOString() }]
+        ? [...nextUnits, { id: nextProduct.unit_name, store_id: currentStoreId, name: nextProduct.unit_name, is_active: true, sort_order: nextUnits.length + 1, created_at: new Date(0).toISOString() }]
         : nextUnits;
 
       setProduct(nextProduct);

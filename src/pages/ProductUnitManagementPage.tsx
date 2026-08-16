@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
@@ -6,7 +6,11 @@ import { loadProductUnits } from "../lib/productUnits";
 import * as Services from "../services";
 import type { ProductUnit } from "../types/domain";
 
-export function ProductUnitManagementPage() {
+type Props = {
+  currentStoreId: string;
+};
+
+export function ProductUnitManagementPage({ currentStoreId }: Props) {
   const [units, setUnits] = useState<ProductUnit[]>([]);
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
@@ -15,22 +19,22 @@ export function ProductUnitManagementPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const nextUnits = await loadProductUnits();
+      const nextUnits = await loadProductUnits(currentStoreId);
       setUnits(nextUnits);
       setNameDrafts(Object.fromEntries(nextUnits.map((unit) => [unit.id, unit.name])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "품목 단위를 불러오지 못했습니다.");
     }
     setLoading(false);
-  }
+  }, [currentStoreId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   async function addUnit(event: FormEvent) {
     event.preventDefault();
@@ -40,7 +44,7 @@ export function ProductUnitManagementPage() {
     setError("");
     setMessage("");
     const nextSortOrder = units.reduce((max, unit) => Math.max(max, unit.sort_order), 0) + 1;
-    const { error: insertError } = await Services.DatabaseService.insert("product_units", { name: trimmedName, sort_order: nextSortOrder });
+    const { error: insertError } = await Services.DatabaseService.insert("product_units", { store_id: currentStoreId, name: trimmedName, sort_order: nextSortOrder });
     if (insertError) {
       setError(insertError.message);
     } else {
@@ -75,20 +79,15 @@ export function ProductUnitManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: unitError } = await Services.DatabaseService.update("product_units", { name: nextName }).eq("id", unit.id);
+    const { error: unitError } = await Services.DatabaseService.rpc("rename_product_unit", { target_unit_id: unit.id, next_name: nextName });
     if (unitError) {
       setError(unitError.message);
       return;
     }
 
-    const { error: productError } = await Services.DatabaseService.update("products", { unit_name: nextName }).eq("unit_name", unit.name);
-    if (productError) {
-      setError(productError.message);
-    } else {
-      setEditingUnitId(null);
-      setMessage("품목 단위 이름을 수정했습니다.");
-      await refresh();
-    }
+    setEditingUnitId(null);
+    setMessage("품목 단위 이름을 수정했습니다.");
+    await refresh();
   }
 
   async function moveUnit(index: number, direction: "up" | "down") {
@@ -123,7 +122,7 @@ export function ProductUnitManagementPage() {
       return;
     }
 
-    const { count, error: countError } = await Services.DatabaseService.select("products", "id", { count: "exact", head: true }).eq("unit_name", unit.name);
+    const { count, error: countError } = await Services.DatabaseService.select("products", "id", { count: "exact", head: true }).eq("store_id", currentStoreId).eq("unit_name", unit.name);
     if (countError) {
       setError(countError.message);
       return;
