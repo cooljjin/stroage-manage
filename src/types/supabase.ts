@@ -39,6 +39,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      mutation_requests: {
+        Row: {
+          id: string;
+          store_id: string;
+          user_id: string;
+          request_id: string;
+          operation_type: string;
+          result_json: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          user_id: string;
+          request_id: string;
+          operation_type: string;
+          result_json?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          result_json?: Json | null;
+          completed_at?: string | null;
+        };
+        Relationships: [];
+      };
       store_invites: {
         Row: {
           id: string;
@@ -478,7 +505,8 @@ export type Database = {
           id: string;
           store_id: string;
           menu_id: string;
-          product_id: string;
+          product_id: string | null;
+          ingredient_name: string | null;
           quantity_per_item: number;
           quantity_unit: RecipeUsageUnit;
           sort_order: number;
@@ -488,14 +516,16 @@ export type Database = {
           id?: string;
           store_id?: string;
           menu_id: string;
-          product_id: string;
+          product_id?: string | null;
+          ingredient_name?: string | null;
           quantity_per_item: number;
           quantity_unit: RecipeUsageUnit;
           sort_order?: number;
           created_at?: string;
         };
         Update: {
-          product_id?: string;
+          product_id?: string | null;
+          ingredient_name?: string | null;
           quantity_per_item?: number;
           quantity_unit?: RecipeUsageUnit;
           sort_order?: number;
@@ -523,6 +553,249 @@ export type Database = {
             referencedColumns: ["id"];
           }
         ];
+      };
+      recipe_import_jobs: {
+        Row: {
+          id: string;
+          store_id: string;
+          created_by: string | null;
+          source_type: "xlsx" | "xls" | "csv" | "pdf";
+          file_name: string;
+          file_size: number;
+          file_hash: string;
+          storage_path: string | null;
+          status: string;
+          estimated_cost_usd: number;
+          approved_cost_usd: number | null;
+          actual_cost_usd: number;
+          input_tokens: number;
+          output_tokens: number;
+          provider: string;
+          model: string;
+          prompt_version: string;
+          total_segments: number;
+          completed_segments: number;
+          error_message: string | null;
+          source_expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          store_id?: string;
+          created_by?: string;
+          source_type: "xlsx" | "xls" | "csv" | "pdf";
+          file_name: string;
+          file_size: number;
+          file_hash: string;
+          storage_path?: string | null;
+          status?: string;
+          estimated_cost_usd?: number;
+          approved_cost_usd?: number | null;
+          actual_cost_usd?: number;
+          input_tokens?: number;
+          output_tokens?: number;
+          provider?: string;
+          model?: string;
+          prompt_version?: string;
+          total_segments?: number;
+          completed_segments?: number;
+          error_message?: string | null;
+          source_expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          storage_path?: string | null;
+          status?: string;
+          estimated_cost_usd?: number;
+          approved_cost_usd?: number | null;
+          actual_cost_usd?: number;
+          input_tokens?: number;
+          output_tokens?: number;
+          total_segments?: number;
+          completed_segments?: number;
+          error_message?: string | null;
+          source_expires_at?: string | null;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      recipe_import_segments: {
+        Row: {
+          id: string;
+          job_id: string;
+          segment_key: string;
+          segment_kind: "workbook" | "sheet" | "pdf_pages";
+          page_start: number | null;
+          page_end: number | null;
+          payload: Json | null;
+          status: string;
+          attempt_count: number;
+          extracted_json: Json | null;
+          input_tokens: number;
+          output_tokens: number;
+          actual_cost_usd: number;
+          error_message: string | null;
+          locked_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          segment_key: string;
+          segment_kind: "workbook" | "sheet" | "pdf_pages";
+          page_start?: number | null;
+          page_end?: number | null;
+          payload?: Json | null;
+          status?: string;
+          attempt_count?: number;
+          extracted_json?: Json | null;
+          input_tokens?: number;
+          output_tokens?: number;
+          actual_cost_usd?: number;
+          error_message?: string | null;
+          locked_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          payload?: Json | null;
+          status?: string;
+          attempt_count?: number;
+          extracted_json?: Json | null;
+          input_tokens?: number;
+          output_tokens?: number;
+          actual_cost_usd?: number;
+          error_message?: string | null;
+          locked_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      recipe_import_menus: {
+        Row: {
+          id: string;
+          job_id: string;
+          source_key: string;
+          name: string;
+          sort_order: number;
+          yield_quantity: number | null;
+          yield_unit: string | null;
+          source_refs: Json;
+          warnings: Json;
+          confidence: number | null;
+          review_status: string;
+          decision: "create" | "replace" | "skip";
+          existing_menu_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          source_key: string;
+          name: string;
+          sort_order?: number;
+          yield_quantity?: number | null;
+          yield_unit?: string | null;
+          source_refs?: Json;
+          warnings?: Json;
+          confidence?: number | null;
+          review_status?: string;
+          decision?: "create" | "replace" | "skip";
+          existing_menu_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          sort_order?: number;
+          review_status?: string;
+          decision?: "create" | "replace" | "skip";
+          existing_menu_id?: string | null;
+        };
+        Relationships: [];
+      };
+      recipe_import_ingredients: {
+        Row: {
+          id: string;
+          import_menu_id: string;
+          source_name: string;
+          source_quantity: number | null;
+          source_unit: string | null;
+          quantity_per_item: number;
+          quantity_unit: RecipeUsageUnit;
+          product_id: string | null;
+          ingredient_name: string | null;
+          source_refs: Json;
+          candidates: Json;
+          warnings: Json;
+          confidence: number | null;
+          match_status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          import_menu_id: string;
+          source_name: string;
+          source_quantity?: number | null;
+          source_unit?: string | null;
+          quantity_per_item: number;
+          quantity_unit: RecipeUsageUnit;
+          product_id?: string | null;
+          ingredient_name?: string | null;
+          source_refs?: Json;
+          candidates?: Json;
+          warnings?: Json;
+          confidence?: number | null;
+          match_status?: string;
+          created_at?: string;
+        };
+        Update: {
+          product_id?: string | null;
+          ingredient_name?: string | null;
+          quantity_per_item?: number;
+          quantity_unit?: RecipeUsageUnit;
+          match_status?: string;
+        };
+        Relationships: [];
+      };
+      recipe_product_aliases: {
+        Row: {
+          id: string;
+          store_id: string;
+          alias_normalized: string;
+          alias_display: string;
+          product_id: string;
+          unit_context: string | null;
+          confirmed_count: number;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          alias_normalized: string;
+          alias_display: string;
+          product_id: string;
+          unit_context?: string | null;
+          confirmed_count?: number;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          alias_normalized?: string;
+          alias_display?: string;
+          product_id?: string;
+          unit_context?: string | null;
+          confirmed_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       group_order_events: {
         Row: {
@@ -617,6 +890,8 @@ export type Database = {
           product_id: string;
           warehouse_qty: number;
           store_qty: number;
+          warehouse_version: number;
+          store_version: number;
           updated_at: string;
         };
         Insert: {
@@ -625,12 +900,16 @@ export type Database = {
           product_id: string;
           warehouse_qty?: number;
           store_qty?: number;
+          warehouse_version?: number;
+          store_version?: number;
           updated_at?: string;
         };
         Update: {
           store_id?: string;
           warehouse_qty?: number;
           store_qty?: number;
+          warehouse_version?: number;
+          store_version?: number;
           updated_at?: string;
         };
         Relationships: [
@@ -720,6 +999,8 @@ export type Database = {
           store_qty_started: number;
           warehouse_qty_current: number;
           store_qty_current: number;
+          warehouse_version: number;
+          store_version: number;
           inventory_updated_at: string;
           started_at: string;
           last_activity_at: string;
@@ -736,6 +1017,8 @@ export type Database = {
           store_qty_started: number;
           warehouse_qty_current: number;
           store_qty_current: number;
+          warehouse_version?: number;
+          store_version?: number;
           inventory_updated_at: string;
           started_at?: string;
           last_activity_at?: string;
@@ -745,6 +1028,8 @@ export type Database = {
           status?: string;
           warehouse_qty_current?: number;
           store_qty_current?: number;
+          warehouse_version?: number;
+          store_version?: number;
           inventory_updated_at?: string;
           last_activity_at?: string;
           finalized_at?: string | null;
@@ -764,6 +1049,10 @@ export type Database = {
           store_qty_before: number;
           warehouse_qty_after: number;
           store_qty_after: number;
+          warehouse_version_before: number;
+          store_version_before: number;
+          warehouse_version_after: number;
+          store_version_after: number;
           occurred_at: string;
         };
         Insert: {
@@ -778,6 +1067,10 @@ export type Database = {
           store_qty_before: number;
           warehouse_qty_after: number;
           store_qty_after: number;
+          warehouse_version_before?: number;
+          store_version_before?: number;
+          warehouse_version_after?: number;
+          store_version_after?: number;
           occurred_at?: string;
         };
         Update: never;
@@ -933,10 +1226,12 @@ export type Database = {
       dashboard_receipt_deletions: {
         Row: {
           id: string;
+          store_id: string;
           product_id: string;
           log_ids: string[];
           warehouse_quantity: number;
           store_quantity: number;
+          inventory_reverted: boolean;
           deleted_by: string;
           deleted_at: string;
           restored_by: string | null;
@@ -944,10 +1239,12 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          store_id?: string;
           product_id: string;
           log_ids: string[];
           warehouse_quantity?: number;
           store_quantity?: number;
+          inventory_reverted?: boolean;
           deleted_by: string;
           deleted_at?: string;
           restored_by?: string | null;
@@ -1197,6 +1494,23 @@ export type Database = {
         };
         Returns: undefined;
       };
+      restore_inventory_to_log_v2: {
+        Args: {
+          target_log_id: string;
+          restored_warehouse_qty: number;
+          restored_store_qty: number;
+          expected_warehouse_version: number;
+          expected_store_version: number;
+          request_id: string;
+        };
+        Returns: {
+          warehouse_qty: number;
+          store_qty: number;
+          warehouse_version: number;
+          store_version: number;
+          inventory_updated_at: string;
+        }[];
+      };
       apply_mobile_inventory_change: {
         Args: {
           target_session_id: string | null;
@@ -1214,6 +1528,30 @@ export type Database = {
           session_id: string;
           warehouse_qty: number;
           store_qty: number;
+          inventory_updated_at: string;
+          last_activity_at: string;
+        }[];
+      };
+      apply_mobile_inventory_change_v2: {
+        Args: {
+          target_session_id: string | null;
+          target_product_id: string;
+          operation_mode: string;
+          target_location: string | null;
+          move_direction: string | null;
+          requested_warehouse_qty: number;
+          requested_store_qty: number;
+          expected_warehouse_version: number;
+          expected_store_version: number;
+          request_id: string;
+          entry_source: string;
+        };
+        Returns: {
+          session_id: string;
+          warehouse_qty: number;
+          store_qty: number;
+          warehouse_version: number;
+          store_version: number;
           inventory_updated_at: string;
           last_activity_at: string;
         }[];
@@ -1238,6 +1576,23 @@ export type Database = {
           restored_store_qty: number;
         };
         Returns: undefined;
+      };
+      restore_inventory_to_mobile_session_v2: {
+        Args: {
+          target_session_id: string;
+          restored_warehouse_qty: number;
+          restored_store_qty: number;
+          expected_warehouse_version: number;
+          expected_store_version: number;
+          request_id: string;
+        };
+        Returns: {
+          warehouse_qty: number;
+          store_qty: number;
+          warehouse_version: number;
+          store_version: number;
+          inventory_updated_at: string;
+        }[];
       };
       record_inventory_operation: {
         Args: {
@@ -1290,6 +1645,96 @@ export type Database = {
         };
         Returns: number;
       };
+      record_inventory_operation_idempotent: {
+        Args: {
+          target_product_id: string;
+          operation_action: string;
+          target_location: string;
+          move_direction: string;
+          operation_quantity: number;
+          expected_inventory_updated_at: string;
+          request_id: string;
+        };
+        Returns: string;
+      };
+      record_inventory_operation_idempotent_v2: {
+        Args: {
+          target_product_id: string;
+          operation_action: string;
+          target_location: string;
+          move_direction: string;
+          operation_quantity: number;
+          expected_warehouse_version: number;
+          expected_store_version: number;
+          request_id: string;
+        };
+        Returns: {
+          log_id: string;
+          warehouse_qty: number;
+          store_qty: number;
+          warehouse_version: number;
+          store_version: number;
+          inventory_updated_at: string;
+        }[];
+      };
+      record_receipt_check_idempotent: {
+        Args: {
+          target_product_id: string;
+          receipt_quantity: number | null;
+          receipt_note: string;
+          request_id: string;
+        };
+        Returns: string;
+      };
+      replace_confirmed_order_items_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_order_date: string;
+          item_rows: Json;
+          confirmation_note: string | null;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"][];
+      };
+      add_confirmed_order_item_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_order_date: string;
+          target_product_id: string;
+          required_quantity_value: number | null;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
+      remove_confirmed_order_item_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+          request_id: string;
+        };
+        Returns: string;
+      };
+      cancel_confirmed_order_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_order_date: string;
+          request_id: string;
+        };
+        Returns: number;
+      };
+      diagnose_store_consistency: {
+        Args: {
+          target_store_id: string;
+        };
+        Returns: {
+          product_id: string;
+          product_name: string;
+          issue_type: string;
+          expected_value: Json;
+          actual_value: Json;
+          last_changed_at: string;
+        }[];
+      };
       rename_product_unit: {
         Args: {
           target_unit_id: string;
@@ -1303,6 +1748,13 @@ export type Database = {
         };
         Returns: string;
       };
+      delete_today_product_receipts_idempotent: {
+        Args: {
+          target_product_id: string;
+          request_id: string;
+        };
+        Returns: string;
+      };
       delete_dashboard_expected_receipt: {
         Args: {
           target_product_id: string;
@@ -1310,8 +1762,22 @@ export type Database = {
         };
         Returns: number;
       };
+      delete_dashboard_expected_receipt_idempotent: {
+        Args: {
+          target_product_id: string;
+          target_order_dates: string[];
+          request_id: string;
+        };
+        Returns: number;
+      };
       restore_latest_dashboard_receipt_deletion: {
         Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
+      restore_latest_dashboard_receipt_deletion_idempotent: {
+        Args: {
+          request_id: string;
+        };
         Returns: string;
       };
       resolve_store_staff_names: {
@@ -1376,6 +1842,46 @@ export type Database = {
           ordered_prep_item_ids: string[];
         };
         Returns: undefined;
+      };
+      create_recipe_import_job: {
+        Args: {
+          target_store_id: string;
+          target_source_type: "xlsx" | "xls" | "csv" | "pdf";
+          target_file_name: string;
+          target_file_size: number;
+          target_file_hash: string;
+          target_estimated_cost_usd: number;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
+      };
+      approve_recipe_import_job: {
+        Args: {
+          target_job_id: string;
+          target_approved_cost_usd: number;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
+      };
+      mark_recipe_import_uploaded: {
+        Args: {
+          target_job_id: string;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
+      };
+      apply_group_order_recipe_import_idempotent: {
+        Args: {
+          target_job_id: string;
+          request_id: string;
+        };
+        Returns: Json;
+      };
+      link_recipe_product_alias: {
+        Args: {
+          target_store_id: string;
+          target_alias: string;
+          target_product_id: string;
+          target_unit_context?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["recipe_product_aliases"]["Row"];
       };
     };
     Views: Record<string, never>;

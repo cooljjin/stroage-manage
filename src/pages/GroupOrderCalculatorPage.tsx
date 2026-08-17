@@ -24,6 +24,7 @@ type GroupOrderMenuWithIngredients = GroupOrderMenu & {
 
 type IngredientDraft = {
   productId: string;
+  customName: string;
   quantity: string;
   quantityUnit: RecipeUsageUnit;
   search: string;
@@ -80,7 +81,14 @@ type ScrollLockSnapshot = {
 
 type CalculationBuildResult = {
   results: CalculationResult[];
+  unlinkedIngredients: UnlinkedIngredientResult[];
   errorMessage: string;
+};
+
+type UnlinkedIngredientResult = {
+  name: string;
+  quantity: number;
+  unit: RecipeUsageUnit;
 };
 
 const recipeUsageUnits: RecipeUsageUnit[] = ["g", "kg", "ml", "L", "개"];
@@ -89,6 +97,7 @@ const volumeUsageUnits: RecipeUsageUnit[] = ["ml", "L", "개"];
 
 const emptyIngredientDraft: IngredientDraft = {
   productId: "",
+  customName: "",
   quantity: "",
   quantityUnit: "g",
   search: ""
@@ -272,6 +281,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
   const [orderDrafts, setOrderDrafts] = useState<OrderDraft[]>([{ menuId: "", menuSearch: "", quantity: "" }]);
   const [resultMode, setResultMode] = useState<ResultMode>("order");
   const [results, setResults] = useState<CalculationResult[] | null>(null);
+  const [unlinkedIngredients, setUnlinkedIngredients] = useState<UnlinkedIngredientResult[]>([]);
   const [orderActionQuantities, setOrderActionQuantities] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -378,7 +388,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
     setEditingId(restoreDraft.editingId);
     setRecipeName(restoreDraft.recipeName);
     setSortOrder(restoreDraft.sortOrder);
-    setIngredientDrafts(restoreDraft.ingredientDrafts.length > 0 ? restoreDraft.ingredientDrafts.map((draft) => ({ ...draft })) : [{ ...emptyIngredientDraft }]);
+    setIngredientDrafts(restoreDraft.ingredientDrafts.length > 0 ? restoreDraft.ingredientDrafts.map((draft) => ({ ...draft, customName: draft.customName ?? "" })) : [{ ...emptyIngredientDraft }]);
     setOrderDrafts(
       restoreDraft.orderDrafts.length > 0
         ? restoreDraft.orderDrafts.map((draft) => ({
@@ -407,13 +417,14 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
     setSortOrder(String(menu.sort_order));
     setIngredientDrafts(
       menu.ingredients.length > 0
-        ? menu.ingredients.map((ingredient) => {
-            const product = productsById.get(ingredient.product_id);
+          ? menu.ingredients.map((ingredient) => {
+            const product = ingredient.product_id ? productsById.get(ingredient.product_id) : undefined;
             return {
-              productId: ingredient.product_id,
+              productId: ingredient.product_id ?? "",
+              customName: ingredient.ingredient_name ?? "",
               quantity: formatAmountInput(Number(ingredient.quantity_per_item)),
               quantityUnit: normalizeRecipeUnit(ingredient.quantity_unit),
-              search: product?.name ?? ""
+              search: product?.name ?? ingredient.ingredient_name ?? ""
             };
           })
         : [{ ...emptyIngredientDraft }]
@@ -430,6 +441,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
   function selectIngredientProduct(index: number, product: InventoryItem) {
     updateIngredientDraft(index, {
       productId: product.id,
+      customName: "",
       search: product.name,
       quantityUnit: availableUsageUnits(product)[0] ?? "개"
     });
@@ -497,6 +509,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
 
   function buildCalculationResults(drafts: OrderDraft[], emptyMessage: string): CalculationBuildResult {
     const aggregates = new Map<string, AggregateResult>();
+    const unlinked = new Map<string, UnlinkedIngredientResult>();
     let hasOrder = false;
 
     for (const draft of drafts) {
@@ -505,22 +518,33 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
       const orderQuantity = Number(draft.quantity);
 
       if (!menu) {
-        return { results: [], errorMessage: "주문 메뉴를 선택해 주세요." };
+        return { results: [], unlinkedIngredients: [], errorMessage: "주문 메뉴를 선택해 주세요." };
       }
       if (!Number.isFinite(orderQuantity) || orderQuantity <= 0) {
-        return { results: [], errorMessage: "주문수량은 0보다 큰 숫자로 입력해 주세요." };
+        return { results: [], unlinkedIngredients: [], errorMessage: "주문수량은 0보다 큰 숫자로 입력해 주세요." };
       }
 
       hasOrder = true;
       for (const ingredient of menu.ingredients) {
-        const product = productsById.get(ingredient.product_id);
+        const product = ingredient.product_id ? productsById.get(ingredient.product_id) : undefined;
         const perItemQuantity = Number(ingredient.quantity_per_item);
-        if (!product || !Number.isFinite(perItemQuantity) || perItemQuantity <= 0) {
-          return { results: [], errorMessage: `${menu.name} 레시피에 사용할 수 없는 재료가 있습니다.` };
+        if (!Number.isFinite(perItemQuantity) || perItemQuantity <= 0) {
+          return { results: [], unlinkedIngredients: [], errorMessage: `${menu.name} 레시피에 사용할 수 없는 재료가 있습니다.` };
         }
 
         const unit = normalizeRecipeUnit(ingredient.quantity_unit);
         const totalQuantity = perItemQuantity * orderQuantity;
+        if (!product) {
+          const ingredientName = ingredient.ingredient_name?.trim();
+          if (!ingredientName) {
+            return { results: [], unlinkedIngredients: [], errorMessage: `${menu.name} 레시피에 연결되지 않은 재료명이 없습니다.` };
+          }
+          const unlinkedKey = `${ingredientName.toLocaleLowerCase("ko")}::${unit}`;
+          const currentUnlinked = unlinked.get(unlinkedKey) ?? { name: ingredientName, quantity: 0, unit };
+          currentUnlinked.quantity += totalQuantity;
+          unlinked.set(unlinkedKey, currentUnlinked);
+          continue;
+        }
         const current = aggregates.get(product.id) ?? {
           product,
           baseKind: null,
@@ -533,7 +557,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
         } else {
           const baseKind: MeasureKind = isVolumeUsageUnit(unit) ? "volume" : "weight";
           if (current.baseKind && current.baseKind !== baseKind) {
-            return { results: [], errorMessage: `${product.name} 재료의 레시피 단위가 무게와 부피로 섞여 있습니다.` };
+            return { results: [], unlinkedIngredients: [], errorMessage: `${product.name} 재료의 레시피 단위가 무게와 부피로 섞여 있습니다.` };
           }
           current.baseKind = baseKind;
           current.baseRequired += toBaseAmount(totalQuantity, unit);
@@ -544,7 +568,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
     }
 
     if (!hasOrder) {
-      return { results: [], errorMessage: emptyMessage };
+      return { results: [], unlinkedIngredients: [], errorMessage: emptyMessage };
     }
 
     const nextResults: CalculationResult[] = Array.from(aggregates.values()).map((aggregate) => {
@@ -579,7 +603,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
       return orderCompare || left.product.name.localeCompare(right.product.name, "ko");
     });
 
-    return { results: nextResults, errorMessage: "" };
+    return { results: nextResults, unlinkedIngredients: Array.from(unlinked.values()), errorMessage: "" };
   }
 
   function selectCalendarDate(dateValue: string) {
@@ -906,7 +930,8 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
     const nextName = recipeName.trim();
     const nextSortOrder = Number(sortOrder || menus.length + 1);
     const ingredientRows: {
-      product_id: string;
+      product_id: string | null;
+      ingredient_name: string | null;
       quantity_per_item: number;
       quantity_unit: RecipeUsageUnit;
       sort_order: number;
@@ -923,15 +948,16 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
     }
 
     for (const [index, draft] of ingredientDrafts.entries()) {
-      if (!draft.productId && !draft.search.trim()) continue;
-      const product = productsById.get(draft.productId);
+      const customName = draft.customName.trim() || (!draft.productId ? draft.search.trim() : "");
+      if (!draft.productId && !customName) continue;
+      const product = draft.productId ? productsById.get(draft.productId) : undefined;
       const quantity = Number(draft.quantity);
 
-      if (!product) {
-        setError("재료는 재고 품목에서 선택해 주세요.");
+      if (!product && !customName) {
+        setError("재료는 재고 품목에서 선택하거나 임시 재료명을 입력해 주세요.");
         return;
       }
-      if (seenProductIds.has(product.id)) {
+      if (product && seenProductIds.has(product.id)) {
         setError("같은 재료가 중복되어 있습니다.");
         return;
       }
@@ -939,14 +965,15 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
         setError("재료 사용량은 0보다 큰 숫자로 입력해 주세요.");
         return;
       }
-      if (!availableUsageUnits(product).includes(draft.quantityUnit)) {
+      if (product && !availableUsageUnits(product).includes(draft.quantityUnit)) {
         setError(`${product.name} 품목은 ${draft.quantityUnit} 단위로 계산할 수 없습니다.`);
         return;
       }
 
-      seenProductIds.add(product.id);
+      if (product) seenProductIds.add(product.id);
       ingredientRows.push({
-        product_id: product.id,
+        product_id: product?.id ?? null,
+        ingredient_name: product ? null : customName,
         quantity_per_item: Number(quantity.toFixed(3)),
         quantity_unit: draft.quantityUnit,
         sort_order: index + 1
@@ -1069,6 +1096,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
     );
     setResultMode("order");
     setResults(buildResult.results);
+    setUnlinkedIngredients(buildResult.unlinkedIngredients);
   }
 
   async function saveOrderQuantities() {
@@ -1157,6 +1185,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
       <PageTitle
         title={isRecipeMode ? "메뉴 레시피 등록" : "단체주문 계산"}
         description={isRecipeMode ? "단체주문 계산에 사용할 메뉴별 재료와 사용량을 관리합니다." : "메뉴별 주문수량으로 품목별 필요량과 발주량을 계산합니다."}
+        action={isRecipeMode && canManageRecipes ? <button type="button" className="secondary-button inline-flex items-center gap-2" onClick={() => navigate({ name: "group-order-recipe-import" })}>파일 자동 가져오기</button> : undefined}
       />
 
       {isRecipeMode && canManageRecipes ? (
@@ -1326,10 +1355,10 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
                       <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">순서 {menu.sort_order}</p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {menu.ingredients.map((ingredient) => {
-                          const product = productsById.get(ingredient.product_id);
+                          const product = ingredient.product_id ? productsById.get(ingredient.product_id) : undefined;
                           return (
                             <span key={ingredient.id} className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold dark:bg-slate-900">
-                              {product?.name ?? "삭제된 품목"} {formatAmountQuantity(Number(ingredient.quantity_per_item))}
+                              {product?.name ?? ingredient.ingredient_name ?? "삭제된 품목"} {formatAmountQuantity(Number(ingredient.quantity_per_item))}
                               {ingredient.quantity_unit}
                             </span>
                           );
@@ -1459,6 +1488,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
                     </div>
                   </div>
 
+                  {selectedRangeBuildResult.unlinkedIngredients.length > 0 ? <UnlinkedIngredientNotice ingredients={selectedRangeBuildResult.unlinkedIngredients} /> : null}
                   {selectedRangeResults.length > 0 ? (
                     <>
                       <div className="space-y-2 sm:hidden">
@@ -1791,6 +1821,8 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
                 </button>
               </div>
 
+              {unlinkedIngredients.length > 0 ? <UnlinkedIngredientNotice ingredients={unlinkedIngredients} /> : null}
+
               <div className="overflow-x-auto">
                 {resultMode === "order" ? (
                   <table className="w-full min-w-[760px] table-fixed text-left text-sm">
@@ -1867,5 +1899,17 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
         </>
       ) : null}
     </section>
+  );
+}
+
+function UnlinkedIngredientNotice({ ingredients }: { ingredients: UnlinkedIngredientResult[] }) {
+  return (
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+      <p className="font-bold">재고에 연결되지 않은 임시 재료</p>
+      <p className="mt-1 text-xs">발주량에는 포함하지 않고 별도 준비 목록으로 표시합니다. 상품을 등록한 뒤 레시피에서 연결해 주세요.</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {ingredients.map((ingredient) => <span key={`${ingredient.name}-${ingredient.unit}`} className="rounded bg-white/70 px-2 py-1 text-xs font-semibold dark:bg-slate-900/60">{ingredient.name} {formatAmountQuantity(ingredient.quantity)}{ingredient.unit}</span>)}
+      </div>
+    </div>
   );
 }

@@ -10,6 +10,7 @@ export const STAFF_PERMISSION_OPTIONS: ReadonlyArray<{ key: StaffPermissionKey; 
 const permissionByRoute = new Map(STAFF_PERMISSION_OPTIONS.map((permission) => [permission.route, permission.key]));
 
 export function permissionForRoute(route: RouteName): StaffPermissionKey | null {
+  if (route === "group-order-recipe-import") return "group_order_recipe_management";
   return permissionByRoute.get(route) ?? null;
 }
 

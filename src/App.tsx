@@ -25,6 +25,7 @@ import { StatusItemsPage } from "./pages/StatusItemsPage";
 import { LogsPage } from "./pages/LogsPage";
 import { TodoRoutinesPage } from "./pages/TodoRoutinesPage";
 import { GroupOrderCalculatorPage } from "./pages/GroupOrderCalculatorPage";
+import { RecipeImportPage } from "./pages/RecipeImportPage";
 import { PrepItemManagementPage } from "./pages/PrepItemManagementPage";
 import { PrepModePage } from "./pages/PrepModePage";
 import { CategoryManagementPage } from "./pages/CategoryManagementPage";
@@ -898,6 +899,14 @@ export default function App() {
                 currentStoreId={profile.store_id}
                 canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
                 restoreDraft={permittedRoute.groupOrderDraft}
+              />
+            )}
+            {permittedRoute.name === "group-order-recipe-import" && (
+              <RecipeImportPage
+                navigate={navigate}
+                currentStoreId={profile.store_id}
+                canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
+                jobId={permittedRoute.recipeImportJobId}
               />
             )}
             {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}

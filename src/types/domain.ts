@@ -35,6 +35,7 @@ export type RouteName =
   | "todo-routines"
   | "group-order"
   | "group-order-recipes"
+  | "group-order-recipe-import"
   | "prep-items"
   | "prep-mode"
   | "category-management"
@@ -167,6 +168,8 @@ export type Inventory = {
   product_id: string;
   warehouse_qty: number;
   store_qty: number;
+  warehouse_version: number;
+  store_version: number;
   updated_at: string;
 };
 
@@ -224,7 +227,8 @@ export type GroupOrderRecipeIngredient = {
   id: string;
   store_id: string;
   menu_id: string;
-  product_id: string;
+  product_id: string | null;
+  ingredient_name: string | null;
   quantity_per_item: number;
   quantity_unit: RecipeUsageUnit;
   sort_order: number;
@@ -273,6 +277,7 @@ export type GroupOrderRouteDraft = {
   sortOrder: string;
   ingredientDrafts: {
     productId: string;
+    customName?: string;
     quantity: string;
     quantityUnit: RecipeUsageUnit;
     search: string;
@@ -336,6 +341,8 @@ export type MobileInventorySession = {
   store_qty_started: number;
   warehouse_qty_current: number;
   store_qty_current: number;
+  warehouse_version: number;
+  store_version: number;
   inventory_updated_at: string;
   started_at: string;
   last_activity_at: string;
@@ -354,6 +361,10 @@ export type MobileInventorySessionEvent = {
   store_qty_before: number;
   warehouse_qty_after: number;
   store_qty_after: number;
+  warehouse_version_before: number;
+  store_version_before: number;
+  warehouse_version_after: number;
+  store_version_after: number;
   occurred_at: string;
 };
 
@@ -435,7 +446,96 @@ export type AppRoute = {
   returnTo?: "prep-items" | "group-order" | "group-order-recipes";
   prepDraft?: PrepItemRouteDraft;
   groupOrderDraft?: GroupOrderRouteDraft;
+  recipeImportJobId?: string;
   storeId?: string;
+};
+
+export type RecipeImportJobStatus =
+  | "awaiting_approval"
+  | "uploading"
+  | "queued"
+  | "processing"
+  | "needs_review"
+  | "ready"
+  | "awaiting_cost_approval"
+  | "applying"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type RecipeImportJob = {
+  id: string;
+  store_id: string;
+  created_by: string | null;
+  source_type: "xlsx" | "xls" | "csv" | "pdf";
+  file_name: string;
+  file_size: number;
+  file_hash: string;
+  storage_path: string | null;
+  status: RecipeImportJobStatus;
+  estimated_cost_usd: number;
+  approved_cost_usd: number | null;
+  actual_cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  total_segments: number;
+  completed_segments: number;
+  error_message: string | null;
+  source_expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
+export type RecipeImportMenu = {
+  id: string;
+  job_id: string;
+  source_key: string;
+  name: string;
+  sort_order: number;
+  yield_quantity: number | null;
+  yield_unit: string | null;
+  source_refs: unknown;
+  warnings: unknown;
+  confidence: number | null;
+  review_status: "ready" | "review" | "rejected";
+  decision: "create" | "replace" | "skip";
+  existing_menu_id: string | null;
+  created_at: string;
+};
+
+export type RecipeImportIngredient = {
+  id: string;
+  import_menu_id: string;
+  source_name: string;
+  source_quantity: number | null;
+  source_unit: string | null;
+  quantity_per_item: number;
+  quantity_unit: RecipeUsageUnit;
+  product_id: string | null;
+  ingredient_name: string | null;
+  source_refs: unknown;
+  candidates: unknown;
+  warnings: unknown;
+  confidence: number | null;
+  match_status: "matched" | "temporary" | "review" | "rejected";
+  created_at: string;
+};
+
+export type RecipeProductAlias = {
+  id: string;
+  store_id: string;
+  alias_normalized: string;
+  alias_display: string;
+  product_id: string;
+  unit_context: string | null;
+  confirmed_count: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SortKey = "name" | "warehouse_qty" | "store_qty" | "total_stock";
