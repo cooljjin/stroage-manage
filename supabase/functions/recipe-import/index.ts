@@ -196,9 +196,9 @@ async function callGemini(apiKey: string, model: string, sourceType: SourceType,
     });
   } catch (requestError) {
     if (requestError instanceof DOMException && requestError.name === "AbortError") {
-      throw new Error("Gemini API 요청 시간이 초과되었습니다. 파일을 나누어 다시 시도해 주세요.");
+      throw new Error("Gemini API 요청 시간이 초과되었습니다. 파일을 나누어 다시 시도해 주세요.", { cause: requestError });
     }
-    throw new Error("Gemini API에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    throw new Error("Gemini API에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.", { cause: requestError });
   } finally {
     clearTimeout(timeoutId);
   }
