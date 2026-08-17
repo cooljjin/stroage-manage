@@ -3,6 +3,10 @@ import type { WorkSheet } from "xlsx";
 export const RECIPE_IMPORT_MAX_FILE_SIZE = 50 * 1024 * 1024;
 export const RECIPE_IMPORT_ACCEPT = ".xlsx,.xls,.csv,.pdf";
 export const RECIPE_IMPORT_MODEL = "gemini-2.5-flash-lite";
+// Conservative paid-tier estimate for the default Gemini 2.5 Flash-Lite model.
+// Actual billing can be lower when the project is using the free tier.
+export const RECIPE_IMPORT_INPUT_PRICE_PER_MILLION = 0.18;
+export const RECIPE_IMPORT_OUTPUT_PRICE_PER_MILLION = 0.72;
 
 export type RecipeImportSourceType = "xlsx" | "xls" | "csv" | "pdf";
 
@@ -27,9 +31,6 @@ export type RecipeImportEstimate = {
   estimatedCostUsd: number;
   model: string;
 };
-
-const INPUT_PRICE_PER_MILLION = 0.30;
-const OUTPUT_PRICE_PER_MILLION = 2.50;
 
 export function getRecipeSourceType(fileName: string): RecipeImportSourceType | null {
   const extension = fileName.toLowerCase().split(".").pop();
@@ -109,7 +110,7 @@ export function estimateRecipeImportCost(manifest: RecipeImportManifest): Recipe
     ? Math.max(1_500, Math.ceil((manifest.pageCount ?? 1) * 1_700))
     : Math.max(1_000, Math.ceil((manifest.cellCount ?? 0) * 8 + manifest.fileSize / 160));
   const outputTokens = Math.max(500, Math.ceil(inputTokens * 0.35));
-  const estimatedCostUsd = Math.max(0.01, Number(((inputTokens * INPUT_PRICE_PER_MILLION + outputTokens * OUTPUT_PRICE_PER_MILLION) / 1_000_000).toFixed(4)));
+  const estimatedCostUsd = Math.max(0.01, Number(((inputTokens * RECIPE_IMPORT_INPUT_PRICE_PER_MILLION + outputTokens * RECIPE_IMPORT_OUTPUT_PRICE_PER_MILLION) / 1_000_000).toFixed(4)));
   return { inputTokens, outputTokens, estimatedCostUsd, model: RECIPE_IMPORT_MODEL };
 }
 

@@ -7,9 +7,10 @@ const corsHeaders = {
 };
 
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
-const PROMPT_VERSION = "recipe-import-v1";
-const INPUT_PRICE_PER_MILLION = 0.30;
-const OUTPUT_PRICE_PER_MILLION = 2.50;
+const PROMPT_VERSION = "recipe-import-v2-gemini-rest";
+const INPUT_PRICE_PER_MILLION = 0.18;
+const OUTPUT_PRICE_PER_MILLION = 0.72;
+const GEMINI_TIMEOUT_MS = 120_000;
 
 type JsonRecord = Record<string, unknown>;
 type SourceType = "xlsx" | "xls" | "csv" | "pdf";
@@ -74,8 +75,8 @@ Deno.serve(async (req) => {
   if (!job.approved_cost_usd || job.approved_cost_usd < job.estimated_cost_usd) return failJob(adminClient, jobId, "예상 비용 승인이 필요합니다.", "awaiting_cost_approval");
   if (!["queued", "processing", "awaiting_cost_approval"].includes(job.status)) return jsonResponse({ ok: true, status: job.status });
 
-  const model = Deno.env.get("GEMINI_RECIPE_MODEL") ?? DEFAULT_MODEL;
-  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  const model = normalizeModel(Deno.env.get("GEMINI_RECIPE_MODEL") ?? DEFAULT_MODEL);
+  const apiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
   if (!apiKey) return failJob(adminClient, jobId, "GEMINI_API_KEY 환경변수가 없습니다.");
 
   await adminClient.from("recipe_import_jobs").update({ status: "processing", provider: "google", model, prompt_version: PROMPT_VERSION, error_message: null }).eq("id", jobId);
@@ -176,16 +177,39 @@ async function loadSource(adminClient: ReturnType<typeof createClient>, storageP
 async function callGemini(apiKey: string, model: string, sourceType: SourceType, prompt: string, source: { bytes: Uint8Array; mimeType: string }) {
   const parts: JsonRecord[] = [{ text: prompt }];
   if (sourceType === "pdf") parts.push({ inlineData: { mimeType: source.mimeType, data: bytesToBase64(source.bytes) } });
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts }],
-      generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: recipeSchema() }
-    })
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          responseFormat: {
+            text: { mimeType: "application/json", schema: recipeSchema() }
+          }
+        }
+      })
+    });
+  } catch (requestError) {
+    if (requestError instanceof DOMException && requestError.name === "AbortError") {
+      throw new Error("Gemini API 요청 시간이 초과되었습니다. 파일을 나누어 다시 시도해 주세요.");
+    }
+    throw new Error("Gemini API에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  } finally {
+    clearTimeout(timeoutId);
+  }
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(String((payload as JsonRecord).error && ((payload as JsonRecord).error as JsonRecord).message || "Gemini API 요청에 실패했습니다."));
+  if (!response.ok) {
+    const apiError = (payload as JsonRecord).error as JsonRecord | undefined;
+    const apiMessage = typeof apiError?.message === "string" ? apiError.message : "Gemini API 요청에 실패했습니다.";
+    if (response.status === 401 || response.status === 403) throw new Error("Gemini API 키가 유효하지 않거나 권한이 없습니다.");
+    if (response.status === 429) throw new Error("Gemini API 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.");
+    throw new Error(`Gemini API 오류 (${response.status}): ${apiMessage}`);
+  }
   const candidate = (payload as JsonRecord).candidates as Array<JsonRecord> | undefined;
   const text = (((candidate?.[0]?.content as JsonRecord | undefined)?.parts as Array<JsonRecord> | undefined)?.find((part) => typeof part.text === "string")?.text as string | undefined) ?? "";
   if (!text) throw new Error("AI가 구조화된 레시피 결과를 반환하지 않았습니다.");
@@ -205,15 +229,15 @@ function buildPrompt(sourceType: SourceType, manifest: ImportManifest | undefine
 
 function recipeSchema() {
   return {
-    type: "OBJECT",
+    type: "object",
     properties: {
       menus: {
-        type: "ARRAY",
+        type: "array",
         items: {
-          type: "OBJECT",
+          type: "object",
           properties: {
-            source_key: { type: "STRING" }, name: { type: "STRING" }, sort_order: { type: "NUMBER" }, yield_quantity: { type: "NUMBER" }, yield_unit: { type: "STRING" }, confidence: { type: "NUMBER" }, warnings: { type: "ARRAY", items: { type: "STRING" } }, source_refs: { type: "ARRAY", items: { type: "STRING" } },
-            ingredients: { type: "ARRAY", items: { type: "OBJECT", properties: { source_name: { type: "STRING" }, source_quantity: { type: "NUMBER" }, source_unit: { type: "STRING" }, quantity_per_item: { type: "NUMBER" }, quantity_unit: { type: "STRING", enum: ["g", "kg", "ml", "L", "개"] }, confidence: { type: "NUMBER" }, warnings: { type: "ARRAY", items: { type: "STRING" } }, source_refs: { type: "ARRAY", items: { type: "STRING" } } }, required: ["source_name", "quantity_per_item", "quantity_unit"] } }
+            source_key: { type: "string" }, name: { type: "string" }, sort_order: { type: "number" }, yield_quantity: { type: "number" }, yield_unit: { type: "string" }, confidence: { type: "number" }, warnings: { type: "array", items: { type: "string" } }, source_refs: { type: "array", items: { type: "string" } },
+            ingredients: { type: "array", items: { type: "object", properties: { source_name: { type: "string" }, source_quantity: { type: "number" }, source_unit: { type: "string" }, quantity_per_item: { type: "number" }, quantity_unit: { type: "string", enum: ["g", "kg", "ml", "L", "개"] }, confidence: { type: "number" }, warnings: { type: "array", items: { type: "string" } }, source_refs: { type: "array", items: { type: "string" } } }, required: ["source_name", "quantity_per_item", "quantity_unit"] } }
           },
           required: ["name", "ingredients"]
         }
@@ -300,6 +324,7 @@ function jsonArray(value: unknown) { return Array.isArray(value) ? value : []; }
 function calculateCost(inputTokens: number, outputTokens: number) { return Number(((inputTokens * INPUT_PRICE_PER_MILLION + outputTokens * OUTPUT_PRICE_PER_MILLION) / 1_000_000).toFixed(6)); }
 function bytesToBase64(bytes: Uint8Array) { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }
 function isManifest(value: unknown): value is ImportManifest { return Boolean(value && typeof value === "object" && "sourceType" in value); }
+function normalizeModel(value: string) { return value.trim().replace(/^models\//, "") || DEFAULT_MODEL; }
 
 async function failJob(adminClient: ReturnType<typeof createClient>, jobId: string, message: string, status = "failed") {
   await adminClient.from("recipe_import_jobs").update({ status, error_message: message }).eq("id", jobId);
