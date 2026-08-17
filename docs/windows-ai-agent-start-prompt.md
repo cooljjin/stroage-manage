@@ -2,8 +2,43 @@
 
 새 Windows 컴퓨터에서 이 저장소를 클론한 뒤, 아래 내용을 AI 에이전트에게 그대로 전달한다. `.env` 값, 로그인 정보, 서명키는 프롬프트나 Git에 넣지 않는다.
 
+## 저장소 내려받기
+
+저장소 주소는 다음과 같다.
+
+```text
+https://github.com/cooljjin/stroage-manage.git
+```
+
+WSL2 Ubuntu를 사용할 경우:
+
+```bash
+mkdir -p ~/projects
+cd ~/projects
+git clone https://github.com/cooljjin/stroage-manage.git stockly
+cd stockly
+```
+
+Windows PowerShell에서 직접 받을 경우:
+
+```powershell
+git clone https://github.com/cooljjin/stroage-manage.git C:\dev\stockly
+Set-Location C:\dev\stockly
+```
+
+처음에는 읽기 전용 clone만 하면 된다. GitHub 로그인이나 push 권한 설정은 Windows에서 변경 사항을 올릴 때에만 진행한다.
+
 ```text
 Stockly 저장소에서 Windows 개발 환경을 시작하려고 한다.
+
+저장소 주소는 https://github.com/cooljjin/stroage-manage.git 이다. 아직 clone하지 않았다면 WSL2에서는 다음을 실행해라.
+mkdir -p ~/projects && cd ~/projects
+git clone https://github.com/cooljjin/stroage-manage.git stockly
+cd stockly
+
+Windows PowerShell을 사용할 경우에는 다음을 실행해라.
+git clone https://github.com/cooljjin/stroage-manage.git C:\dev\stockly
+Set-Location C:\dev\stockly
 
 먼저 저장소 루트의 AGENTS.md와 README.md를 끝까지 읽고, git status --short --branch와 git remote -v로 현재 상태를 확인해라. 기존 변경은 사용자 작업이므로 되돌리거나 대규모 포맷팅을 하지 마라.
 
