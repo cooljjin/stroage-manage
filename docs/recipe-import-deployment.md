@@ -2,13 +2,13 @@
 
 레시피 자동 가져오기는 `recipe-import` Edge Function을 사용합니다. Gemini API 키는 브라우저나 Vercel 환경변수가 아니라 Supabase Edge Function secret으로만 등록해야 합니다.
 
-- `GEMINI_API_KEY`: Google AI Studio에서 생성한 Gemini API 인증 키. Gemini API 전용으로 제한된 키를 사용하세요.
+- `GEMINI_API_KEY`: Google AI Studio에서 새로 생성한 Gemini API 인증(auth) 키. Gemini API 전용으로 제한된 키를 사용하세요.
 - `GEMINI_RECIPE_MODEL` (선택): 기본값 `gemini-2.5-flash-lite`
 - `RECIPE_IMPORT_CLEANUP_SECRET`: 원본 파일 정리 호출을 인증할 임의의 긴 문자열
 
 ## Gemini 키 등록
 
-Google AI Studio에서 Gemini API 전용 인증 키를 만든 뒤, Supabase 프로젝트에 등록합니다. 키를 Git, `.env`, 프런트엔드 코드에 넣지 마세요.
+Google AI Studio에서 새 인증(auth) 키를 만들고 Gemini API 전용으로 제한한 뒤, Supabase 프로젝트에 등록합니다. 키를 Git, `.env`, 프런트엔드 코드에 넣지 마세요.
 
 ```powershell
 npx supabase secrets set GEMINI_API_KEY=<발급받은-키> --project-ref <project-ref>
