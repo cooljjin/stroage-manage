@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { LogIn, LogOut, Store, Users } from "lucide-react";
+import { Activity, LogIn, LogOut, Store, Users } from "lucide-react";
 import * as Services from "../../src/services";
 import { ensureCurrentProfile } from "../../src/lib/profiles";
 import { StatusMessage } from "../../src/components/StatusMessage";
@@ -7,8 +7,9 @@ import type { Session } from "../../src/services";
 import type { StaffProfile } from "../../src/types/domain";
 import { MasterStoresPage } from "./pages/MasterStoresPage";
 import { MasterUsersPage } from "./pages/MasterUsersPage";
+import { MasterDiagnosticsPage } from "./pages/MasterDiagnosticsPage";
 
-type ConsoleView = "stores" | "users";
+type ConsoleView = "stores" | "users" | "diagnostics";
 
 function getProfileRole(profile: StaffProfile) {
   return profile.role ?? (profile.is_admin ? "store_admin" : "staff");
@@ -175,7 +176,7 @@ export default function AdminConsoleApp() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6">
-        <nav className="mb-5 grid grid-cols-2 gap-2 sm:max-w-md" aria-label="관리자 메뉴">
+        <nav className="mb-5 grid grid-cols-3 gap-2" aria-label="관리자 메뉴">
           <button type="button" onClick={() => setView("stores")} className={`touch-button inline-flex items-center justify-center gap-2 rounded-md border px-4 text-sm font-bold ${view === "stores" ? "border-brand-600 bg-brand-600 text-white" : "border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"}`}>
             <Store size={18} />
             전체 매장
@@ -184,8 +185,12 @@ export default function AdminConsoleApp() {
             <Users size={18} />
             전체 사용자
           </button>
+          <button type="button" onClick={() => setView("diagnostics")} className={`touch-button inline-flex items-center justify-center gap-2 rounded-md border px-4 text-sm font-bold ${view === "diagnostics" ? "border-brand-600 bg-brand-600 text-white" : "border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"}`}>
+            <Activity size={18} />
+            데이터 진단
+          </button>
         </nav>
-        {view === "stores" ? <MasterStoresPage /> : <MasterUsersPage />}
+        {view === "stores" ? <MasterStoresPage /> : view === "users" ? <MasterUsersPage /> : <MasterDiagnosticsPage />}
       </main>
     </div>
   );

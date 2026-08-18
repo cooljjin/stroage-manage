@@ -10,7 +10,8 @@ export type MobileInventoryApplyInput = {
   moveDirection: MobileMoveDirection | null;
   requestedWarehouseQty: number;
   requestedStoreQty: number;
-  expectedInventoryUpdatedAt: string;
+  expectedWarehouseVersion: number;
+  expectedStoreVersion: number;
   requestId: string;
   entrySource: "operation" | "scan_audit";
 };
@@ -19,6 +20,8 @@ export type MobileInventoryApplyResult = {
   session_id: string;
   warehouse_qty: number;
   store_qty: number;
+  warehouse_version: number;
+  store_version: number;
   inventory_updated_at: string;
   last_activity_at: string;
 };
@@ -28,7 +31,7 @@ function firstRow<T>(data: T | T[] | null): T | null {
 }
 
 export async function applyMobileInventoryChange(input: MobileInventoryApplyInput) {
-  const { data, error } = await Services.DatabaseService.rpc("apply_mobile_inventory_change", {
+  const { data, error } = await Services.DatabaseService.rpc("apply_mobile_inventory_change_v2", {
     target_session_id: input.targetSessionId,
     target_product_id: input.targetProductId,
     operation_mode: input.operationMode,
@@ -36,7 +39,8 @@ export async function applyMobileInventoryChange(input: MobileInventoryApplyInpu
     move_direction: input.moveDirection,
     requested_warehouse_qty: input.requestedWarehouseQty,
     requested_store_qty: input.requestedStoreQty,
-    expected_inventory_updated_at: input.expectedInventoryUpdatedAt,
+    expected_warehouse_version: input.expectedWarehouseVersion,
+    expected_store_version: input.expectedStoreVersion,
     request_id: input.requestId,
     entry_source: input.entrySource
   });

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
 import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { PressableButton } from "../components/PressableButton";
@@ -6,6 +6,7 @@ import { StatusMessage } from "../components/StatusMessage";
 import { addDateValueDays, getDateValueWeekday, getNextBusinessDate, getSeoulDateValue, isStoreClosureDate } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
+import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import * as Services from "../services";
 import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryLog, Product, StaffProfile, TodoRoutine } from "../types/domain";
 
@@ -37,6 +38,10 @@ type ReceiptHistoryLog = InventoryLog & {
     name?: string | null;
     receipt_check_only?: boolean | null;
   } | null;
+};
+type DashboardReceiptDeletion = {
+  id: string;
+  log_ids: string[];
 };
 
 type DashboardView = "today" | "tomorrow";
@@ -278,6 +283,9 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [deletingHandoverIds, setDeletingHandoverIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const todayReceiptRequestRef = useRef(new Map<string, string>());
+  const expectedReceiptRequestRef = useRef(new Map<string, string>());
+  const restoreReceiptRequestRef = useRef<string | null>(null);
   const selectedDate = dashboardView === "today" ? todayValue : nextBusinessDate;
   const todoCalendarDates = useMemo(() => getCalendarDates(todoCalendarMonth), [todoCalendarMonth]);
   const receiptCalendarDates = useMemo(() => getCalendarDates(receiptCalendarMonth), [receiptCalendarMonth]);
@@ -634,13 +642,12 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         .order("created_at", { ascending: true }),
       Services.DatabaseService.select("handover_notes", "*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
       Services.DatabaseService.select("profiles", "*"),
-      Services.DatabaseService.select("dashboard_receipt_deletions", "id")
+      Services.DatabaseService.select("dashboard_receipt_deletions", "id, log_ids")
+        .eq("store_id", currentStoreId)
         .is("restored_at", null)
         .gte("deleted_at", range.start)
         .lt("deleted_at", range.end)
         .order("deleted_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
     ]);
 
     let delayedSourceDate: string;
@@ -681,10 +688,20 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       );
     }
 
+    const activeReceiptDeletions = (receiptDeletionResult.data ?? []) as DashboardReceiptDeletion[];
+    const hiddenReceiptLogIds = new Set(activeReceiptDeletions.flatMap((deletion) => deletion.log_ids));
+    const hiddenReceiptProductIds = new Set(
+      ((receiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[])
+        .filter((log) => hiddenReceiptLogIds.has(log.id))
+        .map((log) => log.product_id)
+    );
+
     if (dashboardView === "today" && isTodayStoreClosure) {
       setReceipts([]);
     } else if (!receiptLogResult.error && !expectedReceiptResult.error && !delayedExpectedReceiptResult.error && !delayedReceiptLogResult.error) {
-      const completedItems = buildCompletedReceipts((receiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[]);
+      const completedItems = buildCompletedReceipts(
+        ((receiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[]).filter((log) => !hiddenReceiptLogIds.has(log.id))
+      );
       const completedProductIds = new Set(completedItems.map((item) => item.productId));
       const previousBusinessDayCompletedProductIds = new Set(
         buildCompletedReceipts((delayedReceiptLogResult.data ?? []) as unknown as ReceiptHistoryLog[]).map((item) => item.productId)
@@ -700,7 +717,10 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       const nextExpectedItems = mergeExpectedReceipts(delayedItems, expectedItems);
 
       if (dashboardView === "today") {
-        setReceipts([...nextExpectedItems.filter((item) => !completedProductIds.has(item.productId)), ...completedItems]);
+        setReceipts([
+          ...nextExpectedItems.filter((item) => !completedProductIds.has(item.productId) && !hiddenReceiptProductIds.has(item.productId)),
+          ...completedItems
+        ]);
       } else {
         setReceipts(nextExpectedItems);
       }
@@ -714,7 +734,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     if (!profileResult.error) {
       setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
     }
-    if (!receiptDeletionResult.error) setHasReceiptDeletion(!isTodayStoreClosure && Boolean(receiptDeletionResult.data));
+    if (!receiptDeletionResult.error) setHasReceiptDeletion(!isTodayStoreClosure && activeReceiptDeletions.length > 0);
     setLoading(false);
   }, [currentStoreId, dashboardView, todayValue]);
 
@@ -736,25 +756,29 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     if (!isToday || item.status !== "completed") return;
     const confirmMessage =
       item.quantity === null
-        ? `${item.name}의 오늘 입고확인 기록을 삭제할까요?`
+        ? `${item.name}의 오늘 입고확인 기록을 금일 입고품목에서 삭제할까요?\n재고 수량은 변경되지 않습니다.`
         : item.receiptCheckOnly
-          ? `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개 기록을 삭제할까요?`
-          : `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개를 삭제할까요?\n재고에서도 해당 수량이 차감됩니다.`;
+          ? `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개 기록을 금일 입고품목에서 삭제할까요?\n재고 수량은 변경되지 않습니다.`
+          : `${item.name}의 오늘 입고 수량 ${formatInventoryQuantity(item.quantity)}개를 금일 입고품목에서만 삭제할까요?\n재고 수량은 변경되지 않습니다.`;
     if (!window.confirm(confirmMessage)) return;
 
     setReceiptDeletingIds((current) => new Set(current).add(item.productId));
     setError("");
     setMessage("");
-    const { error: deleteError } = await Services.DatabaseService.rpc("delete_today_product_receipts", {
-      target_product_id: item.productId
+    const requestId = getMappedMutationRequestId(todayReceiptRequestRef, item.productId);
+    const { error: deleteError } = await Services.DatabaseService.rpc("delete_today_product_receipts_idempotent", {
+      target_product_id: item.productId,
+      request_id: requestId
     });
 
     if (deleteError) {
-      setError(receiptActionError(deleteError.message));
+      setError(receiptActionError(formatMutationError(deleteError)));
+      finishMappedMutationRequest(todayReceiptRequestRef, item.productId, deleteError);
     } else {
-      setMessage(`${item.name}의 금일 입고 기록을 삭제했습니다.`);
+      todayReceiptRequestRef.current.delete(item.productId);
+      setMessage(`${item.name}을(를) 금일 입고품목에서 삭제했습니다. 재고 수량은 변경되지 않았습니다.`);
       await loadDashboard();
-      setMessage(`${item.name}의 금일 입고 기록을 삭제했습니다.`);
+      setMessage(`${item.name}을(를) 금일 입고품목에서 삭제했습니다. 재고 수량은 변경되지 않았습니다.`);
     }
 
     setReceiptDeletingIds((current) => {
@@ -771,14 +795,18 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setReceiptDeletingIds((current) => new Set(current).add(item.productId));
     setError("");
     setMessage("");
-    const { error: deleteError } = await Services.DatabaseService.rpc("delete_dashboard_expected_receipt", {
+    const requestId = getMappedMutationRequestId(expectedReceiptRequestRef, item.productId);
+    const { error: deleteError } = await Services.DatabaseService.rpc("delete_dashboard_expected_receipt_idempotent", {
       target_product_id: item.productId,
-      target_order_dates: item.expectedOrderDates
+      target_order_dates: item.expectedOrderDates,
+      request_id: requestId
     });
 
     if (deleteError) {
-      setError(receiptActionError(deleteError.message));
+      setError(receiptActionError(formatMutationError(deleteError)));
+      finishMappedMutationRequest(expectedReceiptRequestRef, item.productId, deleteError);
     } else {
+      expectedReceiptRequestRef.current.delete(item.productId);
       await loadDashboard();
       setMessage(`${item.name}을(를) 입고예정 목록에서 삭제했습니다.`);
     }
@@ -797,13 +825,16 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setReceiptActioning(true);
     setError("");
     setMessage("");
-    const { error: restoreError } = await Services.DatabaseService.rpc("restore_latest_dashboard_receipt_deletion");
+    const requestId = getMutationRequestId(restoreReceiptRequestRef);
+    const { error: restoreError } = await Services.DatabaseService.rpc("restore_latest_dashboard_receipt_deletion_idempotent", { request_id: requestId });
 
     if (restoreError) {
-      setError(receiptActionError(restoreError.message));
+      setError(receiptActionError(formatMutationError(restoreError)));
+      finishMutationRequest(restoreReceiptRequestRef, restoreError);
     } else {
+      restoreReceiptRequestRef.current = null;
       await loadDashboard();
-      setMessage("가장 최근 금일 입고 삭제를 되돌렸습니다.");
+      setMessage("가장 최근에 금일 입고품목에서 숨긴 항목을 다시 표시했습니다. 재고 수량은 변경되지 않았습니다.");
     }
     setReceiptActioning(false);
   }

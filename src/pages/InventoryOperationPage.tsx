@@ -11,6 +11,7 @@ import { getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryActionLabel, formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { DEFAULT_ABUNDANT_MULTIPLIER } from "../lib/inventoryStock";
+import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { applyMobileInventoryChange, finalizeMobileInventorySession, recoverMobileInventorySessions, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
 import { buildAuditTarget, buildAutoTarget, buildMobileHistoryTarget, buildMoveTarget, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
@@ -32,6 +33,8 @@ type Props = {
 type ConfirmedInventorySnapshot = {
   warehouseQty: number;
   storeQty: number;
+  warehouseVersion: number;
+  storeVersion: number;
   updatedAt: string;
 };
 
@@ -323,12 +326,15 @@ export function InventoryOperationPage({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const defaultLocationPressTimerRef = useRef<number | null>(null);
+  const inventoryMutationRequestRef = useRef<string | null>(null);
+  const receiptMutationRequestRef = useRef<string | null>(null);
+  const restoreMutationRequestRef = useRef(new Map<string, string>());
   const isMobileViewport = useMobileViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
   const [mobileMode, setMobileMode] = useState<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
   const [mobileWarehouseQty, setMobileWarehouseQty] = useState(0);
   const [mobileStoreQty, setMobileStoreQty] = useState(0);
-  const [mobileConfirmedSnapshot, setMobileConfirmedSnapshot] = useState<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, updatedAt: "" });
+  const [mobileConfirmedSnapshot, setMobileConfirmedSnapshot] = useState<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
   const [mobileSaveState, setMobileSaveState] = useState<"idle" | "dragging" | "pending" | "saved" | "error">("idle");
   const [mobileSaveStatusLabel, setMobileSaveStatusLabel] = useState<"서버에 저장됨" | "수정 시점">("서버에 저장됨");
   const [mobileSaveError, setMobileSaveError] = useState("");
@@ -340,9 +346,10 @@ export function InventoryOperationPage({
   const mobileSaveInFlightRef = useRef(false);
   const mobileQueuedTargetRef = useRef<MobileInventoryTarget | null>(null);
   const mobileDraftTargetRef = useRef<MobileInventoryTarget | null>(null);
+  const mobileConflictTargetRef = useRef<MobileInventoryTarget | null>(null);
   const mobileSavePromiseRef = useRef<Promise<void> | null>(null);
   const mobileFinalizeRef = useRef<() => Promise<void>>(async () => undefined);
-  const mobileConfirmedRef = useRef<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, updatedAt: "" });
+  const mobileConfirmedRef = useRef<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
   const mobileEditPointAtRef = useRef<string | null>(null);
   const mobileEditHistoryRef = useRef<MobileInventoryEditPoint[]>([]);
   const mobileEditHistoryIndexRef = useRef(-1);
@@ -484,6 +491,8 @@ export function InventoryOperationPage({
           ...current.inventory,
           warehouse_qty: nextResult.warehouse_qty,
           store_qty: nextResult.store_qty,
+          warehouse_version: nextResult.warehouse_version,
+          store_version: nextResult.store_version,
           updated_at: nextResult.inventory_updated_at
         }
       });
@@ -510,6 +519,8 @@ export function InventoryOperationPage({
     const nextSnapshot = {
       warehouseQty: item.warehouse_qty,
       storeQty: item.store_qty,
+      warehouseVersion: item.inventory.warehouse_version,
+      storeVersion: item.inventory.store_version,
       updatedAt: item.inventory.updated_at
     };
     updateMobileConfirmedSnapshot(nextSnapshot);
@@ -529,8 +540,23 @@ export function InventoryOperationPage({
       setMobileEditHistoryIndex(0);
       setMobileEditPointAt(editAt);
     }
-    setMobileWarehouseQty(item.warehouse_qty);
-    setMobileStoreQty(item.store_qty);
+    const conflictTarget = mobileConflictTargetRef.current;
+    if (conflictTarget) {
+      const preservedTarget = conflictTarget.mode === "move"
+        ? conflictTarget
+        : {
+            ...conflictTarget,
+            warehouseQty: conflictTarget.targetLocation === "창고" ? conflictTarget.warehouseQty : item.warehouse_qty,
+            storeQty: conflictTarget.targetLocation === "매장" ? conflictTarget.storeQty : item.store_qty
+          };
+      mobileConflictTargetRef.current = null;
+      mobileDraftTargetRef.current = preservedTarget;
+      setMobileWarehouseQty(preservedTarget.warehouseQty);
+      setMobileStoreQty(preservedTarget.storeQty);
+    } else {
+      setMobileWarehouseQty(item.warehouse_qty);
+      setMobileStoreQty(item.store_qty);
+    }
     void loadMobileEditHistory(nextSnapshot);
   }, [item, loadMobileEditHistory]);
 
@@ -566,6 +592,8 @@ export function InventoryOperationPage({
     const nextSnapshot = {
       warehouseQty: result.warehouse_qty,
       storeQty: result.store_qty,
+      warehouseVersion: result.warehouse_version,
+      storeVersion: result.store_version,
       updatedAt: result.inventory_updated_at
     };
     mobileSessionIdRef.current = result.session_id;
@@ -603,7 +631,8 @@ export function InventoryOperationPage({
             moveDirection: target.moveDirection,
             requestedWarehouseQty: target.warehouseQty,
             requestedStoreQty: target.storeQty,
-            expectedInventoryUpdatedAt: snapshot.updatedAt,
+            expectedWarehouseVersion: snapshot.warehouseVersion,
+            expectedStoreVersion: snapshot.storeVersion,
             requestId,
             entrySource: initialInventoryMode === "audit" ? "scan_audit" as const : "operation" as const
           };
@@ -621,12 +650,16 @@ export function InventoryOperationPage({
 
           if (saveError || !data) {
             mobileHistoryNavigationRef.current = null;
-            if (saveError?.message.includes("다른 직원이 먼저 재고를 변경했습니다")) {
+            const isInventoryConflict = saveError?.message.includes("다른 직원이") ?? false;
+            if (isInventoryConflict) {
               await finalizeMobileInventorySession(mobileSessionIdRef.current);
               mobileSessionIdRef.current = null;
+              mobileQueuedTargetRef.current = null;
+              mobileConflictTargetRef.current = target;
               await loadProduct();
+            } else {
+              resetMobileDraft();
             }
-            resetMobileDraft();
             setMobileSaveState("error");
             setMobileSaveError(saveError?.message ?? "재고를 저장하지 못했습니다.");
             hadError = true;
@@ -1135,7 +1168,7 @@ export function InventoryOperationPage({
   }
 
   async function restoreToHistoryPoint(point: InventoryHistoryPoint) {
-    if (!item) return;
+    if (!item?.inventory) return;
     const confirmed = window.confirm(
       `${formatDateTime(point.log.created_at)} 작업 직후 상태로 복원하시겠습니까?\n창고 ${formatInventoryQuantity(point.warehouseQty)} / 매장 ${formatInventoryQuantity(point.storeQty)}\n선택 시점 이후 작업은 히스토리에서 취소 처리됩니다.`
     );
@@ -1144,25 +1177,36 @@ export function InventoryOperationPage({
     setRestoring(true);
     setError("");
     setSuccess("");
+    const restoreKey = point.log.mobile_session_id ? `session:${point.log.mobile_session_id}` : `log:${point.log.id}`;
+    const requestId = getMappedMutationRequestId(restoreMutationRequestRef, restoreKey);
     const { error: restoreError } = point.log.mobile_session_id
-      ? await Services.DatabaseService.rpc("restore_inventory_to_mobile_session", {
+      ? await Services.DatabaseService.rpc("restore_inventory_to_mobile_session_v2", {
           target_session_id: point.log.mobile_session_id,
           restored_warehouse_qty: point.warehouseQty,
-          restored_store_qty: point.storeQty
+          restored_store_qty: point.storeQty,
+          expected_warehouse_version: item.inventory.warehouse_version,
+          expected_store_version: item.inventory.store_version,
+          request_id: requestId
         })
-      : await Services.DatabaseService.rpc("restore_inventory_to_log", {
+      : await Services.DatabaseService.rpc("restore_inventory_to_log_v2", {
           target_log_id: point.log.id,
           restored_warehouse_qty: point.warehouseQty,
-          restored_store_qty: point.storeQty
+          restored_store_qty: point.storeQty,
+          expected_warehouse_version: item.inventory.warehouse_version,
+          expected_store_version: item.inventory.store_version,
+          request_id: requestId
         });
 
     if (restoreError) {
+      finishMappedMutationRequest(restoreMutationRequestRef, restoreKey, restoreError);
       setError(
-        restoreError.message.includes("restore_inventory_to_log") || restoreError.message.includes("restore_inventory_to_mobile_session")
+        restoreError.message.includes("restore_inventory_to_log_v2") || restoreError.message.includes("restore_inventory_to_mobile_session_v2")
           ? "상세 되돌리기 기능을 위한 데이터베이스 업데이트가 필요합니다."
           : restoreError.message
       );
+      if (restoreError.message.includes("복원 대상 이후 재고가 변경되었습니다")) await loadProduct();
     } else {
+      restoreMutationRequestRef.current.delete(restoreKey);
       if (mobileTouchUI) mobileEditPointAtRef.current = point.log.created_at;
       setHistoryOpen(false);
       setSuccess(`${formatDateTime(point.log.created_at)} 시점으로 재고를 복원했습니다.`);
@@ -1312,11 +1356,14 @@ export function InventoryOperationPage({
       return;
     }
 
-    const { errorMessage } = await recordReceiptCheckOnly(item.id, currentStoreId, receiptQuantityValue);
+    const requestId = getMutationRequestId(receiptMutationRequestRef);
+    const { errorMessage, uncertain } = await recordReceiptCheckOnly(item.id, currentStoreId, receiptQuantityValue, requestId);
 
     if (errorMessage) {
       setError(errorMessage);
+      if (!uncertain) receiptMutationRequestRef.current = null;
     } else {
+      receiptMutationRequestRef.current = null;
       await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
       setSuccess(`입고완료 ${formatInventoryQuantity(receiptQuantityValue)}개를 기록했습니다.`);
       setReceiptQuantity("1");
@@ -1348,21 +1395,27 @@ export function InventoryOperationPage({
       return;
     }
 
-    const { error: operationError } = await Services.DatabaseService.rpc("record_inventory_operation", {
+    const requestId = getMutationRequestId(inventoryMutationRequestRef);
+    const { error: operationError } = await Services.DatabaseService.rpc("record_inventory_operation_idempotent_v2", {
       target_product_id: item.id,
       operation_action: action,
       target_location: location,
       move_direction: moveDirection,
       operation_quantity: quantityValue,
-      expected_inventory_updated_at: currentInventory.updated_at
+      expected_warehouse_version: currentInventory.warehouse_version,
+      expected_store_version: currentInventory.store_version,
+      request_id: requestId
     });
 
     if (operationError) {
-      setError(operationError.message);
-      if (operationError.message.includes("다른 직원이 먼저 재고를 변경했습니다")) {
+      const operationErrorMessage = formatMutationError(operationError);
+      finishMutationRequest(inventoryMutationRequestRef, operationError);
+      if (operationError.message.includes("다른 직원이")) {
         await loadProduct();
       }
+      setError(operationErrorMessage);
     } else {
+      inventoryMutationRequestRef.current = null;
       setSuccess("저장되었습니다.");
       setQuantity("");
       await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);

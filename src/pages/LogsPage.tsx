@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, Search } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryActionLabel, formatInventoryQuantity, formatLogContent } from "../lib/inventory";
+import { finishMappedMutationRequest, getMappedMutationRequestId } from "../lib/mutationRequest";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
 import type { AppRoute, InventoryLog, InventoryLogWithStaff, StaffProfile } from "../types/domain";
@@ -79,6 +80,7 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
   const [error, setError] = useState("");
   const [restoringSessionId, setRestoringSessionId] = useState<string | null>(null);
   const [restoreMessage, setRestoreMessage] = useState("");
+  const restoreMutationRequestRef = useRef(new Map<string, string>());
 
   const range = useMemo(() => getLogRange(period, baseDate), [baseDate, period]);
   const filteredLogs = useMemo(() => {
@@ -117,19 +119,41 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
     const last = [...sessionLogs].sort((left, right) => (right.mobile_session_sequence ?? 0) - (left.mobile_session_sequence ?? 0))[0] ?? log;
     const restoredWarehouseQty = last.warehouse_qty_after ?? last.warehouse_qty_before ?? 0;
     const restoredStoreQty = last.store_qty_after ?? last.store_qty_before ?? 0;
-    if (!window.confirm(`재고 작업을 ${formatDateTime(last.created_at)} 시점으로 복원하시겠습니까?\n창고 ${formatInventoryQuantity(restoredWarehouseQty)} / 매장 ${formatInventoryQuantity(restoredStoreQty)}\n선택 시점 이후 작업은 히스토리에서 취소 처리됩니다.`)) return;
-
     setRestoringSessionId(log.mobile_session_id);
     setRestoreMessage("");
-    const { error: restoreError } = await Services.DatabaseService.rpc("restore_inventory_to_mobile_session", {
+    setError("");
+    const { data: inventoryData, error: inventoryError } = await Services.DatabaseService.select("inventory", "warehouse_version, store_version")
+      .eq("store_id", currentStoreId)
+      .eq("product_id", log.product_id)
+      .single();
+
+    if (inventoryError || !inventoryData) {
+      setError(inventoryError?.message ?? "재고 정보를 찾을 수 없습니다.");
+      setRestoringSessionId(null);
+      return;
+    }
+
+    if (!window.confirm(`재고 작업을 ${formatDateTime(last.created_at)} 시점으로 복원하시겠습니까?\n창고 ${formatInventoryQuantity(restoredWarehouseQty)} / 매장 ${formatInventoryQuantity(restoredStoreQty)}\n선택 시점 이후 작업은 히스토리에서 취소 처리됩니다.`)) {
+      setRestoringSessionId(null);
+      return;
+    }
+
+    const restoreKey = `session:${log.mobile_session_id}`;
+    const requestId = getMappedMutationRequestId(restoreMutationRequestRef, restoreKey);
+    const { error: restoreError } = await Services.DatabaseService.rpc("restore_inventory_to_mobile_session_v2", {
       target_session_id: log.mobile_session_id,
       restored_warehouse_qty: restoredWarehouseQty,
-      restored_store_qty: restoredStoreQty
+      restored_store_qty: restoredStoreQty,
+      expected_warehouse_version: inventoryData.warehouse_version,
+      expected_store_version: inventoryData.store_version,
+      request_id: requestId
     });
 
     if (restoreError) {
+      finishMappedMutationRequest(restoreMutationRequestRef, restoreKey, restoreError);
       setError(restoreError.message);
     } else {
+      restoreMutationRequestRef.current.delete(restoreKey);
       setRestoreMessage("재고 작업을 복원했습니다.");
       await loadLogs();
     }

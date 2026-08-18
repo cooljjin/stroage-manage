@@ -7,6 +7,7 @@ const adminRoot = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   root: adminRoot,
+  envDir: resolve(adminRoot, ".."),
   plugins: [react()],
   server: {
     fs: {

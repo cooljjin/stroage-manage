@@ -5,6 +5,7 @@ import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
+import { finishMutationRequest, formatMutationError, getMutationRequestId } from "../lib/mutationRequest";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
@@ -107,6 +108,10 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [message, setMessage] = useState("");
   const freshScannerRef = useRef<Html5Qrcode | null>(null);
   const freshBarcodeHandlingRef = useRef(false);
+  const replaceConfirmationRequestRef = useRef<string | null>(null);
+  const addConfirmedRequestRef = useRef<string | null>(null);
+  const removeConfirmedRequestRef = useRef<string | null>(null);
+  const cancelConfirmedRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -533,15 +538,19 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
       required_quantity: parseRequiredQuantity(requiredQuantities[item.id] ?? "")
     }));
 
-    const { data: savedItems, error: saveError } = await Services.DatabaseService.rpc("replace_confirmed_order_items", {
+    const requestId = getMutationRequestId(replaceConfirmationRequestRef);
+    const { data: savedItems, error: saveError } = await Services.DatabaseService.rpc("replace_confirmed_order_items_idempotent", {
       target_store_id: currentStoreId,
       target_order_date: todayOrderDate,
       item_rows: rows,
-      confirmation_note: trimmedConfirmationMemo || null
+      confirmation_note: trimmedConfirmationMemo || null,
+      request_id: requestId
     });
     if (saveError) {
-      setError(saveError.message);
+      setError(formatMutationError(saveError));
+      finishMutationRequest(replaceConfirmationRequestRef, saveError);
     } else {
+      replaceConfirmationRequestRef.current = null;
       setConfirmedItems((savedItems ?? []) as ConfirmedOrderItem[]);
       setConfirmationModalOpen(false);
       await loadItems();
@@ -555,17 +564,21 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
     setSavingConfirmedEdit(true);
     setError("");
-    const { data: addedConfirmedItem, error: addError } = await Services.DatabaseService.rpc("add_confirmed_order_item", {
+    const requestId = getMutationRequestId(addConfirmedRequestRef);
+    const { data: addedConfirmedItem, error: addError } = await Services.DatabaseService.rpc("add_confirmed_order_item_idempotent", {
       target_store_id: currentStoreId,
       target_order_date: todayOrderDate,
       target_product_id: item.id,
-      required_quantity_value: parseRequiredQuantity(requiredQuantities[item.id] ?? "")
+      required_quantity_value: parseRequiredQuantity(requiredQuantities[item.id] ?? ""),
+      request_id: requestId
     });
     if (addError) {
-      setError(addError.message);
+      setError(formatMutationError(addError));
+      finishMutationRequest(addConfirmedRequestRef, addError);
       setSavingConfirmedEdit(false);
       return;
     }
+    addConfirmedRequestRef.current = null;
     setConfirmedItems((current) => [...current, addedConfirmedItem as ConfirmedOrderItem]);
     await loadItems();
     setSavingConfirmedEdit(false);
@@ -577,15 +590,19 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
     setSavingConfirmedEdit(true);
     setError("");
-    const { error: removeError } = await Services.DatabaseService.rpc("remove_confirmed_order_item", {
+    const requestId = getMutationRequestId(removeConfirmedRequestRef);
+    const { error: removeError } = await Services.DatabaseService.rpc("remove_confirmed_order_item_idempotent", {
       target_store_id: currentStoreId,
-      target_confirmed_item_id: item.id
+      target_confirmed_item_id: item.id,
+      request_id: requestId
     });
     if (removeError) {
-      setError(removeError.message);
+      setError(formatMutationError(removeError));
+      finishMutationRequest(removeConfirmedRequestRef, removeError);
       setSavingConfirmedEdit(false);
       return;
     }
+    removeConfirmedRequestRef.current = null;
     setConfirmedItems((current) => current.filter((confirmedItem) => confirmedItem.id !== item.id));
     await loadItems();
     setSavingConfirmedEdit(false);
@@ -597,15 +614,19 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
 
     setSavingConfirmedEdit(true);
     setError("");
-    const { error: cancelError } = await Services.DatabaseService.rpc("cancel_confirmed_order", {
+    const requestId = getMutationRequestId(cancelConfirmedRequestRef);
+    const { error: cancelError } = await Services.DatabaseService.rpc("cancel_confirmed_order_idempotent", {
       target_store_id: currentStoreId,
-      target_order_date: todayOrderDate
+      target_order_date: todayOrderDate,
+      request_id: requestId
     });
     if (cancelError) {
-      setError(cancelError.message);
+      setError(formatMutationError(cancelError));
+      finishMutationRequest(cancelConfirmedRequestRef, cancelError);
       setSavingConfirmedEdit(false);
       return;
     }
+    cancelConfirmedRequestRef.current = null;
     setConfirmedItems([]);
     setConfirmedEditMode(false);
     await loadItems();
