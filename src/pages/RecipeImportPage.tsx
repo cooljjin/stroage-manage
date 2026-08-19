@@ -176,7 +176,9 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
       const uploadedResult = await Services.DatabaseService.rpc("mark_recipe_import_uploaded", { target_job_id: createdJob.id });
       if (uploadedResult.error) throw uploadedResult.error;
       const processResult = await Services.EdgeFunctionService.invoke("recipe-import", { body: { action: "process", jobId: createdJob.id, manifest } });
-      if (processResult.error) throw processResult.error;
+      if (processResult.error) {
+        throw new Error(await Services.EdgeFunctionService.getErrorMessage(processResult.error, "레시피 분석을 시작하지 못했습니다."));
+      }
       setJob(createdJob);
       setMessage("파일을 업로드했습니다. AI가 레시피를 분석하는 중입니다.");
       navigate({ name: "group-order-recipe-import", recipeImportJobId: createdJob.id });
@@ -271,7 +273,9 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
       const approvalResult = await Services.DatabaseService.rpc("approve_recipe_import_job", { target_job_id: job.id, target_approved_cost_usd: approved });
       if (approvalResult.error) throw approvalResult.error;
       const processResult = await Services.EdgeFunctionService.invoke("recipe-import", { body: { action: "process", jobId: job.id } });
-      if (processResult.error) throw processResult.error;
+      if (processResult.error) {
+        throw new Error(await Services.EdgeFunctionService.getErrorMessage(processResult.error, "레시피 분석을 재개하지 못했습니다."));
+      }
       await refreshJob(job.id);
       setMessage("추가 비용을 승인하고 분석을 재개했습니다.");
     } catch (approvalError) {

@@ -189,7 +189,7 @@ async function callGemini(apiKey: string, model: string, sourceType: SourceType,
         contents: [{ role: "user", parts }],
         generationConfig: {
           responseFormat: {
-            text: { mimeType: "application/json", schema: recipeSchema() }
+            text: { mimeType: "APPLICATION_JSON", schema: recipeSchema() }
           }
         }
       })
