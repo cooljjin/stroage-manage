@@ -25,12 +25,13 @@ type Props = {
   saveState: "idle" | "dragging" | "pending" | "saved" | "error";
   saveError?: string;
   savedAtLabel?: string | null;
-  saveStatusLabel?: "서버에 저장됨" | "수정 시점";
+  saveStatusLabel?: "서버에 저장됨" | "수정 시점" | "수량 확인 완료";
   canUndo: boolean;
   canRedo: boolean;
   onModeChange: (mode: MobileInventoryMode) => void;
   onDraftChange: (target: MobileInventoryTarget) => void;
   onCommit: (target: MobileInventoryTarget) => void;
+  onInventoryCheck: (location: Location) => void;
   onOpenKeypad: (target: "warehouse" | "store") => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -59,6 +60,7 @@ export function MobileInventoryControls({
   onModeChange,
   onDraftChange,
   onCommit,
+  onInventoryCheck,
   onOpenKeypad,
   onUndo,
   onRedo
@@ -119,6 +121,7 @@ export function MobileInventoryControls({
           formatValue={formatInventoryQuantity}
           onDraftChange={(value) => handleLocationDraft("창고", value)}
           onCommit={(value) => handleLocationCommit("창고", value)}
+          onLongPress={() => onInventoryCheck("창고")}
           onOpenKeypad={() => onOpenKeypad("warehouse")}
           onDragStart={() => undefined}
         />
@@ -132,6 +135,7 @@ export function MobileInventoryControls({
           formatValue={formatInventoryQuantity}
           onDraftChange={(value) => handleLocationDraft("매장", value)}
           onCommit={(value) => handleLocationCommit("매장", value)}
+          onLongPress={() => onInventoryCheck("매장")}
           onOpenKeypad={() => onOpenKeypad("store")}
           onDragStart={() => undefined}
         />

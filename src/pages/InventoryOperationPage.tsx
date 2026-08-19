@@ -336,7 +336,7 @@ export function InventoryOperationPage({
   const [mobileStoreQty, setMobileStoreQty] = useState(0);
   const [mobileConfirmedSnapshot, setMobileConfirmedSnapshot] = useState<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
   const [mobileSaveState, setMobileSaveState] = useState<"idle" | "dragging" | "pending" | "saved" | "error">("idle");
-  const [mobileSaveStatusLabel, setMobileSaveStatusLabel] = useState<"서버에 저장됨" | "수정 시점">("서버에 저장됨");
+  const [mobileSaveStatusLabel, setMobileSaveStatusLabel] = useState<"서버에 저장됨" | "수정 시점" | "수량 확인 완료">("서버에 저장됨");
   const [mobileSaveError, setMobileSaveError] = useState("");
   const [mobileEditPointAt, setMobileEditPointAt] = useState("");
   const [mobileEditHistory, setMobileEditHistory] = useState<MobileInventoryEditPoint[]>([]);
@@ -356,6 +356,8 @@ export function InventoryOperationPage({
   const mobileHistoryNavigationRef = useRef<number | null>(null);
   const mobileEditHistoryLoadedRef = useRef(false);
   const mobileEditHistoryLoadingRef = useRef(false);
+  const mobileInventoryCheckRequestRef = useRef<string | null>(null);
+  const [mobileInventoryCheckSaving, setMobileInventoryCheckSaving] = useState(false);
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
@@ -738,6 +740,55 @@ export function InventoryOperationPage({
     setMobileStoreQty(target.storeQty);
     setMobileSaveStatusLabel(historyNavigationIndex === null ? "서버에 저장됨" : "수정 시점");
     queueMobileTarget(target);
+  }
+
+  async function recordMobileInventoryCheck(targetLocation: Location) {
+    if (!item?.inventory || mobileInventoryCheckSaving) return;
+
+    setMobileInventoryCheckSaving(true);
+    try {
+      commitUnsettledMobileDraft();
+      if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
+      await finalizeMobileSession();
+      if (mobileSessionIdRef.current) return;
+
+      const { data: userData, error: userError } = await Services.AuthService.getUser();
+      if (userError || !userData.user) {
+        setMobileSaveState("error");
+        setMobileSaveError(userError?.message ?? "로그인이 필요합니다.");
+        return;
+      }
+
+      const snapshot = mobileConfirmedRef.current;
+      setMobileSaveState("pending");
+      setMobileSaveError("");
+
+      const requestId = getMutationRequestId(mobileInventoryCheckRequestRef);
+      const { data, error: checkError } = await Services.DatabaseService.rpc("record_inventory_check", {
+        target_product_id: item.id,
+        target_location: targetLocation,
+        expected_warehouse_version: snapshot.warehouseVersion,
+        expected_store_version: snapshot.storeVersion,
+        request_id: requestId
+      });
+
+      if (checkError) {
+        finishMutationRequest(mobileInventoryCheckRequestRef, checkError);
+        if (checkError.message.includes("다른 직원이")) await loadProduct();
+        setMobileSaveState("error");
+        setMobileSaveError(formatMutationError(checkError));
+      } else {
+        mobileInventoryCheckRequestRef.current = null;
+        const result = (Array.isArray(data) ? data[0] : data) as { checked_at?: string } | null;
+        setMobileEditPointAt(result?.checked_at ?? "");
+        setMobileSaveState("saved");
+        setMobileSaveStatusLabel("수량 확인 완료");
+        await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
+        await loadLatestInventoryCheck();
+      }
+    } finally {
+      setMobileInventoryCheckSaving(false);
+    }
   }
 
   function handleMobileHistoryNavigation(direction: "undo" | "redo") {
@@ -1549,7 +1600,7 @@ export function InventoryOperationPage({
             confirmedWarehouseQty={mobileConfirmedSnapshot.warehouseQty}
             confirmedStoreQty={mobileConfirmedSnapshot.storeQty}
             lastInventoryCheckDates={lastInventoryCheckDates}
-            disabled={false}
+            disabled={mobileInventoryCheckSaving || mobileSaveState === "pending"}
             saveState={mobileSaveState}
             saveError={mobileSaveError}
             savedAtLabel={mobileEditPointAt ? formatDateTime(mobileEditPointAt) : null}
@@ -1563,6 +1614,7 @@ export function InventoryOperationPage({
             }}
             onDraftChange={handleMobileDraft}
             onCommit={handleMobileCommit}
+            onInventoryCheck={(targetLocation) => void recordMobileInventoryCheck(targetLocation)}
             onOpenKeypad={setMobileKeypadTarget}
             onUndo={() => handleMobileHistoryNavigation("undo")}
             onRedo={() => handleMobileHistoryNavigation("redo")}

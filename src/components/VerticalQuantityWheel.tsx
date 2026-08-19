@@ -12,6 +12,7 @@ type Props = {
   ariaLabel: string;
   onDraftChange: (value: number) => void;
   onCommit: (value: number) => void;
+  onLongPress?: () => void;
   onOpenKeypad: () => void;
   onDragStart?: () => void;
   invertDrag?: boolean;
@@ -28,13 +29,22 @@ export function VerticalQuantityWheel({
   ariaLabel,
   onDraftChange,
   onCommit,
+  onLongPress,
   onOpenKeypad,
   onDragStart,
   invertDrag = false,
   formatValue
 }: Props) {
-  const pointerRef = useRef<{ id: number; startY: number; startValue: number; lastValue: number; dragged: boolean } | null>(null);
+  const pointerRef = useRef<{ id: number; startY: number; startValue: number; lastValue: number; dragged: boolean; longPressed: boolean } | null>(null);
   const settleTimerRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
 
   function clearSettleTimer() {
     if (settleTimerRef.current !== null) {
@@ -62,17 +72,29 @@ export function VerticalQuantityWheel({
       startY: event.clientY,
       startValue: value,
       lastValue: value,
-      dragged: false
+      dragged: false,
+      longPressed: false
     };
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (onLongPress) {
+      longPressTimerRef.current = window.setTimeout(() => {
+        const pointer = pointerRef.current;
+        if (!pointer || pointer.id !== event.pointerId || pointer.dragged) return;
+        pointer.longPressed = true;
+        longPressTimerRef.current = null;
+        onLongPress();
+      }, 700);
+    }
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLButtonElement>) {
     const pointer = pointerRef.current;
     if (!pointer || pointer.id !== event.pointerId || disabled) return;
+    if (pointer.longPressed) return;
     const distance = Math.abs(pointer.startY - event.clientY);
     if (distance >= MOBILE_DRAG_THRESHOLD_PX && !pointer.dragged) {
       pointer.dragged = true;
+      clearLongPressTimer();
       onDragStart?.();
     }
     if (!pointer.dragged) return;
@@ -89,8 +111,12 @@ export function VerticalQuantityWheel({
     const pointer = pointerRef.current;
     if (!pointer || pointer.id !== event.pointerId) return;
     pointerRef.current = null;
+    clearLongPressTimer();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (pointer.longPressed) {
+      return;
     }
     if (pointer.dragged) {
       const rawValue = quantityFromVerticalDrag(pointer.startValue, pointer.startY, event.clientY, max);
@@ -108,9 +134,11 @@ export function VerticalQuantityWheel({
     if (!pointer || pointer.id !== event.pointerId) return;
     pointerRef.current = null;
     clearSettleTimer();
+    clearLongPressTimer();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    if (pointer.longPressed) return;
     if (pointer.dragged) {
       onDraftChange(pointer.lastValue);
       commitValue(pointer.lastValue);
@@ -133,7 +161,10 @@ export function VerticalQuantityWheel({
     }
   }
 
-  useEffect(() => () => clearSettleTimer(), []);
+  useEffect(() => () => {
+    clearSettleTimer();
+    clearLongPressTimer();
+  }, []);
 
   return (
     <button
@@ -150,7 +181,7 @@ export function VerticalQuantityWheel({
       onPointerCancel={handlePointerCancel}
       onContextMenu={(event) => event.preventDefault()}
       onKeyDown={handleKeyDown}
-      title="위아래로 밀어 수량 조정 · 탭하여 직접 입력"
+      title="위아래로 밀어 수량 조정 · 탭하여 직접 입력 · 길게 눌러 현재 수량 실사"
       className="relative flex min-h-24 min-w-0 touch-none select-none flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-50 px-1.5 py-1.5 text-center transition-colors active:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40 sm:min-h-40 sm:px-3 sm:py-4"
       style={{ WebkitUserSelect: "none", userSelect: "none" }}
     >

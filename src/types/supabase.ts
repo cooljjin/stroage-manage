@@ -1677,6 +1677,19 @@ export type Database = {
           inventory_updated_at: string;
         }[];
       };
+      record_inventory_check: {
+        Args: {
+          target_product_id: string;
+          target_location: string;
+          expected_warehouse_version: number;
+          expected_store_version: number;
+          request_id: string;
+        };
+        Returns: {
+          log_id: string;
+          checked_at: string;
+        }[];
+      };
       record_receipt_check_idempotent: {
         Args: {
           target_product_id: string;
