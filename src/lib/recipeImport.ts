@@ -2,11 +2,11 @@ import type { WorkSheet } from "xlsx";
 
 export const RECIPE_IMPORT_MAX_FILE_SIZE = 50 * 1024 * 1024;
 export const RECIPE_IMPORT_ACCEPT = ".xlsx,.xls,.csv,.pdf";
-export const RECIPE_IMPORT_MODEL = "gemini-2.5-flash-lite";
-// Conservative paid-tier estimate for the default Gemini 2.5 Flash-Lite model.
+export const RECIPE_IMPORT_MODEL = "gemini-3.5-flash-lite";
+// Conservative paid-tier estimate for the default Gemini 3.5 Flash-Lite model.
 // Actual billing can be lower when the project is using the free tier.
-export const RECIPE_IMPORT_INPUT_PRICE_PER_MILLION = 0.18;
-export const RECIPE_IMPORT_OUTPUT_PRICE_PER_MILLION = 0.72;
+export const RECIPE_IMPORT_INPUT_PRICE_PER_MILLION = 0.30;
+export const RECIPE_IMPORT_OUTPUT_PRICE_PER_MILLION = 2.50;
 
 export type RecipeImportSourceType = "xlsx" | "xls" | "csv" | "pdf";
 
@@ -75,6 +75,9 @@ async function readWorkbook(file: File, sourceType: RecipeImportSourceType): Pro
 
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name];
+    if (!sheet) {
+      throw new Error(`엑셀 시트 "${name}"을 읽지 못했습니다. 파일을 Excel에서 다시 저장한 뒤 재시도해 주세요.`);
+    }
     const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: null, blankrows: false });
     const rows = rawRows.map((row) => row.map(normalizeCell));
     cellCount += rows.reduce((sum, row) => sum + row.length, 0);

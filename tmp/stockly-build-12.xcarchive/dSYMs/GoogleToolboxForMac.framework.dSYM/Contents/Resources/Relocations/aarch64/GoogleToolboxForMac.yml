@@ -1,0 +1,86 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/jinkim/Library/Developer/Xcode/DerivedData/App-fptckknmlnnsvvengpsxjwptdiae/Build/Intermediates.noindex/ArchiveIntermediates/App/IntermediateBuildFilesPath/UninstalledProducts/iphoneos/GoogleToolboxForMac.framework/GoogleToolboxForMac'
+relocations:
+  - { offset: 0x5D1B0, size: 0x8, addend: 0x0, symName: _GoogleToolboxForMacVersionString, symObjAddr: 0x0, symBinAddr: 0x6D98, symSize: 0x0 }
+  - { offset: 0x5D1E5, size: 0x8, addend: 0x0, symName: _GoogleToolboxForMacVersionNumber, symObjAddr: 0x38, symBinAddr: 0x6DD0, symSize: 0x0 }
+  - { offset: 0x5D222, size: 0x8, addend: 0x0, symName: '+[GTMLogger sharedLogger]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x68 }
+  - { offset: 0x5D241, size: 0x8, addend: 0x0, symName: _gSharedLogger, symObjAddr: 0xBB80, symBinAddr: 0x11448, symSize: 0x0 }
+  - { offset: 0x5D3EB, size: 0x8, addend: 0x0, symName: '+[GTMLogger sharedLogger]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x68 }
+  - { offset: 0x5D422, size: 0x8, addend: 0x0, symName: '+[GTMLogger setSharedLogger:]', symObjAddr: 0x68, symBinAddr: 0x4068, symSize: 0x5C }
+  - { offset: 0x5D465, size: 0x8, addend: 0x0, symName: '+[GTMLogger standardLogger]', symObjAddr: 0xC4, symBinAddr: 0x40C4, symSize: 0x9C }
+  - { offset: 0x5D4EE, size: 0x8, addend: 0x0, symName: '+[GTMLogger standardLoggerWithStderr]', symObjAddr: 0x160, symBinAddr: 0x4160, symSize: 0x58 }
+  - { offset: 0x5D557, size: 0x8, addend: 0x0, symName: '+[GTMLogger standardLoggerWithStdoutAndStderr]', symObjAddr: 0x1B8, symBinAddr: 0x41B8, symSize: 0x140 }
+  - { offset: 0x5D600, size: 0x8, addend: 0x0, symName: '+[GTMLogger standardLoggerWithPath:]', symObjAddr: 0x2F8, symBinAddr: 0x42F8, symSize: 0x6C }
+  - { offset: 0x5D691, size: 0x8, addend: 0x0, symName: '+[GTMLogger loggerWithWriter:formatter:filter:]', symObjAddr: 0x364, symBinAddr: 0x4364, symSize: 0x40 }
+  - { offset: 0x5D6F8, size: 0x8, addend: 0x0, symName: '+[GTMLogger logger]', symObjAddr: 0x3A4, symBinAddr: 0x43A4, symSize: 0x14 }
+  - { offset: 0x5D72F, size: 0x8, addend: 0x0, symName: '-[GTMLogger init]', symObjAddr: 0x3B8, symBinAddr: 0x43B8, symSize: 0x10 }
+  - { offset: 0x5D764, size: 0x8, addend: 0x0, symName: '-[GTMLogger initWithWriter:formatter:filter:]', symObjAddr: 0x3C8, symBinAddr: 0x43C8, symSize: 0x80 }
+  - { offset: 0x5D7CB, size: 0x8, addend: 0x0, symName: '-[GTMLogger dealloc]', symObjAddr: 0x448, symBinAddr: 0x4448, symSize: 0x6C }
+  - { offset: 0x5D819, size: 0x8, addend: 0x0, symName: '-[GTMLogger writer]', symObjAddr: 0x4B4, symBinAddr: 0x44B4, symSize: 0x18 }
+  - { offset: 0x5D850, size: 0x8, addend: 0x0, symName: '-[GTMLogger setWriter:]', symObjAddr: 0x4CC, symBinAddr: 0x44CC, symSize: 0x88 }
+  - { offset: 0x5D8AE, size: 0x8, addend: 0x0, symName: '-[GTMLogger formatter]', symObjAddr: 0x554, symBinAddr: 0x4554, symSize: 0x18 }
+  - { offset: 0x5D8E5, size: 0x8, addend: 0x0, symName: '-[GTMLogger setFormatter:]', symObjAddr: 0x56C, symBinAddr: 0x456C, symSize: 0x84 }
+  - { offset: 0x5D943, size: 0x8, addend: 0x0, symName: '-[GTMLogger filter]', symObjAddr: 0x5F0, symBinAddr: 0x45F0, symSize: 0x18 }
+  - { offset: 0x5D97A, size: 0x8, addend: 0x0, symName: '-[GTMLogger setFilter:]', symObjAddr: 0x608, symBinAddr: 0x4608, symSize: 0x94 }
+  - { offset: 0x5D9D8, size: 0x8, addend: 0x0, symName: '-[GTMLogger notifyFilterBeforeDetachIfNeeded]', symObjAddr: 0x69C, symBinAddr: 0x469C, symSize: 0x40 }
+  - { offset: 0x5DA0B, size: 0x8, addend: 0x0, symName: '-[GTMLogger notifyFilterAfterAttachIfNeeded]', symObjAddr: 0x6DC, symBinAddr: 0x46DC, symSize: 0x40 }
+  - { offset: 0x5DA3F, size: 0x8, addend: 0x0, symName: '-[GTMLogger logDebug:]', symObjAddr: 0x71C, symBinAddr: 0x471C, symSize: 0x34 }
+  - { offset: 0x5DA96, size: 0x8, addend: 0x0, symName: '-[GTMLogger logInfo:]', symObjAddr: 0x750, symBinAddr: 0x4750, symSize: 0x34 }
+  - { offset: 0x5DAED, size: 0x8, addend: 0x0, symName: '-[GTMLogger logError:]', symObjAddr: 0x784, symBinAddr: 0x4784, symSize: 0x34 }
+  - { offset: 0x5DB44, size: 0x8, addend: 0x0, symName: '-[GTMLogger logAssert:]', symObjAddr: 0x7B8, symBinAddr: 0x47B8, symSize: 0x34 }
+  - { offset: 0x5DB9B, size: 0x8, addend: 0x0, symName: '-[GTMLogger(GTMLoggerMacroHelpers) logFuncDebug:msg:]', symObjAddr: 0x7EC, symBinAddr: 0x47EC, symSize: 0x2C }
+  - { offset: 0x5DC03, size: 0x8, addend: 0x0, symName: '-[GTMLogger(GTMLoggerMacroHelpers) logFuncInfo:msg:]', symObjAddr: 0x818, symBinAddr: 0x4818, symSize: 0x2C }
+  - { offset: 0x5DC6B, size: 0x8, addend: 0x0, symName: '-[GTMLogger(GTMLoggerMacroHelpers) logFuncError:msg:]', symObjAddr: 0x844, symBinAddr: 0x4844, symSize: 0x2C }
+  - { offset: 0x5DCD3, size: 0x8, addend: 0x0, symName: '-[GTMLogger(GTMLoggerMacroHelpers) logFuncAssert:msg:]', symObjAddr: 0x870, symBinAddr: 0x4870, symSize: 0x2C }
+  - { offset: 0x5DD3B, size: 0x8, addend: 0x0, symName: '-[GTMLogger(PrivateMethods) logInternalFunc:format:valist:level:]', symObjAddr: 0x89C, symBinAddr: 0x489C, symSize: 0xA8 }
+  - { offset: 0x5DDF8, size: 0x8, addend: 0x0, symName: '+[NSFileHandle(GTMFileHandleLogWriter) fileHandleForLoggingAtPath:mode:]', symObjAddr: 0x944, symBinAddr: 0x4944, symSize: 0x74 }
+  - { offset: 0x5DEC6, size: 0x8, addend: 0x0, symName: '-[NSFileHandle(GTMFileHandleLogWriter) logMessage:level:]', symObjAddr: 0x9B8, symBinAddr: 0x49B8, symSize: 0x88 }
+  - { offset: 0x5DF4C, size: 0x8, addend: 0x0, symName: '-[NSArray(GTMArrayCompositeLogWriter) logMessage:level:]', symObjAddr: 0xA40, symBinAddr: 0x4A40, symSize: 0x140 }
+  - { offset: 0x5DFBA, size: 0x8, addend: 0x0, symName: '-[GTMLogger(GTMLoggerLogWriter) logMessage:level:]', symObjAddr: 0xB80, symBinAddr: 0x4B80, symSize: 0x8C }
+  - { offset: 0x5E010, size: 0x8, addend: 0x0, symName: '-[GTMLogBasicFormatter prettyNameForFunc:]', symObjAddr: 0xC0C, symBinAddr: 0x4C0C, symSize: 0xAC }
+  - { offset: 0x5E077, size: 0x8, addend: 0x0, symName: '-[GTMLogBasicFormatter stringForFunc:withFormat:valist:level:]', symObjAddr: 0xCB8, symBinAddr: 0x4CB8, symSize: 0x50 }
+  - { offset: 0x5E0E7, size: 0x8, addend: 0x0, symName: '-[GTMLogStandardFormatter init]', symObjAddr: 0xD08, symBinAddr: 0x4D08, symSize: 0xB4 }
+  - { offset: 0x5E11F, size: 0x8, addend: 0x0, symName: '-[GTMLogStandardFormatter dealloc]', symObjAddr: 0xDBC, symBinAddr: 0x4DBC, symSize: 0x50 }
+  - { offset: 0x5E153, size: 0x8, addend: 0x0, symName: '-[GTMLogStandardFormatter stringForFunc:withFormat:valist:level:]', symObjAddr: 0xE0C, symBinAddr: 0x4E0C, symSize: 0x110 }
+  - { offset: 0x5E1FB, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter init]', symObjAddr: 0xF1C, symBinAddr: 0x4F1C, symSize: 0x5C }
+  - { offset: 0x5E241, size: 0x8, addend: 0x0, symName: _IsVerboseLoggingEnabled, symObjAddr: 0xF78, symBinAddr: 0x4F78, symSize: 0xB8 }
+  - { offset: 0x5E27F, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter dealloc]', symObjAddr: 0x1030, symBinAddr: 0x5030, symSize: 0x34 }
+  - { offset: 0x5E2B3, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter filterAllowsMessage:level:]', symObjAddr: 0x1064, symBinAddr: 0x5064, symSize: 0x24 }
+  - { offset: 0x5E318, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter didAttachToLogger]', symObjAddr: 0x1088, symBinAddr: 0x5088, symSize: 0x4 }
+  - { offset: 0x5E34A, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter willDetachFromLogger]', symObjAddr: 0x108C, symBinAddr: 0x508C, symSize: 0x4 }
+  - { offset: 0x5E37C, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter startObservingUserDefaultsIfNeeded]', symObjAddr: 0x1090, symBinAddr: 0x5090, symSize: 0x50 }
+  - { offset: 0x5E3B0, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter stopObservingUserDefaultsIfNeeded]', symObjAddr: 0x10E0, symBinAddr: 0x50E0, symSize: 0x40 }
+  - { offset: 0x5E3E4, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter observeValueForKeyPath:ofObject:change:context:]', symObjAddr: 0x1120, symBinAddr: 0x5120, symSize: 0x50 }
+  - { offset: 0x5E45E, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter verboseLoggingEnabled]', symObjAddr: 0x1170, symBinAddr: 0x5170, symSize: 0xC }
+  - { offset: 0x5E496, size: 0x8, addend: 0x0, symName: '-[GTMLogLevelFilter setVerboseLoggingEnabled:]', symObjAddr: 0x117C, symBinAddr: 0x517C, symSize: 0x8 }
+  - { offset: 0x5E4D4, size: 0x8, addend: 0x0, symName: '-[GTMLogNoFilter filterAllowsMessage:level:]', symObjAddr: 0x1184, symBinAddr: 0x5184, symSize: 0x8 }
+  - { offset: 0x5E522, size: 0x8, addend: 0x0, symName: '-[GTMLogAllowedLevelFilter initWithAllowedLevels:]', symObjAddr: 0x118C, symBinAddr: 0x518C, symSize: 0x84 }
+  - { offset: 0x5E56B, size: 0x8, addend: 0x0, symName: '-[GTMLogAllowedLevelFilter init]', symObjAddr: 0x1210, symBinAddr: 0x5210, symSize: 0x38 }
+  - { offset: 0x5E5A3, size: 0x8, addend: 0x0, symName: '-[GTMLogAllowedLevelFilter dealloc]', symObjAddr: 0x1248, symBinAddr: 0x5248, symSize: 0x48 }
+  - { offset: 0x5E5D7, size: 0x8, addend: 0x0, symName: '-[GTMLogAllowedLevelFilter filterAllowsMessage:level:]', symObjAddr: 0x1290, symBinAddr: 0x5290, symSize: 0xC }
+  - { offset: 0x5E62B, size: 0x8, addend: 0x0, symName: '-[GTMLogMininumLevelFilter initWithMinimumLevel:]', symObjAddr: 0x129C, symBinAddr: 0x529C, symSize: 0x60 }
+  - { offset: 0x5E674, size: 0x8, addend: 0x0, symName: '-[GTMLogMaximumLevelFilter initWithMaximumLevel:]', symObjAddr: 0x12FC, symBinAddr: 0x52FC, symSize: 0x58 }
+  - { offset: 0x5E7B4, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZlibAdditionsPrivate) gtm_dataByCompressingBytes:length:compressionLevel:mode:error:]', symObjAddr: 0x0, symBinAddr: 0x5354, symSize: 0x2D0 }
+  - { offset: 0x5E7CE, size: 0x8, addend: 0x0, symName: _GTMNSDataZlibErrorDomain, symObjAddr: 0xB20, symBinAddr: 0xC0F0, symSize: 0x0 }
+  - { offset: 0x5E7EE, size: 0x8, addend: 0x0, symName: _GTMNSDataZlibErrorKey, symObjAddr: 0xB28, symBinAddr: 0xC0F8, symSize: 0x0 }
+  - { offset: 0x5E804, size: 0x8, addend: 0x0, symName: _GTMNSDataZlibRemainingBytesKey, symObjAddr: 0xB30, symBinAddr: 0xC100, symSize: 0x0 }
+  - { offset: 0x5E853, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZlibAdditionsPrivate) gtm_dataByCompressingBytes:length:compressionLevel:mode:error:]', symObjAddr: 0x0, symBinAddr: 0x5354, symSize: 0x2D0 }
+  - { offset: 0x5EA6C, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZlibAdditionsPrivate) gtm_dataByInflatingBytes:length:isRawData:error:]', symObjAddr: 0x2D0, symBinAddr: 0x5624, symSize: 0x340 }
+  - { offset: 0x5EC73, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByGzippingBytes:length:error:]', symObjAddr: 0x610, symBinAddr: 0x5964, symSize: 0x10 }
+  - { offset: 0x5ECD8, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByGzippingData:error:]', symObjAddr: 0x620, symBinAddr: 0x5974, symSize: 0x7C }
+  - { offset: 0x5ED32, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByGzippingBytes:length:compressionLevel:error:]', symObjAddr: 0x69C, symBinAddr: 0x59F0, symSize: 0xC }
+  - { offset: 0x5EDA6, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByGzippingData:compressionLevel:error:]', symObjAddr: 0x6A8, symBinAddr: 0x59FC, symSize: 0x80 }
+  - { offset: 0x5EE11, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByDeflatingBytes:length:error:]', symObjAddr: 0x728, symBinAddr: 0x5A7C, symSize: 0x10 }
+  - { offset: 0x5EE76, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByDeflatingData:error:]', symObjAddr: 0x738, symBinAddr: 0x5A8C, symSize: 0x7C }
+  - { offset: 0x5EED0, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByDeflatingBytes:length:compressionLevel:error:]', symObjAddr: 0x7B4, symBinAddr: 0x5B08, symSize: 0xC }
+  - { offset: 0x5EF44, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByDeflatingData:compressionLevel:error:]', symObjAddr: 0x7C0, symBinAddr: 0x5B14, symSize: 0x80 }
+  - { offset: 0x5EFAF, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByInflatingBytes:length:error:]', symObjAddr: 0x840, symBinAddr: 0x5B94, symSize: 0xC }
+  - { offset: 0x5F014, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByInflatingData:error:]', symObjAddr: 0x84C, symBinAddr: 0x5BA0, symSize: 0x78 }
+  - { offset: 0x5F06E, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByRawDeflatingBytes:length:error:]', symObjAddr: 0x8C4, symBinAddr: 0x5C18, symSize: 0x10 }
+  - { offset: 0x5F0D3, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByRawDeflatingData:error:]', symObjAddr: 0x8D4, symBinAddr: 0x5C28, symSize: 0x7C }
+  - { offset: 0x5F12D, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByRawDeflatingBytes:length:compressionLevel:error:]', symObjAddr: 0x950, symBinAddr: 0x5CA4, symSize: 0xC }
+  - { offset: 0x5F1A1, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByRawDeflatingData:compressionLevel:error:]', symObjAddr: 0x95C, symBinAddr: 0x5CB0, symSize: 0x80 }
+  - { offset: 0x5F20C, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByRawInflatingBytes:length:error:]', symObjAddr: 0x9DC, symBinAddr: 0x5D30, symSize: 0xC }
+  - { offset: 0x5F271, size: 0x8, addend: 0x0, symName: '+[NSData(GTMZLibAdditions) gtm_dataByRawInflatingData:error:]', symObjAddr: 0x9E8, symBinAddr: 0x5D3C, symSize: 0x78 }
+...

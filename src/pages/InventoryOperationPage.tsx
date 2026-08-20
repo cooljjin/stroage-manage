@@ -16,6 +16,7 @@ import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { applyMobileInventoryChange, finalizeMobileInventorySession, recoverMobileInventorySessions, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
 import { buildAuditTarget, buildAutoTarget, buildMobileHistoryTarget, buildMoveTarget, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
 import { useMobileViewport } from "../hooks/useMobileViewport";
+import { useInventoryTouchViewport } from "../hooks/useInventoryTouchViewport";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
 import type { AppRoute, InventoryItem, InventoryLog, Location, MobileInventoryEntryMode, MobileInventoryMode, StockStatus } from "../types/domain";
@@ -330,6 +331,7 @@ export function InventoryOperationPage({
   const receiptMutationRequestRef = useRef<string | null>(null);
   const restoreMutationRequestRef = useRef(new Map<string, string>());
   const isMobileViewport = useMobileViewport();
+  const isInventoryTouchViewport = useInventoryTouchViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
   const [mobileMode, setMobileMode] = useState<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
   const [mobileWarehouseQty, setMobileWarehouseQty] = useState(0);
@@ -400,7 +402,7 @@ export function InventoryOperationPage({
     setAbundantMultiplier(Number.isFinite(nextMultiplier) && nextMultiplier > 1 ? nextMultiplier : DEFAULT_ABUNDANT_MULTIPLIER);
   }, [currentStoreId]);
 
-  const mobileTouchUI = mobileTouchEnabled && isMobileViewport;
+  const mobileTouchUI = mobileTouchEnabled && isInventoryTouchViewport;
 
   function isMissingMobileSessionError(message: string | null | undefined): boolean {
     return message?.includes("모바일 재고 작업 세션을 찾을 수 없습니다.") ?? false;

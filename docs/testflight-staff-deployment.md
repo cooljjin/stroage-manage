@@ -1,6 +1,6 @@
 # Stockly TestFlight 직원 배포
 
-마지막 로컬 설정 점검: 2026-08-13
+마지막 로컬 설정 점검: 2026-08-19
 
 이 문서는 App Store Connect에 새 iOS build를 업로드해 직원에게 TestFlight로 배포하는 절차다. 실제 App Store Connect 상태와 사용 가능한 build는 로그인 후 다시 확인한다.
 
@@ -9,7 +9,7 @@
 - 앱 이름: `Stockly`
 - Bundle ID: `com.jinkim.stockly`
 - Version: 1.0
-- Build: 6
+- Build: 16 (현재 작업 트리 설정)
 - iOS 최소 버전: 15.5
 - workspace: `ios/App/App.xcworkspace`
 - Capacitor `webDir`: `dist`
@@ -48,7 +48,7 @@ Xcode에서:
 4. 실행 대상을 `Any iOS Device (arm64)` 또는 현재 Xcode의 generic iOS device로 선택한다.
 5. `Product > Archive`를 실행한다.
 
-같은 Build 번호는 다시 업로드할 수 없다. 현재 로컬 값이 6이더라도 App Store Connect에 6이 이미 존재하면 7 이상을 사용한다.
+같은 Build 번호는 다시 업로드할 수 없다. 현재 로컬 값이 16이더라도 App Store Connect에 16이 이미 존재하면 17 이상을 사용한다.
 
 ## App Store Connect 업로드
 

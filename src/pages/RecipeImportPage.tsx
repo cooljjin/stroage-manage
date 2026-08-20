@@ -52,6 +52,22 @@ function sourceIcon(sourceType?: string) {
   return sourceType === "pdf" ? <FileText size={18} /> : <FileSpreadsheet size={18} />;
 }
 
+async function getRecipeImportErrorMessage(cause: unknown, fallback: string) {
+  const genericMessage = cause instanceof Error ? cause.message : "";
+  const context = typeof cause === "object" && cause !== null && "context" in cause
+    ? (cause as { context?: unknown }).context
+    : null;
+
+  if (context instanceof Response) {
+    const payload = await context.clone().json().catch(() => null) as { error?: unknown } | null;
+    if (typeof payload?.error === "string" && payload.error.trim()) return payload.error;
+  }
+
+  return genericMessage && genericMessage !== "Edge Function returned a non-2xx status code"
+    ? genericMessage
+    : fallback;
+}
+
 export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, jobId: initialJobId }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [manifest, setManifest] = useState<RecipeImportManifest | null>(null);
@@ -182,7 +198,7 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
       navigate({ name: "group-order-recipe-import", recipeImportJobId: createdJob.id });
       await refreshJob(createdJob.id);
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "가져오기를 시작하지 못했습니다.");
+      setError(await getRecipeImportErrorMessage(startError, "가져오기를 시작하지 못했습니다."));
     } finally {
       setBusy(false);
     }
@@ -275,7 +291,7 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
       await refreshJob(job.id);
       setMessage("추가 비용을 승인하고 분석을 재개했습니다.");
     } catch (approvalError) {
-      setError(approvalError instanceof Error ? approvalError.message : "추가 비용 승인에 실패했습니다.");
+      setError(await getRecipeImportErrorMessage(approvalError, "추가 비용 승인에 실패했습니다."));
     } finally {
       setBusy(false);
     }

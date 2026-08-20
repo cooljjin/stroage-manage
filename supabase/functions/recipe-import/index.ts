@@ -6,10 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
-const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const PROMPT_VERSION = "recipe-import-v2-gemini-rest";
-const INPUT_PRICE_PER_MILLION = 0.18;
-const OUTPUT_PRICE_PER_MILLION = 0.72;
+const INPUT_PRICE_PER_MILLION = 0.30;
+const OUTPUT_PRICE_PER_MILLION = 2.50;
 const GEMINI_TIMEOUT_MS = 120_000;
 
 type JsonRecord = Record<string, unknown>;
@@ -189,7 +189,7 @@ async function callGemini(apiKey: string, model: string, sourceType: SourceType,
         contents: [{ role: "user", parts }],
         generationConfig: {
           responseFormat: {
-            text: { mimeType: "application/json", schema: recipeSchema() }
+            text: { mimeType: "APPLICATION_JSON", schema: recipeSchema() }
           }
         }
       })

@@ -1,5 +1,8 @@
 .git
 .playwright-mcp
+tmp
+ios
+android
 dist
 node_modules
 
