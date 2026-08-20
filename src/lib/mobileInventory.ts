@@ -1,8 +1,9 @@
 import type { Location, MobileInventoryMode } from "../types/domain";
 
-export const MOBILE_DRAG_STEP_PX = 20;
+export const MOBILE_DRAG_STEP_PX = 32;
 export const MOBILE_DRAG_THRESHOLD_PX = 8;
 export const MOBILE_SETTLE_DELAY_MS = 300;
+export const MOBILE_SNAP_DURATION_MS = 180;
 
 export type MobileMoveDirection = "warehouse-to-store" | "store-to-warehouse";
 
@@ -37,8 +38,14 @@ export function parseMobileQuantity(value: string): number | null {
     : null;
 }
 
+export function getVerticalDragStepCount(startY: number, currentY: number, snap = false): number {
+  const rawStepCount = (startY - currentY) / MOBILE_DRAG_STEP_PX;
+  if (!snap) return Math.trunc(rawStepCount);
+  return rawStepCount >= 0 ? Math.floor(rawStepCount + 0.5) : Math.ceil(rawStepCount - 0.5);
+}
+
 export function quantityFromVerticalDrag(startValue: number, startY: number, currentY: number, max = Number.POSITIVE_INFINITY): number {
-  const stepCount = Math.trunc((startY - currentY) / MOBILE_DRAG_STEP_PX);
+  const stepCount = getVerticalDragStepCount(startY, currentY);
   return clampMobileQuantity(startValue + stepCount, max);
 }
 
