@@ -1,2 +1,8 @@
 [functions.recipe-import]
+verify_jwt = true
+
+[functions.recipe-import-cleanup]
+verify_jwt = false
+
+[functions.account-purge-scheduler]
 verify_jwt = false

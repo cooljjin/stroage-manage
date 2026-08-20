@@ -44,7 +44,7 @@ export function StaffManagementPage() {
   async function loadProfiles() {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await Services.DatabaseService.select("profiles", "*").order("created_at", { ascending: true });
+    const { data, error: loadError } = await Services.DatabaseService.rpc("list_store_staff_admin");
 
     if (loadError) {
       setError(loadError.message);

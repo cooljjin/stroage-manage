@@ -70,7 +70,7 @@ export function MasterUsersPage() {
 
     const [storesResult, profilesResult] = await Promise.all([
       Services.DatabaseService.select("stores", "*").order("name", { ascending: true }),
-      Services.DatabaseService.select("profiles", "*").order("created_at", { ascending: true })
+      Services.DatabaseService.rpc("list_store_staff_admin")
     ]);
 
     if (storesResult.error) {

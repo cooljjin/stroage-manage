@@ -3,7 +3,7 @@ import * as Services from "../services";
 import type { Session } from "../services";
 
 export async function ensureCurrentProfile(session: Session): Promise<StaffProfile | null> {
-  const { data: profile, error } = await Services.DatabaseService.select("profiles", "*").eq("id", session.user.id).maybeSingle();
+  const { data: profile, error } = await Services.DatabaseService.rpc("get_my_profile");
 
   if (error) {
     return null;
@@ -26,9 +26,7 @@ export async function getCurrentStoreId(): Promise<{ storeId: string | null; err
     return { storeId: null, errorMessage: userError?.message ?? "로그인이 필요합니다." };
   }
 
-  const { data: profile, error: profileError } = await Services.DatabaseService.select("profiles", "store_id")
-    .eq("id", userData.user.id)
-    .maybeSingle();
+  const { data: profile, error: profileError } = await Services.DatabaseService.rpc("get_my_profile");
 
   if (profileError) {
     return { storeId: null, errorMessage: profileError.message };

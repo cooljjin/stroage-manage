@@ -289,7 +289,7 @@ export default function App() {
       .addListener("appUrlOpen", (event) => {
         const urlOpenEvent = event as URLOpenListenerEvent;
         const url = urlOpenEvent.url;
-        if (!url.startsWith("com.jinkim.stockly://auth/callback")) return;
+        if (!Services.AuthService.isNativeAuthCallbackUrl(url)) return;
         void Services.AuthService.handleOAuthCallbackUrl(url).then(({ data, error }) => {
           if (cancelled) return;
           if (!error) {

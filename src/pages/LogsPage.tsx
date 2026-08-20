@@ -161,9 +161,20 @@ export function LogsPage({ navigate, currentStoreId }: Props) {
   }
 
   const loadProfiles = useCallback(async () => {
-    const profileResult = await Services.DatabaseService.select("profiles", "*").eq("store_id", currentStoreId).order("display_name", { ascending: true });
+    const profileResult = await Services.DatabaseService.rpc("list_store_staff_directory");
 
-    if (!profileResult.error) setProfiles((profileResult.data ?? []) as StaffProfile[]);
+    if (!profileResult.error) {
+      setProfiles((profileResult.data ?? []).map((profile) => ({
+        ...profile,
+        store_id: currentStoreId,
+        email: null,
+        is_admin: profile.role !== "staff",
+        invited_by: null,
+        created_at: "",
+        updated_at: "",
+        deletion_requested_at: null
+      })) as StaffProfile[]);
+    }
   }, [currentStoreId]);
 
   const loadLogs = useCallback(async () => {
