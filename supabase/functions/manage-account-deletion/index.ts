@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-account-purge-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 }
 
@@ -34,11 +34,6 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({})) as { action?: string; transferToUserId?: string }
   const adminClient = createClient(supabaseUrl, serviceRoleKey)
-
-  if (body.action === "purge") {
-    if (!isPurgeRequestAllowed(req)) return jsonResponse({ error: "정리 권한이 없습니다." }, 401)
-    return purgeExpiredPersonalStores(adminClient)
-  }
 
   const authorization = req.headers.get("Authorization")
   if (!authorization) return jsonResponse({ error: "로그인이 필요합니다." }, 401)
@@ -115,7 +110,13 @@ async function requestDeletion(adminClient: ReturnType<typeof createClient>, pro
     const now = new Date().toISOString()
     const { error: storeUpdateError } = await adminClient
       .from("stores")
-      .update({ status: "pending_deletion", deletion_requested_at: now, purge_after: purgeAfter })
+      .update({
+        status: "pending_deletion",
+        deletion_requested_at: now,
+        purge_after: purgeAfter,
+        purge_started_at: null,
+        purge_owner_id: profile.id
+      })
       .eq("id", store.id)
     if (storeUpdateError) return jsonResponse({ error: storeUpdateError.message }, 400)
     const { error: profileUpdateError } = await adminClient
@@ -164,7 +165,13 @@ async function restorePersonalStore(adminClient: ReturnType<typeof createClient>
 
   const { error: storeError } = await adminClient
     .from("stores")
-    .update({ status: "active", deletion_requested_at: null, purge_after: null })
+    .update({
+      status: "active",
+      deletion_requested_at: null,
+      purge_after: null,
+      purge_started_at: null,
+      purge_owner_id: null
+    })
     .eq("id", store.id)
   if (storeError) return jsonResponse({ error: storeError.message }, 400)
   const { data: restoredProfile, error: profileError } = await adminClient
@@ -189,32 +196,6 @@ async function getEligibilityData(adminClient: ReturnType<typeof createClient>, 
     kind: store.created_by === profile.id && (members ?? []).length === 0 ? "personal" as const : "shared" as const,
     members: (members ?? []).filter((member) => member.role === "staff")
   }
-}
-
-async function purgeExpiredPersonalStores(adminClient: ReturnType<typeof createClient>) {
-  const { data: stores, error } = await adminClient
-    .from("stores")
-    .select("id")
-    .eq("status", "pending_deletion")
-    .lte("purge_after", new Date().toISOString())
-  if (error) return jsonResponse({ error: error.message }, 400)
-
-  for (const store of stores ?? []) {
-    const { data: members, error: memberError } = await adminClient.from("profiles").select("id").eq("store_id", store.id)
-    if (memberError) return jsonResponse({ error: memberError.message }, 400)
-    for (const member of members ?? []) {
-      const { error: deleteError } = await adminClient.auth.admin.deleteUser(member.id)
-      if (deleteError) return jsonResponse({ error: deleteError.message }, 400)
-    }
-    const { error: storeError } = await adminClient.from("stores").delete().eq("id", store.id)
-    if (storeError) return jsonResponse({ error: storeError.message }, 400)
-  }
-  return jsonResponse({ ok: true, purgedStoreCount: (stores ?? []).length })
-}
-
-function isPurgeRequestAllowed(req: Request) {
-  const secret = Deno.env.get("ACCOUNT_PURGE_SECRET")
-  return Boolean(secret && req.headers.get("x-account-purge-secret") === secret)
 }
 
 function jsonResponse(body: unknown, status = 200) {

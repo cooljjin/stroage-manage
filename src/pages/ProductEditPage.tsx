@@ -1,11 +1,14 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { fallbackProductUnits, loadProductUnits } from "../lib/productUnits";
 import { fallbackSuppliers, loadSuppliers } from "../lib/suppliers";
+import { formatInventoryQuantity } from "../lib/inventory";
+import { searchResolvedProducts } from "../lib/resolvedProducts";
+import { createMutationRequestId, finishMutationRequest } from "../lib/mutationRequest";
 import * as Services from "../services";
-import type { AppRoute, GroupOrderRouteDraft, Location, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
+import type { AppRoute, GroupOrderRouteDraft, Inventory, Location, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
 
 type Props = {
   productId?: string;
@@ -23,6 +26,38 @@ const VOLUME_UNITS: UnitWeightUnit[] = ["ml", "L"];
 const COUNT_UNITS: UnitWeightUnit[] = ["개"];
 
 type UnitMeasureType = "weight" | "volume" | "count";
+
+type ProductAliasListItem = {
+  alias_link_id: string | null;
+  canonical_product_id: string;
+  alias_product_id: string;
+  alias_name: string;
+  merged_at: string;
+  merged_by: string | null;
+  merge_kind: "reversible" | "legacy";
+  merge_status: "active" | "unmerged" | "legacy";
+  can_unmerge: boolean;
+};
+
+type ProductUnmergePreview = {
+  link_id: string;
+  canonical_product_id: string;
+  canonical_name: string;
+  alias_product_id: string;
+  alias_name: string;
+  current_canonical_warehouse_qty: number;
+  current_canonical_store_qty: number;
+  current_alias_warehouse_qty: number;
+  current_alias_store_qty: number;
+  canonical_warehouse_version: number;
+  canonical_store_version: number;
+  alias_warehouse_version: number;
+  alias_store_version: number;
+  merge_alias_warehouse_qty: number;
+  merge_alias_store_qty: number;
+  has_open_mobile_session: boolean;
+  has_barcode_conflict: boolean;
+};
 
 function getUnitMeasureType(unit: UnitWeightUnit | null | undefined): UnitMeasureType {
   if (unit === "개") return "count";
@@ -58,7 +93,7 @@ function formatProductUpdateError(message: string) {
   return message;
 }
 
-function ProductMergeInfo({ product, title, description }: { product: Pick<Product, "name" | "barcode" | "category" | "storage_type" | "default_location" | "supplier_name" | "unit_name">; title: string; description: string }) {
+function ProductMergeInfo({ product, inventory, title, description }: { product: Pick<Product, "name" | "barcode" | "category" | "storage_type" | "default_location" | "supplier_name" | "unit_name">; inventory?: Pick<Inventory, "warehouse_qty" | "store_qty"> | null; title: string; description: string }) {
   const details = [
     ["상품명", product.name],
     ["바코드", product.barcode ?? "없음"],
@@ -66,7 +101,9 @@ function ProductMergeInfo({ product, title, description }: { product: Pick<Produ
     ["보관", product.storage_type || "미설정"],
     ["기본 위치", product.default_location],
     ["발주처", product.supplier_name ?? "미설정"],
-    ["단위", product.unit_name ?? "미설정"]
+    ["단위", product.unit_name ?? "미설정"],
+    ["창고 재고", inventory ? formatInventoryQuantity(inventory.warehouse_qty) : "불러오는 중"],
+    ["매장 재고", inventory ? formatInventoryQuantity(inventory.store_qty) : "불러오는 중"]
   ];
 
   return (
@@ -91,7 +128,6 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [units, setUnits] = useState<ProductUnit[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [name, setName] = useState("");
   const [barcode, setBarcode] = useState(initialBarcode);
   const [category, setCategory] = useState("기타");
@@ -112,34 +148,41 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [mergeSearch, setMergeSearch] = useState("");
+  const [mergeSearchResults, setMergeSearchResults] = useState<Product[]>([]);
   const [mergeCandidate, setMergeCandidate] = useState<Product | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  const [mergeInventoryById, setMergeInventoryById] = useState<Record<string, Inventory>>({});
+  const [mergePreviewLoading, setMergePreviewLoading] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [productAliases, setProductAliases] = useState<ProductAliasListItem[]>([]);
+  const [aliasesLoading, setAliasesLoading] = useState(false);
+  const [unmergePreview, setUnmergePreview] = useState<ProductUnmergePreview | null>(null);
+  const [unmergeCanonicalWarehouse, setUnmergeCanonicalWarehouse] = useState("");
+  const [unmergeCanonicalStore, setUnmergeCanonicalStore] = useState("");
+  const [unmergeAliasWarehouse, setUnmergeAliasWarehouse] = useState("");
+  const [unmergeAliasStore, setUnmergeAliasStore] = useState("");
+  const [unmergeLoading, setUnmergeLoading] = useState(false);
+  const [unmerging, setUnmerging] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const mergeRequestRef = useRef<string | null>(null);
+  const unmergeRequestRef = useRef<string | null>(null);
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
     setError("");
     setMessage("");
+    setProductAliases([]);
 
-    const [categoryResult, supplierResult, unitResult, productsResult] = await Promise.all([
+    const [categoryResult, supplierResult, unitResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => fallbackSuppliers()),
-      loadProductUnits(currentStoreId, { activeOnly: true }).catch(() => fallbackProductUnits(currentStoreId)),
-      Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).order("name", { ascending: true })
+      loadProductUnits(currentStoreId, { activeOnly: true }).catch(() => fallbackProductUnits(currentStoreId))
     ]);
-
-    if (productsResult.error) {
-      setError(productsResult.error.message);
-      setLoading(false);
-      return;
-    }
 
     const nextCategories = categoryResult.length > 0 ? categoryResult : fallbackCategories();
     const nextSuppliers = supplierResult.length > 0 ? supplierResult : fallbackSuppliers();
     const nextUnits = unitResult.length > 0 ? unitResult : fallbackProductUnits(currentStoreId);
-    setProducts((productsResult.data ?? []) as Product[]);
 
     if (isRegisterMode) {
       setProduct(null);
@@ -202,6 +245,17 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
       setMinimumStock(String(nextProduct.minimum_stock));
       setReceiptCheckOnly(nextProduct.receipt_check_only ?? false);
       setProductUrl(nextProduct.product_url ?? "");
+
+      setAliasesLoading(true);
+      const aliasResult = await Services.DatabaseService.rpc("list_product_aliases", {
+        target_product_id: nextProduct.id
+      });
+      if (aliasResult.error) {
+        setError(aliasResult.error.message);
+      } else {
+        setProductAliases((aliasResult.data ?? []) as ProductAliasListItem[]);
+      }
+      setAliasesLoading(false);
     }
 
     setLoading(false);
@@ -210,6 +264,32 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
   useEffect(() => {
     void loadProduct();
   }, [loadProduct]);
+
+  useEffect(() => {
+    const keyword = mergeSearch.trim();
+    if (!keyword) {
+      setMergeSearchResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      void searchResolvedProducts(currentStoreId, keyword, 20).then((result) => {
+        if (cancelled) return;
+        if (result.errorMessage) {
+          setError(result.errorMessage);
+          setMergeSearchResults([]);
+          return;
+        }
+        setMergeSearchResults(result.products);
+      });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentStoreId, mergeSearch]);
 
   const unitMeasureType = getUnitMeasureType(unitWeightUnit);
   const unitMeasureLabel = unitMeasureType === "count" ? "낱개" : unitMeasureType === "volume" ? "부피" : "무게";
@@ -282,6 +362,137 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     return "";
   }
 
+  async function loadInventoryRow(targetProductId: string): Promise<Inventory> {
+    const { data: existingInventory, error: inventoryError } = await Services.DatabaseService.select("inventory", "*")
+      .eq("product_id", targetProductId)
+      .maybeSingle();
+
+    if (inventoryError) throw new Error(inventoryError.message);
+    if (existingInventory) return existingInventory as Inventory;
+
+    const { data: ensuredInventory, error: ensureError } = await Services.DatabaseService.rpc("ensure_inventory_row", {
+      target_product_id: targetProductId
+    });
+    if (ensureError || !ensuredInventory) {
+      throw new Error(ensureError?.message ?? "재고 정보를 준비하지 못했습니다.");
+    }
+    return ensuredInventory as Inventory;
+  }
+
+  async function chooseMergeCandidate(candidate: Product) {
+    setError("");
+    setMessage("");
+    setMergePreviewLoading(true);
+    try {
+      const productIds = isRegisterMode || !product
+        ? [candidate.id]
+        : [candidate.id, product.id];
+      const inventoryRows = await Promise.all(productIds.map((id) => loadInventoryRow(id)));
+      setMergeInventoryById(Object.fromEntries(inventoryRows.map((inventory) => [inventory.product_id, inventory])));
+      setMergeCandidate(candidate);
+      setMergeTargetId(isRegisterMode ? candidate.id : product?.id ?? null);
+    } catch (inventoryError) {
+      setError(inventoryError instanceof Error ? inventoryError.message : "병합 전 재고를 불러오지 못했습니다.");
+    }
+    setMergePreviewLoading(false);
+  }
+
+  async function openUnmerge(alias: ProductAliasListItem) {
+    if (!alias.alias_link_id || !alias.can_unmerge) return;
+
+    setError("");
+    setMessage("");
+    setUnmergeLoading(true);
+    const { data, error: previewError } = await Services.DatabaseService.rpc("preview_product_unmerge", {
+      alias_link_id: alias.alias_link_id
+    });
+    setUnmergeLoading(false);
+
+    if (previewError || !data?.[0]) {
+      setError(previewError?.message ?? "병합 해제 정보를 불러오지 못했습니다.");
+      return;
+    }
+
+    const preview = data[0] as ProductUnmergePreview;
+    const totalWarehouse = preview.current_canonical_warehouse_qty + preview.current_alias_warehouse_qty;
+    const totalStore = preview.current_canonical_store_qty + preview.current_alias_store_qty;
+    const defaultAliasWarehouse = Math.min(preview.merge_alias_warehouse_qty, totalWarehouse);
+    const defaultAliasStore = Math.min(preview.merge_alias_store_qty, totalStore);
+
+    setUnmergePreview(preview);
+    setUnmergeAliasWarehouse(String(defaultAliasWarehouse));
+    setUnmergeAliasStore(String(defaultAliasStore));
+    setUnmergeCanonicalWarehouse(String(totalWarehouse - defaultAliasWarehouse));
+    setUnmergeCanonicalStore(String(totalStore - defaultAliasStore));
+    unmergeRequestRef.current = null;
+  }
+
+  function closeUnmerge() {
+    if (unmerging) return;
+    setUnmergePreview(null);
+    setUnmergeCanonicalWarehouse("");
+    setUnmergeCanonicalStore("");
+    setUnmergeAliasWarehouse("");
+    setUnmergeAliasStore("");
+    unmergeRequestRef.current = null;
+  }
+
+  async function submitUnmerge() {
+    if (!unmergePreview) return;
+
+    const canonicalWarehouse = Number(unmergeCanonicalWarehouse);
+    const canonicalStore = Number(unmergeCanonicalStore);
+    const aliasWarehouse = Number(unmergeAliasWarehouse);
+    const aliasStore = Number(unmergeAliasStore);
+    const totalWarehouse = unmergePreview.current_canonical_warehouse_qty + unmergePreview.current_alias_warehouse_qty;
+    const totalStore = unmergePreview.current_canonical_store_qty + unmergePreview.current_alias_store_qty;
+
+    if ([canonicalWarehouse, canonicalStore, aliasWarehouse, aliasStore].some((value) => !Number.isFinite(value) || value < 0)) {
+      setError("대표와 원본의 재고 배분량을 모두 0 이상 숫자로 입력해 주세요.");
+      return;
+    }
+    if (Math.abs(canonicalWarehouse + aliasWarehouse - totalWarehouse) > 0.00005
+      || Math.abs(canonicalStore + aliasStore - totalStore) > 0.00005) {
+      setError("창고와 매장 각각의 배분 합계가 현재 합계와 같아야 합니다.");
+      return;
+    }
+    if (unmergePreview.has_open_mobile_session || unmergePreview.has_barcode_conflict) {
+      setError(unmergePreview.has_open_mobile_session
+        ? "열린 모바일 재고 세션을 먼저 완료해 주세요."
+        : "병합 후 바코드 연결이 변경되어 먼저 확인이 필요합니다.");
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setUnmerging(true);
+    unmergeRequestRef.current ??= createMutationRequestId();
+    const { error: unmergeError } = await Services.DatabaseService.rpc("unmerge_product_alias", {
+      alias_link_id: unmergePreview.link_id,
+      canonical_warehouse_qty: canonicalWarehouse,
+      canonical_store_qty: canonicalStore,
+      alias_warehouse_qty: aliasWarehouse,
+      alias_store_qty: aliasStore,
+      expected_canonical_warehouse_version: unmergePreview.canonical_warehouse_version,
+      expected_canonical_store_version: unmergePreview.canonical_store_version,
+      expected_alias_warehouse_version: unmergePreview.alias_warehouse_version,
+      expected_alias_store_version: unmergePreview.alias_store_version,
+      request_id: unmergeRequestRef.current
+    });
+    setUnmerging(false);
+
+    if (unmergeError) {
+      finishMutationRequest(unmergeRequestRef, unmergeError);
+      setError(unmergeError.message);
+      return;
+    }
+
+    unmergeRequestRef.current = null;
+    setUnmergePreview(null);
+    setMessage(`${unmergePreview.alias_name} 품목의 병합을 해제했습니다.`);
+    await loadProduct();
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!isRegisterMode && !product) return;
@@ -316,24 +527,15 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         }
 
         if (existingProduct) {
-          const { data: restoredProduct, error: restoreError } = await Services.DatabaseService.update("products", {
-              ...productValues,
-              is_active: true
-            })
-            .eq("store_id", currentStoreId)
-            .eq("id", existingProduct.id)
-            .select()
-            .single();
+          const { data: restoredProduct, error: restoreError } = await Services.DatabaseService.rpc("restore_product_with_inventory", {
+            target_product_id: existingProduct.id,
+            product_data: productValues
+          });
 
           if (restoreError) {
             setError(formatProductUpdateError(restoreError.message));
           } else {
-            const { error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: restoredProduct.id, store_id: currentStoreId }, { onConflict: "product_id" });
-            if (inventoryError) {
-              setError(inventoryError.message);
-            } else {
-              navigate({ name: "operation", productId: restoredProduct.id }, { replace: true });
-            }
+            navigate({ name: "operation", productId: restoredProduct.id }, { replace: true });
           }
 
           setSaving(false);
@@ -341,22 +543,15 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         }
       }
 
-      const { data: insertedProduct, error: insertError } = await Services.DatabaseService.insert("products", {
-          store_id: currentStoreId,
-          ...productValues
-        })
-        .select()
-        .single();
+      const { data: insertedProduct, error: insertError } = await Services.DatabaseService.rpc("create_product_with_inventory", {
+        product_store_id: currentStoreId,
+        product_data: productValues
+      });
 
       if (insertError) {
         setError(insertError.code === "23505" ? "이미 같은 바코드로 등록된 품목이 있습니다." : formatProductUpdateError(insertError.message));
       } else {
-        const { error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: insertedProduct.id, store_id: currentStoreId }, { onConflict: "product_id" });
-        if (inventoryError) {
-          setError(inventoryError.message);
-        } else {
-          navigate({ name: "operation", productId: insertedProduct.id }, { replace: true });
-        }
+        navigate({ name: "operation", productId: insertedProduct.id }, { replace: true });
       }
       setSaving(false);
       return;
@@ -395,12 +590,8 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     navigate({ name: "inventory" }, { resetToRoot: true });
   }
 
-  const mergeCandidates = products
+  const mergeCandidates = mergeSearchResults
     .filter((candidate) => candidate.id !== product?.id && candidate.is_active !== false)
-    .filter((candidate) => {
-      const keyword = mergeSearch.trim().toLowerCase();
-      return keyword && (candidate.name.toLowerCase().includes(keyword) || (candidate.barcode ?? "").toLowerCase().includes(keyword));
-    })
     .slice(0, 5);
 
   function formatMergeError(errorMessage: string) {
@@ -424,19 +615,34 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
       setError("");
       setMessage("");
       setMerging(true);
-      const { data: mergedProductId, error: mergeError } = await Services.DatabaseService.rpc("register_and_merge_product", {
+      let existingInventory: Inventory;
+      try {
+        existingInventory = await loadInventoryRow(mergeCandidate.id);
+      } catch (inventoryError) {
+        setError(inventoryError instanceof Error ? inventoryError.message : "재고 정보를 불러오지 못했습니다.");
+        setMerging(false);
+        return;
+      }
+
+      mergeRequestRef.current ??= createMutationRequestId();
+      const { data: mergedProductId, error: mergeError } = await Services.DatabaseService.rpc("register_and_merge_product_reversible", {
         product_store_id: currentStoreId,
         product_data: productValues,
         existing_product_id: mergeCandidate.id,
-        keep_new_product: mergeTargetId === "register-draft"
+        keep_new_product: mergeTargetId === "register-draft",
+        expected_existing_warehouse_version: existingInventory.warehouse_version,
+        expected_existing_store_version: existingInventory.store_version,
+        request_id: mergeRequestRef.current
       });
       setMerging(false);
 
       if (mergeError) {
+        finishMutationRequest(mergeRequestRef, mergeError);
         setError(formatMergeError(mergeError.message));
         return;
       }
 
+      mergeRequestRef.current = null;
       navigate({ name: "operation", productId: mergedProductId }, { replace: true });
       return;
     }
@@ -449,17 +655,38 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     setError("");
     setMessage("");
     setMerging(true);
-    const { error: mergeError } = await Services.DatabaseService.rpc("merge_products", {
+    let targetInventory: Inventory;
+    let sourceInventory: Inventory;
+    try {
+      [targetInventory, sourceInventory] = await Promise.all([
+        loadInventoryRow(targetProduct.id),
+        loadInventoryRow(sourceProduct.id)
+      ]);
+    } catch (inventoryError) {
+      setError(inventoryError instanceof Error ? inventoryError.message : "재고 정보를 불러오지 못했습니다.");
+      setMerging(false);
+      return;
+    }
+
+    mergeRequestRef.current ??= createMutationRequestId();
+    const { error: mergeError } = await Services.DatabaseService.rpc("merge_products_reversible", {
       target_product_id: targetProduct.id,
-      source_product_id: sourceProduct.id
+      source_product_id: sourceProduct.id,
+      expected_target_warehouse_version: targetInventory.warehouse_version,
+      expected_target_store_version: targetInventory.store_version,
+      expected_source_warehouse_version: sourceInventory.warehouse_version,
+      expected_source_store_version: sourceInventory.store_version,
+      request_id: mergeRequestRef.current
     });
     setMerging(false);
 
     if (mergeError) {
+      finishMutationRequest(mergeRequestRef, mergeError);
       setError(formatMergeError(mergeError.message));
       return;
     }
 
+    mergeRequestRef.current = null;
     if (targetProduct.id !== product.id) {
       navigate({ name: "inventory" }, { resetToRoot: true });
       return;
@@ -506,6 +733,22 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
     is_active: true,
     created_at: new Date(0).toISOString()
   };
+
+  const mergeProducts = ([isRegisterMode ? mergeDraftProduct : product, mergeCandidate] as const)
+    .filter((item): item is Product => Boolean(item));
+  const selectedMergeTarget = mergeProducts.find((item) => item.id === mergeTargetId) ?? null;
+  const selectedMergeSource = selectedMergeTarget
+    ? mergeProducts.find((item) => item.id !== selectedMergeTarget.id) ?? null
+    : null;
+  const getMergeInventory = (targetProduct: Product | null) => {
+    if (!targetProduct) return null;
+    if (targetProduct.id === "register-draft") {
+      return { warehouse_qty: 0, store_qty: 0 };
+    }
+    return mergeInventoryById[targetProduct.id] ?? null;
+  };
+  const selectedTargetInventory = getMergeInventory(selectedMergeTarget);
+  const selectedSourceInventory = getMergeInventory(selectedMergeSource);
 
   return (
     <section className="min-w-0">
@@ -778,13 +1021,8 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
               <button
                 key={candidate.id}
                 type="button"
-                disabled={merging}
-                onClick={() => {
-                  setError("");
-                  setMessage("");
-                  setMergeCandidate(candidate);
-                  setMergeTargetId(isRegisterMode ? candidate.id : product?.id ?? null);
-                }}
+                disabled={merging || mergePreviewLoading}
+                onClick={() => void chooseMergeCandidate(candidate)}
                 className="w-full rounded-md border border-slate-200 bg-white p-3 text-left text-sm disabled:opacity-45 dark:border-slate-800 dark:bg-slate-900"
               >
                 <span className="block font-bold">{candidate.name}</span>
@@ -797,6 +1035,46 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
         ) : null}
       </div>
 
+      {!isRegisterMode ? (
+        <div className="panel mt-4 w-full max-w-2xl p-4">
+          <h2 className="text-base font-bold">병합된 원본</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">원본 상품과 과거 병합 이력을 확인합니다. 새 방식 병합은 원본별로 해제할 수 있습니다.</p>
+
+          {aliasesLoading ? <div className="mt-3"><StatusMessage>병합 이력을 불러오는 중...</StatusMessage></div> : null}
+          {!aliasesLoading && productAliases.length === 0 ? (
+            <p className="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">병합된 원본이 없습니다.</p>
+          ) : null}
+          {!aliasesLoading && productAliases.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {productAliases.map((alias) => (
+                <div key={alias.alias_link_id ?? `legacy-${alias.alias_product_id}`} className="flex flex-col gap-2 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">{alias.alias_name}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {alias.merge_kind === "legacy"
+                        ? "이전 방식 병합 · 해제 불가"
+                        : alias.merge_status === "active"
+                          ? "대표 상품으로 연결 중"
+                          : "병합 해제 완료"}
+                    </p>
+                  </div>
+                  {alias.can_unmerge ? (
+                    <button
+                      type="button"
+                      disabled={unmergeLoading || unmerging}
+                      onClick={() => void openUnmerge(alias)}
+                      className="secondary-button shrink-0 px-3"
+                    >
+                      {unmergeLoading ? "확인 중..." : "병합 해제"}
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {mergeCandidate ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-3 py-3 sm:px-4 sm:py-6">
           <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white p-3 shadow-xl dark:bg-slate-900 sm:max-h-[90dvh] sm:p-5" role="dialog" aria-modal="true" aria-labelledby="merge-product-dialog-title">
@@ -805,7 +1083,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">남길 품목을 선택해 주세요. 선택하지 않은 품목은 병합 후 비활성화됩니다.</p>
 
               <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:gap-3">
-                {([isRegisterMode ? mergeDraftProduct : product, mergeCandidate] as const).filter((item): item is Product => Boolean(item)).map((mergeProductItem) => {
+                {mergeProducts.map((mergeProductItem) => {
                   const isSelected = mergeTargetId === mergeProductItem.id;
                   const isCurrentProduct = isRegisterMode ? mergeProductItem.id === "register-draft" : mergeProductItem.id === product?.id;
                   return (
@@ -819,6 +1097,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
                     >
                       <ProductMergeInfo
                         product={mergeProductItem}
+                        inventory={getMergeInventory(mergeProductItem)}
                         title={isCurrentProduct ? (isRegisterMode ? "등록 예정 품목" : "현재 품목") : "병합 품목"}
                         description={isSelected ? "선택됨 · 병합 후 이 품목을 유지합니다." : "선택하면 이 품목을 유지합니다."}
                       />
@@ -826,6 +1105,19 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
                   );
                 })}
               </div>
+
+              {selectedMergeTarget && selectedMergeSource && selectedTargetInventory && selectedSourceInventory ? (
+                <div className="mt-3 rounded-md bg-slate-100 p-3 text-sm dark:bg-slate-800 sm:mt-4">
+                  <p className="font-bold">병합 후 대표 상품: {selectedMergeTarget.name}</p>
+                  <p className="mt-1 text-slate-600 dark:text-slate-300">
+                    창고 {formatInventoryQuantity(selectedTargetInventory.warehouse_qty)} + {formatInventoryQuantity(selectedSourceInventory.warehouse_qty)} = {formatInventoryQuantity(selectedTargetInventory.warehouse_qty + selectedSourceInventory.warehouse_qty)}
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300">
+                    매장 {formatInventoryQuantity(selectedTargetInventory.store_qty)} + {formatInventoryQuantity(selectedSourceInventory.store_qty)} = {formatInventoryQuantity(selectedTargetInventory.store_qty + selectedSourceInventory.store_qty)}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">원본 상품은 삭제되지 않고 비활성 상태로 보존되며, 나중에 위치별 수량을 배분해 해제할 수 있습니다.</p>
+                </div>
+              ) : null}
 
               {error ? <div className="mt-3 sm:mt-4"><StatusMessage type="error">{error}</StatusMessage></div> : null}
             </div>
@@ -845,6 +1137,60 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
               </button>
               <button type="button" disabled={merging || !mergeTargetId} onClick={() => void mergeProduct()} className="primary-button">
                 {merging ? "병합 중..." : "병합"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {unmergePreview ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-3 py-3 sm:px-4 sm:py-6">
+          <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900 sm:max-h-[90dvh] sm:p-5" role="dialog" aria-modal="true" aria-labelledby="unmerge-product-dialog-title">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <h2 id="unmerge-product-dialog-title" className="text-lg font-bold">상품 병합 해제</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">현재 위치별 합계를 대표 상품과 원본 상품에 직접 배분해 주세요.</p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <section className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+                  <h3 className="text-sm font-bold">대표 · {unmergePreview.canonical_name}</h3>
+                  <label className="mt-3 block text-sm font-semibold">
+                    창고
+                    <input className="field mt-1" type="number" inputMode="decimal" min={0} step="0.0001" value={unmergeCanonicalWarehouse} onChange={(event) => { setUnmergeCanonicalWarehouse(event.target.value); unmergeRequestRef.current = null; }} />
+                  </label>
+                  <label className="mt-3 block text-sm font-semibold">
+                    매장
+                    <input className="field mt-1" type="number" inputMode="decimal" min={0} step="0.0001" value={unmergeCanonicalStore} onChange={(event) => { setUnmergeCanonicalStore(event.target.value); unmergeRequestRef.current = null; }} />
+                  </label>
+                </section>
+
+                <section className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+                  <h3 className="text-sm font-bold">원본 · {unmergePreview.alias_name}</h3>
+                  <label className="mt-3 block text-sm font-semibold">
+                    창고
+                    <input className="field mt-1" type="number" inputMode="decimal" min={0} step="0.0001" value={unmergeAliasWarehouse} onChange={(event) => { setUnmergeAliasWarehouse(event.target.value); unmergeRequestRef.current = null; }} />
+                  </label>
+                  <label className="mt-3 block text-sm font-semibold">
+                    매장
+                    <input className="field mt-1" type="number" inputMode="decimal" min={0} step="0.0001" value={unmergeAliasStore} onChange={(event) => { setUnmergeAliasStore(event.target.value); unmergeRequestRef.current = null; }} />
+                  </label>
+                </section>
+              </div>
+
+              <div className="mt-3 rounded-md bg-slate-100 p-3 text-sm dark:bg-slate-800">
+                <p className="font-bold">현재 합계</p>
+                <p className="mt-1">창고 {formatInventoryQuantity(unmergePreview.current_canonical_warehouse_qty + unmergePreview.current_alias_warehouse_qty)} · 매장 {formatInventoryQuantity(unmergePreview.current_canonical_store_qty + unmergePreview.current_alias_store_qty)}</p>
+                <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">병합 기간에 대표 상품으로 새로 생긴 로그와 연결은 대표 상품에 남습니다. 원본의 기존 바코드 연결만 원래대로 복구됩니다.</p>
+              </div>
+
+              {unmergePreview.has_open_mobile_session ? <div className="mt-3"><StatusMessage type="error">열린 모바일 재고 세션이 있어 지금은 해제할 수 없습니다.</StatusMessage></div> : null}
+              {unmergePreview.has_barcode_conflict ? <div className="mt-3"><StatusMessage type="error">병합 후 바코드 연결이 변경되어 확인이 필요합니다.</StatusMessage></div> : null}
+              {error ? <div className="mt-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
+            </div>
+
+            <div className="mt-4 grid shrink-0 grid-cols-2 gap-3">
+              <button type="button" disabled={unmerging} onClick={closeUnmerge} className="secondary-button">취소</button>
+              <button type="button" disabled={unmerging || unmergePreview.has_open_mobile_session || unmergePreview.has_barcode_conflict} onClick={() => void submitUnmerge()} className="primary-button">
+                {unmerging ? "해제 중..." : "배분대로 병합 해제"}
               </button>
             </div>
           </div>

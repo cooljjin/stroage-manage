@@ -56,9 +56,6 @@ Deno.serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !anonKey || !serviceRoleKey) return jsonResponse({ error: "Edge Function 환경변수가 설정되지 않았습니다." }, 500);
 
-  const body = await req.json().catch(() => ({})) as JsonRecord;
-  if (body.action === "cleanup") return cleanupExpiredSources(supabaseUrl, serviceRoleKey, req);
-
   const authorization = req.headers.get("Authorization");
   if (!authorization) return jsonResponse({ error: "로그인이 필요합니다." }, 401);
   const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
@@ -66,6 +63,7 @@ Deno.serve(async (req) => {
   const { data: authData, error: authError } = await userClient.auth.getUser();
   if (authError || !authData.user) return jsonResponse({ error: authError?.message ?? "로그인이 필요합니다." }, 401);
 
+  const body = await req.json().catch(() => ({})) as JsonRecord;
   if (body.action !== "process" || typeof body.jobId !== "string") return jsonResponse({ error: "process와 jobId가 필요합니다." }, 400);
   const jobId = body.jobId;
   const { data: job, error: jobError } = await adminClient.from("recipe_import_jobs").select("*").eq("id", jobId).single();
@@ -73,19 +71,43 @@ Deno.serve(async (req) => {
   if (!(await canManageJob(adminClient, authData.user.id, job.store_id))) return jsonResponse({ error: "레시피 가져오기 권한이 없습니다." }, 403);
   if (!job.storage_path) return failJob(adminClient, jobId, "원본 파일 경로가 없습니다.");
   if (!job.approved_cost_usd || job.approved_cost_usd < job.estimated_cost_usd) return failJob(adminClient, jobId, "예상 비용 승인이 필요합니다.", "awaiting_cost_approval");
-  if (!["queued", "processing", "awaiting_cost_approval"].includes(job.status)) return jsonResponse({ ok: true, status: job.status });
+  if (job.status !== "queued") return jsonResponse({ ok: true, status: job.status });
 
   const model = normalizeModel(Deno.env.get("GEMINI_RECIPE_MODEL") ?? DEFAULT_MODEL);
   const apiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
   if (!apiKey) return failJob(adminClient, jobId, "GEMINI_API_KEY 환경변수가 없습니다.");
 
-  await adminClient.from("recipe_import_jobs").update({ status: "processing", provider: "google", model, prompt_version: PROMPT_VERSION, error_message: null }).eq("id", jobId);
+  const { data: claimRows, error: claimError } = await adminClient.rpc("claim_recipe_import_processing", {
+    target_job_id: jobId,
+    target_actor_id: authData.user.id
+  });
+  if (claimError) {
+    const status = /이용 횟수|한 번에|동시에/.test(claimError.message) ? 429 : 403;
+    return jsonResponse({ error: claimError.message }, status);
+  }
+  const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows;
+  if (!claim?.claimed) return jsonResponse({ ok: true, status: claim?.job_status ?? job.status });
+
+  await adminClient.from("recipe_import_jobs").update({ provider: "google", model, prompt_version: PROMPT_VERSION, error_message: null }).eq("id", jobId);
 
   try {
-    const manifest = isManifest(body.manifest) ? body.manifest : undefined;
+    const manifest = isManifest(job.source_manifest)
+      ? job.source_manifest
+      : isManifest(body.manifest)
+        ? body.manifest
+        : undefined;
     const source = await loadSource(adminClient, job.storage_path, job.source_type as SourceType);
+    const verification = verifySourceFile(job.source_type as SourceType, source.bytes, source.storageMimeType);
+    const { error: usageError } = await adminClient.rpc("start_recipe_import_gemini", {
+      target_job_id: jobId,
+      target_actor_id: authData.user.id,
+      target_verified_file_size: source.bytes.byteLength,
+      target_verified_mime_type: verification.mimeType
+    });
+    if (usageError) throw new Error(usageError.message);
+
     const prompt = buildPrompt(job.source_type as SourceType, manifest);
-    const generation = await callGemini(apiKey, model, job.source_type as SourceType, prompt, source);
+    const generation = await callGemini(apiKey, model, job.source_type as SourceType, prompt, { bytes: source.bytes, mimeType: verification.mimeType });
     const extracted = parseExtraction(generation.text);
     const products = await loadProducts(adminClient, job.store_id);
     const aliases = await loadAliases(adminClient, job.store_id);
@@ -140,7 +162,16 @@ Deno.serve(async (req) => {
     const actualCost = calculateCost(inputTokens, outputTokens);
     const overBudget = actualCost > Number(job.approved_cost_usd);
     const status = overBudget ? "awaiting_cost_approval" : menus.some((menu) => menu.ingredients.some((ingredient) => ingredient.match_status === "review")) ? "needs_review" : "ready";
-    await adminClient.from("recipe_import_jobs").update({ status, total_segments: 1, completed_segments: 1, input_tokens: inputTokens, output_tokens: outputTokens, actual_cost_usd: actualCost, error_message: overBudget ? "실제 사용량이 승인한 비용을 초과했습니다." : null }).eq("id", jobId);
+    await adminClient.from("recipe_import_jobs").update({
+      status,
+      total_segments: 1,
+      completed_segments: 1,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      actual_cost_usd: actualCost,
+      error_message: overBudget ? "실제 사용량이 승인한 비용을 초과했습니다." : null,
+      source_manifest: null
+    }).eq("id", jobId);
     return jsonResponse({ ok: true, status, menuCount: menus.length, actualCostUsd: actualCost });
   } catch (processingError) {
     const message = processingError instanceof Error ? processingError.message : "레시피 분석에 실패했습니다.";
@@ -150,7 +181,9 @@ Deno.serve(async (req) => {
 
 async function canManageJob(adminClient: ReturnType<typeof createClient>, userId: string, storeId: string) {
   const { data: profile } = await adminClient.from("profiles").select("role,store_id").eq("id", userId).single();
-  if (!profile || profile.store_id !== storeId) return false;
+  if (!profile) return false;
+  if (profile.role === "master") return true;
+  if (profile.store_id !== storeId) return false;
   if (profile.role === "store_admin") return true;
   const { data: permission } = await adminClient.from("staff_permissions").select("id").eq("store_id", storeId).eq("user_id", userId).eq("permission_key", "group_order_recipe_management").maybeSingle();
   return Boolean(permission);
@@ -170,8 +203,38 @@ async function loadSource(adminClient: ReturnType<typeof createClient>, storageP
   const { data, error } = await adminClient.storage.from("recipe-imports").download(storagePath);
   if (error || !data) throw error ?? new Error("원본 파일을 읽지 못했습니다.");
   const bytes = new Uint8Array(await data.arrayBuffer());
-  if (sourceType === "pdf") return { bytes, mimeType: "application/pdf" };
-  return { bytes, mimeType: "application/octet-stream" };
+  return { bytes, storageMimeType: data.type || "application/octet-stream", sourceType };
+}
+
+function verifySourceFile(sourceType: SourceType, bytes: Uint8Array, storageMimeType: string) {
+  if (bytes.byteLength === 0 || bytes.byteLength > 50 * 1024 * 1024) {
+    throw new Error("Storage의 실제 파일은 50MB 이하의 비어 있지 않은 파일이어야 합니다.");
+  }
+
+  const startsWith = (...signature: number[]) => signature.every((value, index) => bytes[index] === value);
+  if (sourceType === "pdf") {
+    if (!startsWith(0x25, 0x50, 0x44, 0x46, 0x2d)) throw new Error("PDF 파일 시그니처가 올바르지 않습니다.");
+    return { mimeType: "application/pdf" };
+  }
+  if (sourceType === "xlsx") {
+    if (!startsWith(0x50, 0x4b, 0x03, 0x04)) throw new Error("XLSX 파일 시그니처가 올바르지 않습니다.");
+    return { mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+  }
+  if (sourceType === "xls") {
+    if (!startsWith(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1)) throw new Error("XLS 파일 시그니처가 올바르지 않습니다.");
+    return { mimeType: "application/vnd.ms-excel" };
+  }
+
+  if (bytes.includes(0)) throw new Error("CSV 파일에 허용되지 않은 이진 데이터가 포함되어 있습니다.");
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("CSV 파일은 UTF-8 텍스트 형식이어야 합니다.");
+  }
+  if (!storageMimeType.startsWith("text/") && !["application/csv", "application/vnd.ms-excel", "application/octet-stream"].includes(storageMimeType)) {
+    throw new Error("Storage에 기록된 CSV MIME 형식이 올바르지 않습니다.");
+  }
+  return { mimeType: "text/csv" };
 }
 
 async function callGemini(apiKey: string, model: string, sourceType: SourceType, prompt: string, source: { bytes: Uint8Array; mimeType: string }) {
@@ -188,9 +251,8 @@ async function callGemini(apiKey: string, model: string, sourceType: SourceType,
       body: JSON.stringify({
         contents: [{ role: "user", parts }],
         generationConfig: {
-          responseFormat: {
-            text: { mimeType: "application/json", schema: recipeSchema() }
-          }
+          responseMimeType: "application/json",
+          responseSchema: recipeSchema()
         }
       })
     });
@@ -327,22 +389,8 @@ function isManifest(value: unknown): value is ImportManifest { return Boolean(va
 function normalizeModel(value: string) { return value.trim().replace(/^models\//, "") || DEFAULT_MODEL; }
 
 async function failJob(adminClient: ReturnType<typeof createClient>, jobId: string, message: string, status = "failed") {
-  await adminClient.from("recipe_import_jobs").update({ status, error_message: message }).eq("id", jobId);
+  await adminClient.from("recipe_import_jobs").update({ status, error_message: message, processing_claimed_by: null }).eq("id", jobId);
   return jsonResponse({ error: message, status }, status === "failed" ? 500 : 200);
-}
-
-async function cleanupExpiredSources(supabaseUrl: string, serviceRoleKey: string, req: Request) {
-  const secret = Deno.env.get("RECIPE_IMPORT_CLEANUP_SECRET");
-  if (!secret || req.headers.get("x-cleanup-secret") !== secret) return jsonResponse({ error: "정리 작업 인증이 필요합니다." }, 401);
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
-  const { data: jobs } = await adminClient.from("recipe_import_jobs").select("id,storage_path").not("storage_path", "is", null).lt("source_expires_at", new Date().toISOString()).limit(100);
-  let deleted = 0;
-  for (const job of jobs ?? []) {
-    if (job.storage_path) await adminClient.storage.from("recipe-imports").remove([job.storage_path]);
-    await adminClient.from("recipe_import_jobs").update({ storage_path: null }).eq("id", job.id);
-    deleted += 1;
-  }
-  return jsonResponse({ ok: true, deleted });
 }
 
 function jsonResponse(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
