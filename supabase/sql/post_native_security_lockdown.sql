@@ -10,6 +10,7 @@ revoke insert, update on table public.inventory_logs from authenticated;
 revoke update (note) on table public.inventory_logs from authenticated;
 revoke insert, update, delete on table public.confirmed_order_items from authenticated;
 revoke insert, update, delete on table public.product_barcodes from authenticated;
+revoke insert, update, delete on table public.profiles from authenticated;
 
 revoke execute on function public.merge_products(uuid, uuid)
 from authenticated;
@@ -47,5 +48,5 @@ where grantee = 'authenticated'
     or (table_name = 'inventory_logs' and privilege_type in ('INSERT', 'UPDATE'))
     or (table_name = 'confirmed_order_items' and privilege_type in ('INSERT', 'UPDATE', 'DELETE'))
     or (table_name = 'product_barcodes' and privilege_type in ('INSERT', 'UPDATE', 'DELETE'))
-    or (table_name = 'profiles' and privilege_type = 'SELECT')
+    or (table_name = 'profiles' and privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE'))
   );

@@ -624,6 +624,8 @@ export type Database = {
           completed_segments: number;
           error_message: string | null;
           source_expires_at: string | null;
+          source_uploaded_at: string | null;
+          source_manifest: Json | null;
           processing_started_at: string | null;
           processing_claimed_by: string | null;
           gemini_started_at: string | null;
@@ -655,6 +657,8 @@ export type Database = {
           completed_segments?: number;
           error_message?: string | null;
           source_expires_at?: string | null;
+          source_uploaded_at?: string | null;
+          source_manifest?: Json | null;
           processing_started_at?: string | null;
           processing_claimed_by?: string | null;
           gemini_started_at?: string | null;
@@ -676,6 +680,8 @@ export type Database = {
           completed_segments?: number;
           error_message?: string | null;
           source_expires_at?: string | null;
+          source_uploaded_at?: string | null;
+          source_manifest?: Json | null;
           processing_started_at?: string | null;
           processing_claimed_by?: string | null;
           gemini_started_at?: string | null;
@@ -1816,6 +1822,25 @@ export type Database = {
         Args: Record<string, never>;
         Returns: Database["public"]["Tables"]["profiles"]["Row"];
       };
+      sync_my_profile_email: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
+      update_store_staff_display_name: {
+        Args: {
+          target_user_id: string;
+          target_display_name: string;
+        };
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
+      update_staff_profile_admin: {
+        Args: {
+          target_user_id: string;
+          target_display_name: string;
+          target_store_id: string;
+        };
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
       list_store_staff_directory: {
         Args: Record<string, never>;
         Returns: {
@@ -2253,6 +2278,13 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["recipe_import_extra_use_requests"]["Row"];
       };
+      reject_recipe_import_extra_use_request: {
+        Args: {
+          target_request_id: string;
+          reason: string;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_extra_use_requests"]["Row"];
+      };
       grant_recipe_import_extra_uses: {
         Args: {
           target_user_id: string;
@@ -2275,6 +2307,13 @@ export type Database = {
         Args: {
           target_job_id: string;
           target_approved_cost_usd: number;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
+      };
+      save_recipe_import_manifest: {
+        Args: {
+          target_job_id: string;
+          target_manifest: Json;
         };
         Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
       };

@@ -93,6 +93,12 @@ Deno.serve(async (req) => {
       if (!revalidation.ok) throw new PurgeError(revalidation.errorCode);
 
       if (revalidation.memberCount === 1) {
+        const dependencyError = await deleteOwnerRestrictedDependencies(
+          adminClient,
+          candidate.id
+        );
+        if (dependencyError) throw new PurgeError(dependencyError);
+
         const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(ownerId);
         if (deleteUserError && !isMissingUserError(deleteUserError.message)) {
           throw new PurgeError("AUTH_DELETE_FAILED");
@@ -159,7 +165,10 @@ async function validatePersonalStore(
   }
 
   const ownerId = expectedOwnerId ?? store.purge_owner_id ?? store.created_by;
-  if (!ownerId || store.created_by !== ownerId || (store.purge_owner_id && store.purge_owner_id !== ownerId)) {
+  if (!ownerId
+    || (store.created_by && store.created_by !== ownerId)
+    || (store.purge_owner_id && store.purge_owner_id !== ownerId)
+    || (!store.created_by && (!store.purge_started_at || store.purge_owner_id !== ownerId))) {
     return { ok: false, errorCode: "OWNER_CHANGED" };
   }
 
@@ -181,6 +190,28 @@ async function validatePersonalStore(
     return { ok: false, errorCode: "OWNER_PROFILE_CHANGED" };
   }
   return { ok: true, ownerId, memberCount: 1 };
+}
+
+async function deleteOwnerRestrictedDependencies(
+  adminClient: ReturnType<typeof createClient>,
+  storeId: string
+) {
+  // These rows have an ON DELETE RESTRICT reference to auth.users. They are
+  // store-scoped and would be removed by the store cascade moments later, but
+  // must be cleared first so the Auth Admin deletion can succeed. A retry is
+  // safe because each delete is scoped and idempotent.
+  for (const tableName of [
+    "mobile_inventory_sessions",
+    "recipe_import_usage_grants",
+    "recipe_import_cost_approvals"
+  ]) {
+    const { error } = await adminClient
+      .from(tableName)
+      .delete()
+      .eq("store_id", storeId);
+    if (error) return "AUTH_DEPENDENCY_DELETE_FAILED";
+  }
+  return null;
 }
 
 class PurgeError extends Error {

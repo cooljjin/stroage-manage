@@ -12,7 +12,8 @@ export async function ensureCurrentProfile(session: Session): Promise<StaffProfi
   if (profile) {
     const email = session.user.email ?? null;
     if (profile.email !== email) {
-      await Services.DatabaseService.update("profiles", { email }).eq("id", session.user.id);
+      const { data: syncedProfile, error: syncError } = await Services.DatabaseService.rpc("sync_my_profile_email");
+      if (!syncError && syncedProfile) return syncedProfile;
     }
     return profile;
   }

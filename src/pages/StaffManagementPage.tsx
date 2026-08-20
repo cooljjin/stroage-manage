@@ -66,8 +66,10 @@ export function StaffManagementPage() {
 
     setError("");
     setMessage("");
-    const { error: updateError } = await Services.DatabaseService.update("profiles", { display_name: displayName, updated_at: new Date().toISOString() })
-      .eq("id", profile.id);
+    const { error: updateError } = await Services.DatabaseService.rpc("update_store_staff_display_name", {
+      target_user_id: profile.id,
+      target_display_name: displayName
+    });
 
     if (updateError) {
       setError(updateError.message);

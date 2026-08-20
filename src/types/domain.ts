@@ -485,6 +485,13 @@ export type RecipeImportJob = {
   completed_segments: number;
   error_message: string | null;
   source_expires_at: string | null;
+  source_uploaded_at: string | null;
+  source_manifest: unknown;
+  processing_started_at: string | null;
+  processing_claimed_by: string | null;
+  gemini_started_at: string | null;
+  verified_file_size: number | null;
+  verified_mime_type: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

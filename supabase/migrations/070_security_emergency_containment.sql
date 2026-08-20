@@ -337,7 +337,6 @@ set search_path = public
 as $$
 declare
   candidate date := start_date;
-  attempt integer;
 begin
   if auth.uid() is null or not public.can_access_store(target_store_id) then
     raise exception '해당 매장의 영업일을 조회할 권한이 없습니다.';

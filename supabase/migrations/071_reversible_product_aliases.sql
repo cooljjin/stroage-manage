@@ -252,6 +252,7 @@ set search_path = public
 as $$
 declare
   target_store_id uuid;
+  requested_product_id uuid := $1;
 begin
   if auth.uid() is null then
     raise exception '로그인이 필요합니다.';
@@ -259,7 +260,7 @@ begin
 
   select product.store_id into target_store_id
   from public.products product
-  where product.id = target_product_id;
+  where product.id = requested_product_id;
 
   if target_store_id is null or not public.can_access_store(target_store_id) then
     raise exception '해당 상품에 접근할 권한이 없습니다.';
@@ -279,7 +280,7 @@ begin
   from public.product_alias_links link
   join public.products alias_product on alias_product.id = link.alias_product_id
   where link.store_id = target_store_id
-    and link.canonical_product_id = target_product_id
+    and link.canonical_product_id = requested_product_id
 
   union all
 
@@ -296,7 +297,7 @@ begin
   from public.product_merge_history history
   join public.products source_product on source_product.id = history.source_product_id
   where history.store_id = target_store_id
-    and history.target_product_id = target_product_id
+    and history.target_product_id = requested_product_id
 
   order by merged_at desc, alias_product_id;
 end;
@@ -1207,6 +1208,12 @@ begin
   );
 end;
 $$;
+
+-- Migration 070 temporarily preserved the former implementation for old
+-- clients. The compatibility entry point above now uses the reversible RPC,
+-- so the renamed body (which also retained a stale self-qualified parameter)
+-- must no longer remain callable or lintable.
+drop function if exists public.merge_products_legacy_internal_070(uuid, uuid);
 
 revoke all on function public.resolve_canonical_product_id(uuid)
 from public, anon;

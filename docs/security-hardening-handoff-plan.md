@@ -1,8 +1,8 @@
-# Stockly 보안 강화 작업 중단·재개 계획
+# Stockly 보안 강화 현재 상태와 다음 진행 계획
 
 기준일: 2026-08-20
 
-상태: 사용자 요청에 따라 추가 구현 중단
+상태: 로컬 구현·회귀 검증 완료, 운영/Preview/실기기 미적용
 
 작업 브랜치: `codex/security-hardening`
 
@@ -10,211 +10,193 @@
 
 기준 커밋: `b3b6043`
 
-## 1. 현재 상태와 안전 경계
+로컬 중간 체크포인트: `29dafde` (`WIP: checkpoint security hardening draft`)
 
-- 기존 변경이 있던 원래 작업공간 `/Users/jinkim/Documents/storage manage`는 수정하지 않고 별도 worktree에서 작업했다.
-- 현재 보안 강화 변경은 아직 커밋하지 않은 로컬 변경으로 보존되어 있다.
-- Supabase migration/Edge Function 배포, Vercel 배포, GitHub 설정 변경, TestFlight/Android 배포는 하지 않았다.
-- 운영 DB 데이터, 운영 상품, 실제 직원 계정, 기존 병합 이력은 변경하지 않았다.
-- `supabase db push --dry-run --include-all`만 실행했으며 실제 push는 하지 않았다.
-- 이 브랜치는 여러 계층이 함께 바뀌는 중간 상태다. 아래 미완료 항목을 끝내기 전에는 `main`에 병합하거나 배포하지 않는다.
+최종 로컬 구현 커밋: `Complete local security hardening implementation` (이 문서를 포함한 현재 브랜치 `HEAD`)
 
-## 2. 지금까지 작성한 구현 초안
+## 1. 안전 경계
 
-아래 항목은 소스에 작성되었지만, DB와 실제 기기까지 검증된 완료 상태는 아니다.
+- 기존 변경이 있던 `/Users/jinkim/Documents/storage manage`와 `main`은 수정하지 않았다.
+- 보안 변경은 별도 worktree/브랜치에만 있으며 원격으로 push하지 않았다.
+- 운영 Supabase migration/Edge Function, Vercel, GitHub 설정, App Store Connect/TestFlight, Android 배포는 변경하지 않았다.
+- 운영 상품, 실제 직원, 기존 병합 이력과 휴무 데이터는 수정하지 않았다.
+- 로컬 검증은 격리된 Supabase와 `example.invalid`, 고정 테스트 UUID, 이름에 `테스트`가 포함된 fixture만 사용했다. 마지막에 `supabase db reset`을 다시 실행해 fixture를 남기지 않았다.
+- `post_native_security_lockdown.sql`은 로컬에서만 적용·검증한 뒤 DB reset으로 되돌렸다. 운영에는 적용하지 않았다.
+
+## 2. 구현된 범위
 
 ### DB 보안과 가역 상품 병합
 
-- `068_recipe_import_ascii_storage_path.sql`
-  - 원격에는 이미 적용된 것으로 dry-run에서 인식되는 migration을 worktree에 포함했다.
-  - 재개 시 운영 적용본과 로컬 파일의 정확한 내용·해시를 다시 확인해야 한다.
 - `070_security_emergency_containment.sql`
-  - 구형 상품 병합·등록 병합·재고 복원 RPC에 로그인, 동일 매장, 활성 상품과 잠금 검사를 추가하는 호환 wrapper 초안.
-  - 사용자 UUID 기반 역할/매장 helper를 본인 또는 master 범위로 제한하는 초안.
-  - 매장별 휴무 계산과 휴무 변경 트리거 보정 초안.
-  - 기존 public schema 함수의 `PUBLIC/anon` 실행 권한을 제거하고 고정 `search_path`를 설정하는 초안.
+  - 구형 병합·복원 RPC의 로그인, 동일 매장, 활성 상품, 행 잠금 검사
+  - 본인/master 범위 역할 helper
+  - 매장별 휴무 계산과 변경 매장만 이동하는 trigger
+  - 모든 public 함수의 `PUBLIC/anon` 실행 제거와 고정 `search_path`
 - `071_reversible_product_aliases.sql`
-  - `product_alias_links`와 대표/원본 관계, 병합·해제 스냅샷, 실행자, request ID 보존 구조.
-  - 대표 상품 해석, 바코드 조회, 원본 이름 포함 검색, 병합 이력 조회 RPC.
-  - 버전 검사·행 잠금·중복 요청 방지·열린 모바일 세션/중복 레시피/바코드 충돌 차단을 포함한 병합·해제 RPC.
-  - 활성 원본 상품의 직접 수정·재활성화·재고·바코드 변경을 막는 trigger.
-  - 구형 2인자 `merge_products`를 가역 병합으로 연결하는 호환 wrapper.
+  - 대표 상품과 보존 원본을 연결하는 `product_alias_links`
+  - 위치별 버전, 행 잠금, `request_id`, 열린 모바일 세션, 레시피 중복, 바코드 충돌 검사
+  - 원본 이름·기본/보조 바코드 검색 및 스캔의 대표 상품 해석
+  - 위치별 수량 재배분을 받는 원본별 병합 해제와 감사 로그
+  - 활성 원본의 직접 상품/재고/바코드 변경 차단 trigger
+  - 기존 `product_merge_history`는 legacy·해제 불가로 조회
 - `072_safe_write_and_profile_apis.sql`
-  - 안전한 재고 행 생성과 상품 생성·복구 RPC.
-  - 등록과 병합을 한 요청으로 처리하는 가역 RPC.
-  - 재고 메모 생성·수정 RPC.
-  - 본인 프로필, 일반 직원 디렉터리, 관리자 디렉터리 RPC와 프로필 RLS 축소.
-  - 기존 상품 ID를 대표 상품 ID로 해석하는 참조 조회 RPC.
+  - 상품·최초 재고 행·메모 쓰기 RPC
+  - 본인/직원 디렉터리/관리자 프로필 조회 분리
+  - 상품 참조의 대표 ID 해석 RPC
 - `073_recipe_import_limits_and_retention.sql`
-  - 주간 사용량, 추가 이용 요청/승인, 건별 고비용 승인, 정리 작업 감사 테이블 초안.
-  - 사용자당 1건·매장당 2건 동시 처리, 주 10회+추가 20회, 일반 `$0.50`, master 승인 절대 상한 `$5` 검사 RPC.
-  - Gemini 호출 직전 1회만 기록하는 멱등 사용량 RPC.
-  - `pg_cron`, `pg_net` extension 활성화 선언.
+  - 주 10회, 추가 최대 20회, 사용자 1건·매장 2건 동시 처리
+  - 일반 `$0.50`, master 승인 절대 상한 `$5`
+  - 실제 Gemini 시작 직전 1회만 과금하는 멱등 기록
+  - 별도 보관 작업 감사와 `pg_cron`/`pg_net`
+- `074_alias_aware_inventory_operations.sql`
+  - 기존 프랩/단체주문 참조 ID는 유지하면서 실행 시 대표 재고로 해석
+  - 새 프랩·단체주문·레시피 별칭 연결은 대표 ID로 저장
+  - 재고 작업·입고 확인·실사·프랩 RPC의 대표 상품 처리
+- `075_recipe_import_approval_workflow.sql`
+  - 업로드 manifest 보존, 사용자 저비용 승인, master 고비용 승인
+  - 이미 완료된 고비용 결과 승인 시 Gemini 재실행 방지
+  - 추가 이용 요청 반려 API
+- `076_profile_write_apis.sql`
+  - Auth 이메일을 서버에서 동기화
+  - 같은 매장 관리자 이름 수정과 master 사용자 배정 RPC
+- `077_edge_service_role_privileges.sql`
+  - Edge Function이 직접 사용하는 테이블에만 service-role 최소 권한 부여
+- `078_account_purge_retry_safety.sql`
+  - Auth 삭제를 막는 매장 범위 `RESTRICT` 참조를 선삭제할 최소 권한
+  - 계정은 삭제됐지만 매장 삭제가 실패한 부분 완료 상태의 재시도 지원
 
-### 고객용 앱
+### 고객 앱과 운영 콘솔
 
-- `src/lib/resolvedProducts.ts`에 대표 상품 기준 바코드·검색·재고 목록 공통 helper를 추가했다.
-- 스캔, 재고 목록, 부족 재고, 상품 검색, 프랩·단체주문 선택 화면을 대표 상품 해석 API 쪽으로 전환하는 초안을 작성했다.
-- 상품 편집 화면에 가역 병합 전후 수량 확인, 원본 목록, legacy 해제 불가 표시, 위치별 재분배 해제 UI를 추가했다.
-- 재고 메모 직접 insert/update와 일부 재고 직접 upsert를 RPC 호출로 교체했다.
-- 홈·로그·직원 관리 화면의 프로필 조회를 범위별 RPC로 교체했다.
-- Supabase Auth를 PKCE로 설정하고 네이티브 callback을 scheme=`com.jinkim.stockly`, host=`auth`, path=`/callback`으로 정확히 비교하도록 변경했다.
-- URL의 access/refresh token을 직접 `setSession`하던 경로를 제거하고 code와 저장된 state를 검증한 뒤 교환하도록 변경했다.
+- 스캔, 상품 검색, 재고/부족재고, 프랩·단체주문 선택을 대표 상품 해석 API로 전환했다.
+- 과거 원본 ID로 재고 작업 화면에 진입해도 대표 상품을 먼저 해석한다.
+- 상품 편집 화면에 병합 전후 비교, 활성 원본, legacy 해제 불가, 위치별 병합 해제 UI를 추가했다.
+- 보호 대상인 `inventory`, `inventory_logs`, `confirmed_order_items`, `product_barcodes`, `profiles`의 직접 클라이언트 쓰기를 제거했다.
+- 프로필 조회·수정을 대상별 RPC로 분리했다.
+- 레시피 가져오기 화면에 주간 quota, 추가 이용 요청, 고비용 승인 대기와 재처리 방지를 반영했다.
+- admin console에 추가 횟수 승인/반려, 수동 주간 부여, 건별 비용 승인 화면을 추가했다.
+- 최종 `authenticated` RPC 80개와 전환기 구형 예외 3개를 `security-authenticated-rpc-allowlist.md`에 고정했다.
 
-### Edge Function과 네이티브 설정
+### 인증·네이티브·보관 작업
 
-- `recipe-import`
-  - 사용자 인증을 먼저 확인하고 원자적 processing claim과 Gemini 시작 기록 RPC를 사용하도록 변경했다.
-  - Storage 실제 크기, MIME과 파일 시그니처를 확인하도록 변경했다.
-  - 사용자용 함수에서 scheduler 정리 분기를 제거했다.
-- `recipe-import-cleanup`
-  - 전용 secret, 기본 dry-run, 7일 만료 원본 삭제, 90일 감사 로그 정리 함수 초안.
-- `account-purge-scheduler`
-  - 전용 secret, 기본 dry-run, 만료/개인 매장/현재 구성원 재검사, 매장별 실패 격리와 멱등 재시도 함수 초안.
-- `manage-account-deletion`
-  - 사용자 탈퇴·복구만 유지하고 scheduler purge를 별도 함수로 분리했다.
-- Android 백업을 비활성화하고 FileProvider 경로를 앱 전용 이미지/캐시 경로로 축소했다.
+- Supabase 클라이언트를 PKCE로 전환했다.
+- 네이티브 callback은 `com.jinkim.stockly://auth/callback`의 scheme/host/path를 정확히 확인한다.
+- 저장된 단기 state와 `code`만 교환하고 URL token을 직접 `setSession`하던 경로를 제거했다.
+- Android 백업을 비활성화하고 FileProvider를 앱 전용 `images/`와 캐시 경로로 축소했다.
+- 사용자 처리와 scheduler 처리 Edge Function을 분리했다.
+- 레시피 원본과 계정 purge는 서로 다른 secret을 사용하고, 기본 scheduler 예시는 dry-run만 등록한다.
+- 레시피 파일은 Storage에서 다시 읽어 실제 크기, MIME, PDF/XLS/XLSX 시그니처와 CSV UTF-8을 검사한다.
 
-### 운영용 문서·스크립트
+### 저장소·웹
 
-- `supabase/sql/configure_retention_cron.sql`
-  - Vault 값만 참조해 03:10/03:30 KST에 두 정리 함수를 dry-run으로 호출하는 수동 실행 스크립트.
-- `supabase/sql/post_native_security_lockdown.sql`
-  - 새 웹·iOS·Android 실제 기기 확인 후에만 직접 테이블 쓰기와 구형 RPC 권한을 회수하기 위한 수동 실행 스크립트.
-  - migration에 넣지 않았으며 실행하지 않았다.
-- `docs/security-hardening-deployment.md`
-  - migration, Edge Function, 웹/네이티브, 최종 권한 회수와 Cron 활성화의 단계별 게이트.
-- `docs/privacy-policy-ko.md`
-  - Gemini 전송, 7일 원본 보관, 30일 탈퇴 복구, 삭제 실패 재시도 기준을 담은 정책 초안.
+- `tmp/`, Supabase 임시 메타데이터, archive/IPA/provisioning/DerivedData를 Git ignore에 추가했다.
+- 추적 중이던 `supabase/.temp/` 파일을 Git 인덱스에서 제거했다.
+- 공개 문서/과거 SQL의 테스트 이메일·UUID를 placeholder로 바꿨다.
+- CSP, HSTS, nosniff, Referrer/Permissions Policy, `frame-ancestors`와 X-Frame-Options를 `vercel.json`에 추가했다.
+- Dependabot, CI, CodeQL workflow를 추가했다.
+- `brace-expansion`, `fast-uri`, `nanoid`의 취약 전이 버전을 호환 patch로 갱신했다.
 
-## 3. 중단 시점 안정화 결과
+## 3. 로컬 검증 결과
 
-- 중단 직후 발견한 `InventoryListPage.tsx` 괄호 누락을 수정했다.
-- 사용하지 않는 import 2개를 제거했다.
-- `npm ci` 성공. 현재 Node `v23.11.0`은 ESLint가 공식 요구하는 범위가 아니어서 engine 경고가 있었지만 설치는 완료됐다.
-- `npm run build` 성공.
-- `npm run build:admin` 성공.
-- `npm run lint` 성공.
-- `npx eslint src admin-console/src` 성공.
-- `git diff --check` 성공.
-- `npx supabase db push --dry-run --include-all` 성공. 실제 반영 없이 `070~073`만 적용 예정으로 표시됐다.
+### DB와 권한
 
-위 결과는 TypeScript/번들/ESLint와 migration 목록 연결만 확인한다. SQL 실행 성공, RLS 보안, Edge Function 동작, 브라우저, OAuth, 네이티브 실제 기기 동작을 증명하지 않는다.
+- 깨끗한 로컬 Supabase에서 `001~078` 전체 migration 적용 성공
+- `supabase db lint --local --level warning`: 오류 0
+- 익명 실행 가능한 `SECURITY DEFINER`: 0
+- `PUBLIC` 실행 가능한 `SECURITY DEFINER`: 0
+- 고정 `search_path`가 없는 `SECURITY DEFINER`: 0
+- 최종 직접 권한 회수 스크립트와 별도 계약 테스트 성공 후 DB reset 완료
 
-## 4. 현재 미완료 또는 위험한 부분
+통과한 SQL 회귀 테스트:
 
-### 반드시 먼저 해결할 항목
+- `060_mobile_inventory_sessions_contract.sql`
+- `074_reversible_alias_contract.sql`
+- `074_reversible_alias_guards_contract.sql`
+- `075_recipe_import_limits_contract.sql`
+- `076_profile_scope_contract.sql`
+- `077_edge_service_role_contract.sql`
+- `078_account_purge_dependencies_contract.sql`
+- `post_native_security_lockdown_contract.sql`은 최종 gate를 로컬 적용한 상태에서 별도 통과
 
-1. Docker가 실행되지 않아 깨끗한 로컬 Supabase에 `001~073` 전체 migration을 실제 적용하지 못했다.
-2. `070~073` SQL은 원격에도 로컬 DB에도 실행하지 않았으므로 문법, 함수 시그니처, trigger와 권한 상호작용을 아직 검증하지 못했다.
-3. 가역 병합 중 기존 프랩/레시피 참조를 대표 재고로 처리하는 서버 쓰기 경로를 끝까지 감사하지 못했다. 특히 `record_prep_operation`과 레시피 적용 RPC를 재확인해야 한다.
-4. 고객용 `RecipeImportPage`는 새 `$0.50`/master 승인 흐름에 맞게 완성되지 않았다. 현재 초안 그대로 배포하면 `$0.50` 초과 작업의 사용자 흐름이 막힐 수 있다.
-5. admin console의 추가 횟수 요청 승인·주간 부여·건별 비용 승인 화면은 아직 만들지 않았다.
-6. Edge Function은 Deno type check와 로컬 serve/invoke 검증을 하지 않았다. 특히 계정 purge의 부분 실패·재시도 동작을 테스트 DB에서 확인해야 한다.
-7. `post_native_security_lockdown.sql`은 의도적으로 미실행 상태다. 구버전 네이티브 앱이 남은 동안 실행하면 재고/메모/발주 기능이 중단될 수 있다.
+검증된 병합 조건:
 
-### 아직 시작하지 않았거나 끝내지 못한 항목
+- 타 매장 거부, 중복 요청 멱등, 오래된 위치 버전 거부
+- 열린 모바일 세션과 바코드 충돌 거부
+- 다중 원본 병합, 대표의 중첩 원본화 거부, 원본별 해제
+- 음수/잘못된 위치 합계/오래된 버전 해제 거부
+- 병합·해제 전후 창고/매장 총재고 보존
+- 원본 이름·기본/보조 바코드가 대표 하나로 해석
+- 과거 프랩/단체주문 참조 ID 유지, 병합 중 대표 재고 차감
+- 병합 중 새 연결은 대표 ID 유지, 해제 시 다른 원본 영향 없음
 
-- `profiles`, `inventory`, `inventory_logs`, `product_barcodes`, `confirmed_order_items` 직접 호출 잔여 전체 감사.
-- 가역 병합용 트랜잭션/동시성/다중 원본/원본별 해제 pgTAP 또는 SQL 회귀 테스트.
-- 기존 58건 legacy 이력의 정확한 건수와 불변성 운영 조회. 운영 데이터는 수정하지 않는다.
-- 과거 휴무 trigger 영향 분석.
-- 일반 직원 이메일 비노출과 관리자/master 허용 범위 역할별 검증.
-- Google/Kakao 웹 PKCE와 iOS/Android callback/replay 실제 검증.
-- Universal Links/App Links 후속 릴리스.
-- 레시피 승인 UI와 quota 표시/추가 이용 요청 UI.
-- cleanup/account purge dry-run, 테스트 객체·테스트 계정 삭제와 재시도 검증.
-- `.gitignore`의 `tmp/`, archive/provisioning, `supabase/.temp/` 정리.
-- 추적 중인 `supabase/.temp/` 메타데이터 제거.
-- 공개 문서와 과거 SQL patch에 있는 실제 테스트 이메일/UUID의 placeholder 교체.
-- Vercel CSP/HSTS 등 보안 헤더.
-- Dependabot/CodeQL 파일과 GitHub private/secret scanning/push protection/branch protection 설정.
-- `npm audit`의 high 3건 원인 분석과 안전한 patch 업데이트. 자동 `npm audit fix`는 실행하지 않았다.
-- iOS/Android 빌드와 Capacitor copy.
-- 개인정보 처리 안내의 사업자 정보, 문의처, 시행일, Google 처리 조건 법무 확인.
+### Recipe Import와 보관 작업
 
-## 5. 재개 계획
+- Edge Function 6개 로컬 기동 성공
+- 무인증 사용자 함수와 잘못된 cleanup/purge secret: 401
+- 위조 XLSX 시그니처, 실제 크기 불일치, 잘못된 CSV MIME: 모두 Gemini 호출 전에 거부
+- 위 세 작업의 `gemini_started_at`과 과금 기록: 0
+- 주 10회, 추가 최대 20회, `$0.50/$5`, 사용자/매장 동시 제한, claim 멱등 테스트 성공
+- 레시피 원본: dry-run 후보 1 → 실제 Storage 삭제 1 → 재실행 후보 0, DB path/manifest 비움 확인
+- 빈 개인 매장과 상품·재고·열린 모바일 세션이 있는 개인 매장 모두 실제 purge 성공
+- Auth 삭제 후 매장만 남은 부분 실패 재시도 성공
+- 후보 2건 중 잘못된 소유권 1건 실패 시 정상 1건은 계속 삭제하는 실패 격리 성공
+- 감사 행에는 후보/성공/실패 수와 오류 코드만 남고 파일명·token·secret은 기록하지 않음
 
-### 단계 A — 현재 초안 보존과 DB 실행 가능성 확인
+### 앱·저장소
 
-1. 이 worktree의 `git status --short --branch`와 사용자 변경을 다시 확인한다.
-2. Docker를 시작한 뒤 깨끗한 로컬 Supabase에서 전체 migration을 적용한다.
-3. `068`을 운영 적용본과 대조하고 차이가 있으면 `068`을 임의 수정하지 말고 원인을 먼저 확인한다.
-4. SQL 오류가 있으면 아직 미적용인 `070~073` 안에서 수정할 수 있지만, 운영 적용 뒤에는 반드시 새 corrective migration을 사용한다.
-5. DB lint와 아래 권한 감사를 통과시킨다.
-   - 익명 실행 가능한 `SECURITY DEFINER` 함수 0개
-   - mutable `search_path` 경고 0개
-   - authenticated 함수는 문서화한 allowlist와 일치
+- `npm ci`: 성공
+- `npm audit`: 취약점 0
+- `npm audit --omit=dev`: 취약점 0
+- `npm run build`: 성공
+- `npm run build:admin`: 성공
+- `npm run lint`: 성공
+- `npx eslint src admin-console/src`: 성공
+- `git diff --check`: 성공
+- Android Capacitor sync 및 `assembleDebug`: 성공
+- iOS Capacitor sync/pod install 및 서명 없는 simulator Debug build: 성공
+- 현재 파일과 Git 전체 이력의 대표 secret 패턴 스캔: 후보 파일 0
 
-### 단계 B — 가역 병합 서버 계약 완성
+위 검증은 로컬 소스/DB/시뮬레이터 빌드 증거다. 운영 배포, provider OAuth 성공, 실제 기기 callback, TestFlight/Play 배포를 증명하지 않는다.
 
-1. 두 테스트 매장과 `테스트` 상품만으로 병합/해제 SQL 회귀 테스트를 작성한다.
-2. 같은 요청 재전송, 동시 병합, 오래된 위치별 버전, 열린 모바일 세션, 바코드 충돌을 검증한다.
-3. 다중 원본, 중첩/순환 거부와 원본 하나씩 해제를 검증한다.
-4. 병합·해제 전후 창고/매장 총재고 불변을 검증한다.
-5. 프랩, 단체주문 레시피와 기타 기존 상품 참조를 서버에서 대표 재고로 해석하도록 누락된 RPC를 보정한다.
-6. 과거 로그 ID와 레시피 참조 ID가 바뀌지 않는지 확인한다.
+## 4. 남은 작업과 배포 차단 조건
 
-### 단계 C — 클라이언트와 관리자 UI 완성
+### 운영 적용 전에 반드시 확인
 
-1. 모든 상품 선택/검색/스캔 경로가 공통 대표 상품 API를 사용하는지 검색한다.
-2. 직접 테이블 쓰기/프로필 읽기 잔여를 제거하고 대응 RPC 계약을 타입에 반영한다.
-3. 레시피 페이지에 이번 주 사용량, 남은 횟수, 추가 이용 요청과 master 승인 대기 상태를 구현한다.
-4. admin console에 요청 승인, 주간 추가 부여, `$0.50~$5` 건별 승인 화면을 구현한다.
-5. 병합·해제 상세 비교, legacy 해제 불가, 오류 메시지를 브라우저에서 확인한다.
+1. 운영 migration 이력과 로컬 `068`의 실제 적용본/해시를 대조한다.
+2. 운영 데이터는 읽기 전용으로 기존 legacy 병합 건수와 휴무 trigger 과거 영향만 분석한다.
+3. `070~078`을 운영에 단계 적용하고 각 단계의 schema cache와 함수 시그니처를 확인한다.
+4. 새 RPC가 확인되기 전에는 새 웹/네이티브 클라이언트를 배포하지 않는다.
+5. 실제 secret은 서로 다르게 생성해 Edge secrets와 Vault에만 저장한다. 문서·Git·로그에 값을 남기지 않는다.
 
-### 단계 D — Edge Function·보관 작업 검증
+### Preview와 실제 기기 검증
 
-1. Edge Function Deno type check와 로컬 serve 테스트를 수행한다.
-2. 크기/MIME/시그니처 위조, 동일 작업 이중 호출, 주간 한도와 동시 처리 제한을 검증한다.
-3. 서로 다른 cleanup/purge secret을 생성하되 Git/로그/클라이언트에는 기록하지 않는다.
-4. Cron은 dry-run으로만 시작하고 대상 수를 테스트 데이터와 대조한다.
-5. 테스트 Storage 객체와 테스트 개인 매장의 실제 삭제·재시도 후에만 `dryRun=false`로 전환한다.
+1. Vercel Preview에서 CSP가 OAuth, PWA, Storage 업로드, 웹 카메라 스캔을 막지 않는지 확인한다.
+2. Google/Kakao 웹 PKCE 로그인을 확인한다.
+3. iOS/Android 실제 기기에서 정상 callback, 잘못된 scheme/host/path, state 불일치, replay 거부를 확인한다.
+4. 실제 기기에서 스캔, 검색, 가역 병합/해제, 메모, 발주, 프랩·단체주문을 테스트 상품으로 확인한다.
+5. 새 네이티브 앱 설치 범위를 확인하기 전에는 최종 직접 권한 회수를 실행하지 않는다.
 
-### 단계 E — 저장소·웹 보강
+### 외부 콘솔과 법무 확인
 
-1. 추적 중인 임시 메타데이터와 공개 문서 식별자를 정리한다.
-2. Vercel Preview에 CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `frame-ancestors`를 적용해 OAuth/PWA/Storage 영향을 확인한다.
-3. npm audit high 항목을 직접 분석하고 호환되는 patch/minor 범위에서 업데이트한다.
-4. Dependabot, CodeQL 설정 파일을 추가한다.
-5. GitHub private 전환, 협업자/연결/secret/branch protection 변경은 사용자의 별도 승인 후 콘솔에서 수행한다.
+- Supabase Auth 유출 비밀번호 보호 활성화
+- GitHub private 전환 전 협업자/Vercel/Actions secret 확인
+- GitHub secret scanning/push protection, security updates, 필수 CI/CodeQL과 branch protection 활성화
+- Vercel Preview 확인 뒤 Production 보안 헤더 적용
+- 개인정보 안내의 사업자 정보, 문의처, 시행일과 Google 국외 처리 조건 확정
+- PKCE 안정화 후 Universal Links/App Links 후속 릴리스
 
-### 단계 F — 단계적 출시
+## 5. 다음 진행 순서
 
-1. migration과 schema cache를 먼저 적용·확인한다.
-2. Edge Function을 배포하고 dry-run만 등록한다.
-3. 웹 Preview와 production 순으로 확인한다.
-4. 새 iOS/Android 빌드를 설치해 실제 기기에서 PKCE, 스캔, 검색, 병합, 메모와 발주를 검증한다.
-5. 설치된 구버전 앱 영향이 없음을 확인한 뒤 `post_native_security_lockdown.sql`을 별도 승인받아 실행한다.
-6. 마지막으로 정리 Cron 실제 삭제를 별도 승인받아 활성화한다.
+1. 운영/로컬 migration 이력과 `068` 대조 — 읽기 전용
+2. 운영 DB 백업/PITR와 rollback 담당 확인
+3. `070` 긴급 보정 적용 및 권한/휴무 smoke test
+4. `071~078` 적용, schema cache와 RPC allowlist 확인
+5. Edge Function 배포와 서로 다른 secret 설정
+6. cleanup/purge Cron을 `dryRun=true`로만 등록하고 후보 수 대조
+7. 웹 Preview 배포 및 CSP/OAuth/가역 병합/레시피 승인 UI 확인
+8. 웹 Production과 새 네이티브 빌드 배포
+9. 실제 기기 검증과 구버전 사용 현황 확인
+10. 별도 승인 후 `post_native_security_lockdown.sql` 실행
+11. 테스트 삭제·재시도 증거 확인 후 별도 승인으로 Cron 실제 삭제 활성화
+12. PKCE 안정화 후 Universal/App Links 릴리스
 
-## 6. 재개 시 기본 검증 명령
-
-```bash
-cd "/Users/jinkim/Documents/storage-manage-security-hardening"
-git status --short --branch
-npm ci
-npm run build
-npm run build:admin
-npm run lint
-npx eslint src admin-console/src
-git diff --check
-npx supabase status
-npx supabase db reset
-npx supabase db lint --local
-```
-
-원격 이력 비교와 dry-run은 읽기 검증으로만 수행한다. 실제 `db push`, Edge Function 배포, Vercel 배포, GitHub 설정 변경, native Archive/Upload는 사용자 승인 전 실행하지 않는다.
-
-## 7. 변경 파일 빠른 위치
-
-- DB: `supabase/migrations/070_security_emergency_containment.sql` ~ `073_recipe_import_limits_and_retention.sql`
-- 수동 운영 SQL: `supabase/sql/configure_retention_cron.sql`, `supabase/sql/post_native_security_lockdown.sql`
-- 대표 상품 공통 로직: `src/lib/resolvedProducts.ts`
-- 병합/해제 UI: `src/pages/ProductEditPage.tsx`
-- 스캔/검색/목록: `src/pages/ScanPage.tsx`, `InventoryListPage.tsx`, `LowStockPage.tsx`
-- PKCE: `src/lib/supabase.ts`, `src/services/auth/AuthService.ts`, `src/App.tsx`
-- Edge Functions: `supabase/functions/recipe-import*`, `account-purge-scheduler`, `manage-account-deletion`
-- 운영 배포 게이트: `docs/security-hardening-deployment.md`
-
-이 문서를 기준으로 재개하되, “소스에 있음”, “로컬 검증됨”, “원격 적용됨”, “실제 기기 검증됨”을 서로 다른 상태로 보고한다.
+운영 migration, Edge/Vercel 배포, GitHub 설정, TestFlight/Android 배포와 최종 권한 회수는 사용자의 별도 실행 지시 전에는 진행하지 않는다.

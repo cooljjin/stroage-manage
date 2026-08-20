@@ -140,7 +140,7 @@ set search_path = public
 as 'select exists (select 1 from public.profiles where id = user_id and is_admin = true)';
 
 insert into public.profiles (id, email, display_name, is_admin)
-values ('dbe00a19-300b-4677-9339-225e52f2909b', 'jich980611@gmail.com', 'jinkim', true)
+values ('11111111-1111-4111-8111-111111111111', 'replace-with-admin@example.invalid', 'replace-with-admin-name', true)
 on conflict (id) do update
 set email = excluded.email,
     display_name = coalesce(nullif(public.profiles.display_name, ''''), excluded.display_name),

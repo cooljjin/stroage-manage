@@ -366,6 +366,7 @@ declare
   normalized_week_start date;
   already_granted integer;
   grant_row public.recipe_import_usage_grants%rowtype;
+  normalized_reason text := trim(coalesce($4, ''));
 begin
   if auth.uid() is null or not public.is_master(auth.uid()) then
     raise exception 'master만 추가 이용 횟수를 승인할 수 있습니다.';
@@ -373,7 +374,7 @@ begin
   if additional_uses is null or additional_uses not between 1 and 20 then
     raise exception '추가 승인 횟수는 1회부터 20회까지입니다.';
   end if;
-  if char_length(trim(coalesce(reason, ''))) not between 1 and 500 then
+  if char_length(normalized_reason) not between 1 and 500 then
     raise exception '승인 사유는 1자부터 500자까지 입력해 주세요.';
   end if;
 
@@ -435,7 +436,7 @@ begin
     normalized_week_start,
     additional_uses,
     auth.uid(),
-    trim(reason),
+    normalized_reason,
     target_request_id
   ) returning * into grant_row;
 
@@ -444,7 +445,7 @@ begin
     set status = 'approved',
         reviewed_by = auth.uid(),
         reviewed_at = clock_timestamp(),
-        review_reason = trim(reason)
+        review_reason = normalized_reason
     where request.id = target_request_id;
   end if;
 

@@ -368,7 +368,16 @@ export function InventoryOperationPage({
   const loadProduct = useCallback(async () => {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("id", productId).single();
+    const { data: referenceRows, error: referenceError } = await Services.DatabaseService.rpc("resolve_product_references", {
+      target_product_ids: [productId]
+    });
+    const resolvedProductId = referenceRows?.[0]?.canonical_product_id ?? productId;
+    const { data, error: loadError } = referenceError
+      ? { data: null, error: referenceError }
+      : await Services.DatabaseService.select("products", "*, inventory(*)")
+        .eq("store_id", currentStoreId)
+        .eq("id", resolvedProductId)
+        .single();
 
     if (loadError) {
       setError(loadError.message);
@@ -377,7 +386,7 @@ export function InventoryOperationPage({
 
       if (!nextItem.inventory) {
         const { data: inventoryData, error: inventoryError } = await Services.DatabaseService.rpc("ensure_inventory_row", {
-          target_product_id: productId
+          target_product_id: resolvedProductId
         });
 
         if (inventoryError) {

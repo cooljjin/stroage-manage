@@ -152,8 +152,11 @@ export function MasterUsersPage() {
     setError("");
     setMessage("");
 
-    const { error: updateError } = await Services.DatabaseService.update("profiles", { display_name: displayName, store_id: storeId, updated_at: new Date().toISOString() })
-      .eq("id", profile.id);
+    const { error: updateError } = await Services.DatabaseService.rpc("update_staff_profile_admin", {
+      target_user_id: profile.id,
+      target_display_name: displayName,
+      target_store_id: storeId
+    });
 
     if (updateError) {
       setError(updateError.message);

@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
 
       const { error: updateError } = await adminClient
         .from("recipe_import_jobs")
-        .update({ storage_path: null })
+        .update({ storage_path: null, source_manifest: null })
         .eq("id", job.id)
         .eq("storage_path", job.storage_path);
       if (updateError) {

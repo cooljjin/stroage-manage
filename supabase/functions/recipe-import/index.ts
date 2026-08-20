@@ -91,7 +91,11 @@ Deno.serve(async (req) => {
   await adminClient.from("recipe_import_jobs").update({ provider: "google", model, prompt_version: PROMPT_VERSION, error_message: null }).eq("id", jobId);
 
   try {
-    const manifest = isManifest(body.manifest) ? body.manifest : undefined;
+    const manifest = isManifest(job.source_manifest)
+      ? job.source_manifest
+      : isManifest(body.manifest)
+        ? body.manifest
+        : undefined;
     const source = await loadSource(adminClient, job.storage_path, job.source_type as SourceType);
     const verification = verifySourceFile(job.source_type as SourceType, source.bytes, source.storageMimeType);
     const { error: usageError } = await adminClient.rpc("start_recipe_import_gemini", {
@@ -158,7 +162,16 @@ Deno.serve(async (req) => {
     const actualCost = calculateCost(inputTokens, outputTokens);
     const overBudget = actualCost > Number(job.approved_cost_usd);
     const status = overBudget ? "awaiting_cost_approval" : menus.some((menu) => menu.ingredients.some((ingredient) => ingredient.match_status === "review")) ? "needs_review" : "ready";
-    await adminClient.from("recipe_import_jobs").update({ status, total_segments: 1, completed_segments: 1, input_tokens: inputTokens, output_tokens: outputTokens, actual_cost_usd: actualCost, error_message: overBudget ? "실제 사용량이 승인한 비용을 초과했습니다." : null }).eq("id", jobId);
+    await adminClient.from("recipe_import_jobs").update({
+      status,
+      total_segments: 1,
+      completed_segments: 1,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      actual_cost_usd: actualCost,
+      error_message: overBudget ? "실제 사용량이 승인한 비용을 초과했습니다." : null,
+      source_manifest: null
+    }).eq("id", jobId);
     return jsonResponse({ ok: true, status, menuCount: menus.length, actualCostUsd: actualCost });
   } catch (processingError) {
     const message = processingError instanceof Error ? processingError.message : "레시피 분석에 실패했습니다.";

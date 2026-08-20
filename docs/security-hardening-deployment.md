@@ -4,7 +4,7 @@
 
 ## 1. 사전 확인
 
-- 운영 DB migration 이력과 로컬 `001~073`을 다시 비교한다.
+- 운영 DB migration 이력과 로컬 `001~078`을 다시 비교한다.
 - 운영에 적용된 `068`의 내용과 로컬 파일 해시가 같은지 확인한다.
 - DB 백업/PITR 상태와 복구 담당자를 확인한다.
 - 테스트는 별도 테스트 매장과 이름에 `테스트`가 포함된 상품만 사용한다.
@@ -15,14 +15,20 @@
 2. `071_reversible_product_aliases.sql`
 3. `072_safe_write_and_profile_apis.sql`
 4. `073_recipe_import_limits_and_retention.sql`
-5. PostgREST schema cache 갱신과 RPC 계약 확인
-6. `recipe-import`, `recipe-import-cleanup`, `account-purge-scheduler`, `manage-account-deletion` Edge Function 배포
-7. 서로 다른 값을 가진 `RECIPE_IMPORT_CLEANUP_SECRET`, `ACCOUNT_PURGE_SECRET`을 Edge secrets와 Vault에 저장
-8. `supabase/sql/configure_retention_cron.sql`로 dry-run 일정만 등록
-9. 웹 Preview에서 CSP·OAuth·업로드·가역 병합 검증
-10. 웹 배포 후 새 iOS/Android 빌드를 설치해 실제 기기 검증
-11. 기기 보급 범위를 확인한 뒤에만 `supabase/sql/post_native_security_lockdown.sql` 실행
-12. dry-run과 테스트 삭제·재시도가 일치한 뒤 Cron body를 `dryRun=false`로 전환
+5. `074_alias_aware_inventory_operations.sql`
+6. `075_recipe_import_approval_workflow.sql`
+7. `076_profile_write_apis.sql`
+8. `077_edge_service_role_privileges.sql`
+9. `078_account_purge_retry_safety.sql`
+10. PostgREST schema cache 갱신과 RPC 계약 확인
+11. `docs/security-authenticated-rpc-allowlist.md`와 실제 `authenticated` 실행 권한 비교
+12. `recipe-import`, `recipe-import-cleanup`, `account-purge-scheduler`, `manage-account-deletion` Edge Function 배포
+13. 서로 다른 값을 가진 `RECIPE_IMPORT_CLEANUP_SECRET`, `ACCOUNT_PURGE_SECRET`을 Edge secrets와 Vault에 저장
+14. `supabase/sql/configure_retention_cron.sql`로 dry-run 일정만 등록
+15. 웹 Preview에서 CSP·OAuth·업로드·가역 병합 검증
+16. 웹 배포 후 새 iOS/Android 빌드를 설치해 실제 기기 검증
+17. 기기 보급 범위를 확인한 뒤에만 `supabase/sql/post_native_security_lockdown.sql` 실행
+18. dry-run과 테스트 삭제·재시도가 일치한 뒤 Cron body를 `dryRun=false`로 전환
 
 ## 3. 외부 콘솔에서 별도 수행할 항목
 
@@ -36,6 +42,8 @@
 
 - 새 RPC가 schema cache에 보이지 않음
 - 운영과 로컬 migration 이력이 다름
+- 최종 권한 회수 뒤 `authenticated` RPC가 문서화된 80개 허용 목록과 다름
+- 최종 권한 회수 전에 전환기 구형 RPC 3개 외의 추가 예외가 존재함
 - 다른 매장 데이터가 테스트 쿼리에 나타남
 - 구버전 설치 앱이 남아 있어 직접 쓰기 권한 회수 시 업무 중단 가능
 - 익명 사용자가 `SECURITY DEFINER` 함수를 실행할 수 있음
