@@ -38,10 +38,38 @@ export function parseMobileQuantity(value: string): number | null {
     : null;
 }
 
+export function parseSignedMobileQuantity(value: string): number | null {
+  const normalized = value.replace(",", ".").trim();
+  if (!/^[+-]?\d*(\.\d{0,4})?$/.test(normalized) || normalized === "-" || normalized === "+" || normalized === "." || normalized === "") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && Math.abs(parsed) <= 99999999.9999
+    ? Math.round(parsed * 10000) / 10000
+    : null;
+}
+
+export function getVerticalWheelSlotValue(
+  value: number,
+  offset: number,
+  min = Number.NEGATIVE_INFINITY,
+  max = Number.POSITIVE_INFINITY,
+  reverseDisplayOrder = false
+): number | null {
+  const nextValue = value + offset * (reverseDisplayOrder ? -1 : 1);
+  return nextValue < min || nextValue > max ? null : nextValue;
+}
+
+export function getVerticalWheelTrackOffset(offset: number, reverseDisplayOrder = false): number {
+  return -offset * (reverseDisplayOrder ? -1 : 1);
+}
+
 export function getVerticalDragStepCount(startY: number, currentY: number, snap = false): number {
   const rawStepCount = (startY - currentY) / MOBILE_DRAG_STEP_PX;
   if (!snap) return Math.trunc(rawStepCount);
   return rawStepCount >= 0 ? Math.floor(rawStepCount + 0.5) : Math.ceil(rawStepCount - 0.5);
+}
+
+export function getVerticalWheelStep(deltaY: number): number {
+  return deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0;
 }
 
 export function quantityFromVerticalDrag(startValue: number, startY: number, currentY: number, max = Number.POSITIVE_INFINITY): number {
@@ -117,6 +145,21 @@ export function buildAutoTarget(
     warehouseQty: location === "창고" ? clampMobileQuantity(nextQuantity) : warehouseQty,
     storeQty: location === "매장" ? clampMobileQuantity(nextQuantity) : storeQty
   };
+}
+
+export function buildAutoAdjustmentTarget(
+  location: Location,
+  delta: number,
+  baselineWarehouseQty: number,
+  baselineStoreQty: number
+): MobileInventoryTarget {
+  const baselineQty = location === "창고" ? baselineWarehouseQty : baselineStoreQty;
+  return buildAutoTarget(
+    location,
+    clampMobileQuantity(baselineQty + delta),
+    baselineWarehouseQty,
+    baselineStoreQty
+  );
 }
 
 export function buildAuditTarget(

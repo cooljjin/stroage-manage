@@ -1,18 +1,20 @@
 import { useEffect, useState } from "react";
 import { Check, X } from "lucide-react";
-import { parseMobileQuantity } from "../lib/mobileInventory";
+import { parseMobileQuantity, parseSignedMobileQuantity } from "../lib/mobileInventory";
 
 type Props = {
   open: boolean;
   title: string;
   initialValue: number;
+  min?: number;
   max?: number;
+  signed?: boolean;
   onClose: () => void;
   onConfirm: (value: number) => void;
   formatValue: (value: number) => string;
 };
 
-export function QuantityKeypadSheet({ open, title, initialValue, max, onClose, onConfirm, formatValue }: Props) {
+export function QuantityKeypadSheet({ open, title, initialValue, min = 0, max, signed = false, onClose, onConfirm, formatValue }: Props) {
   const [draft, setDraft] = useState(String(initialValue));
   const [error, setError] = useState("");
 
@@ -35,9 +37,10 @@ export function QuantityKeypadSheet({ open, title, initialValue, max, onClose, o
   if (!open) return null;
 
   function confirm() {
-    const value = parseMobileQuantity(draft);
-    if (value === null || (max !== undefined && value > max)) {
-      setError(max !== undefined ? `0부터 ${formatValue(max)}까지 입력해 주세요.` : "0 이상 숫자를 입력해 주세요.");
+    const value = signed ? parseSignedMobileQuantity(draft) : parseMobileQuantity(draft);
+    if (value === null || value < min || (max !== undefined && value > max)) {
+      const upperBound = max !== undefined ? `부터 ${formatValue(max)}까지` : " 이상";
+      setError(`${formatValue(min)}${upperBound} 입력해 주세요.`);
       return;
     }
     onConfirm(value);
@@ -53,12 +56,12 @@ export function QuantityKeypadSheet({ open, title, initialValue, max, onClose, o
           </button>
         </div>
         <label className="mt-3 block sm:mt-4">
-          <span className="mb-1 block text-sm font-bold">수량</span>
+          <span className="mb-1 block text-sm font-bold">{signed ? "조정값" : "수량"}</span>
           <input
             autoFocus
             className="field text-center text-3xl font-black tabular-nums"
             type="text"
-            inputMode="decimal"
+            inputMode={signed ? "text" : "decimal"}
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value.replace(",", "."));

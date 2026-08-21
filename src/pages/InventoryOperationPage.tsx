@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import { ArrowLeft, ArrowLeftRight, Check, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Check, ChevronDown, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { MobileInventoryControls } from "../components/MobileInventoryControls";
 import { QuantityKeypadSheet } from "../components/QuantityKeypadSheet";
@@ -14,7 +14,7 @@ import { DEFAULT_ABUNDANT_MULTIPLIER } from "../lib/inventoryStock";
 import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { applyMobileInventoryChange, finalizeMobileInventorySession, recoverMobileInventorySessions, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
-import { buildAuditTarget, buildAutoTarget, buildMobileHistoryTarget, buildMoveTarget, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
+import { buildAuditTarget, buildAutoAdjustmentTarget, buildMobileHistoryTarget, buildMoveTarget, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
 import { useMobileViewport } from "../hooks/useMobileViewport";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
@@ -22,7 +22,7 @@ import type { AppRoute, InventoryItem, InventoryLog, Location, MobileInventoryEn
 
 type Props = {
   productId: string;
-  navigate: (route: AppRoute, options?: { restore?: boolean }) => void;
+  navigate: (route: AppRoute, options?: { restore?: boolean; resetToRoot?: boolean }) => void;
   canGoBack?: boolean;
   onBack?: () => void;
   currentStoreId: string;
@@ -37,6 +37,8 @@ type ConfirmedInventorySnapshot = {
   storeVersion: number;
   updatedAt: string;
 };
+
+type MobileInventoryBaseline = Pick<ConfirmedInventorySnapshot, "warehouseQty" | "storeQty">;
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
 const DEFAULT_LOCATION_LONG_PRESS_MS = 700;
@@ -299,6 +301,7 @@ export function InventoryOperationPage({
   const [quantity, setQuantity] = useState("");
   const [receiptQuantity, setReceiptQuantity] = useState("1");
   const [memoText, setMemoText] = useState("");
+  const [memoOpen, setMemoOpen] = useState(true);
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [latestMemo, setLatestMemo] = useState<InventoryLog | null>(null);
   const [lastInventoryCheckDates, setLastInventoryCheckDates] = useState<LocationCheckDates>({
@@ -334,6 +337,8 @@ export function InventoryOperationPage({
   const [mobileMode, setMobileMode] = useState<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
   const [mobileWarehouseQty, setMobileWarehouseQty] = useState(0);
   const [mobileStoreQty, setMobileStoreQty] = useState(0);
+  const [mobileAutoBaseline, setMobileAutoBaseline] = useState<MobileInventoryBaseline>({ warehouseQty: 0, storeQty: 0 });
+  const [mobileAutoRebaseSequence, setMobileAutoRebaseSequence] = useState(0);
   const [mobileConfirmedSnapshot, setMobileConfirmedSnapshot] = useState<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
   const [mobileSaveState, setMobileSaveState] = useState<"idle" | "dragging" | "pending" | "saved" | "error">("idle");
   const [mobileSaveStatusLabel, setMobileSaveStatusLabel] = useState<"서버에 저장됨" | "수정 시점" | "수량 확인 완료">("서버에 저장됨");
@@ -350,6 +355,9 @@ export function InventoryOperationPage({
   const mobileSavePromiseRef = useRef<Promise<void> | null>(null);
   const mobileFinalizeRef = useRef<() => Promise<void>>(async () => undefined);
   const mobileConfirmedRef = useRef<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
+  const mobileAutoBaselineRef = useRef<MobileInventoryBaseline>({ warehouseQty: 0, storeQty: 0 });
+  const mobileAutoRebaseSequenceRef = useRef(0);
+  const mobileModeRef = useRef<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
   const mobileEditPointAtRef = useRef<string | null>(null);
   const mobileEditHistoryRef = useRef<MobileInventoryEditPoint[]>([]);
   const mobileEditHistoryIndexRef = useRef(-1);
@@ -410,6 +418,18 @@ export function InventoryOperationPage({
     mobileConfirmedRef.current = nextSnapshot;
     setMobileConfirmedSnapshot(nextSnapshot);
     setMobileEditPointAt(mobileEditPointAtRef.current ?? nextSnapshot.updatedAt);
+  }
+
+  function resetMobileAutoBaseline(snapshot: MobileInventoryBaseline = mobileConfirmedRef.current) {
+    const nextBaseline = { warehouseQty: snapshot.warehouseQty, storeQty: snapshot.storeQty };
+    mobileAutoBaselineRef.current = nextBaseline;
+    setMobileAutoBaseline(nextBaseline);
+  }
+
+  function handleMobileAutoBaselineRebase() {
+    resetMobileAutoBaseline({ warehouseQty: mobileWarehouseQty, storeQty: mobileStoreQty });
+    mobileAutoRebaseSequenceRef.current += 1;
+    setMobileAutoRebaseSequence(mobileAutoRebaseSequenceRef.current);
   }
 
   function syncMobileEditHistory(nextHistory: MobileInventoryEditPoint[], nextIndex: number) {
@@ -512,7 +532,10 @@ export function InventoryOperationPage({
     setMobileEditHistoryIndex(-1);
     setMobileSaveStatusLabel("서버에 저장됨");
     setMobileEditPointAt("");
-    setMobileMode(initialInventoryMode === "audit" ? "audit" : "auto");
+    const nextMode = initialInventoryMode === "audit" ? "audit" : "auto";
+    mobileModeRef.current = nextMode;
+    setMobileMode(nextMode);
+    resetMobileAutoBaseline({ warehouseQty: 0, storeQty: 0 });
   }, [initialInventoryMode, productId]);
 
   useEffect(() => {
@@ -526,6 +549,7 @@ export function InventoryOperationPage({
       updatedAt: item.inventory.updated_at
     };
     updateMobileConfirmedSnapshot(nextSnapshot);
+    resetMobileAutoBaseline(nextSnapshot);
     if (mobileEditHistoryRef.current.length === 0) {
       const editAt = mobileEditPointAtRef.current ?? nextSnapshot.updatedAt;
       const initialHistory: MobileInventoryEditPoint[] = [{
@@ -600,6 +624,7 @@ export function InventoryOperationPage({
     };
     mobileSessionIdRef.current = result.session_id;
     updateMobileConfirmedSnapshot(nextSnapshot);
+    if (target.mode !== mobileModeRef.current) resetMobileAutoBaseline(nextSnapshot);
     setMobileWarehouseQty(result.warehouse_qty);
     setMobileStoreQty(result.store_qty);
     updateItemInventory(result);
@@ -834,7 +859,7 @@ export function InventoryOperationPage({
       } else {
         const target = mobileMode === "audit"
           ? buildAuditTarget("창고", value, mobileWarehouseQty, mobileStoreQty)
-          : buildAutoTarget("창고", value, mobileWarehouseQty, mobileStoreQty);
+          : buildAutoAdjustmentTarget("창고", value, mobileAutoBaselineRef.current.warehouseQty, mobileAutoBaselineRef.current.storeQty);
         handleMobileCommit({ ...target, storeQty: mobileStoreQty });
       }
     } else if (mobileKeypadTarget === "store") {
@@ -843,7 +868,7 @@ export function InventoryOperationPage({
       } else {
         const target = mobileMode === "audit"
           ? buildAuditTarget("매장", value, mobileWarehouseQty, mobileStoreQty)
-          : buildAutoTarget("매장", value, mobileWarehouseQty, mobileStoreQty);
+          : buildAutoAdjustmentTarget("매장", value, mobileAutoBaselineRef.current.warehouseQty, mobileAutoBaselineRef.current.storeQty);
         handleMobileCommit({ ...target, warehouseQty: mobileWarehouseQty });
       }
     }
@@ -1492,7 +1517,7 @@ export function InventoryOperationPage({
           <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })} aria-label="상품 수정" title="수정">
             <Pencil size={18} />
           </button>
-          <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "inventory" }, { restore: true })} aria-label="목록으로 이동" title="목록">
+          <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "inventory" }, { resetToRoot: true })} aria-label="재고현황으로 이동" title="재고현황">
             <List size={19} />
           </button>
           <button
@@ -1599,8 +1624,12 @@ export function InventoryOperationPage({
             storeQty={mobileStoreQty}
             confirmedWarehouseQty={mobileConfirmedSnapshot.warehouseQty}
             confirmedStoreQty={mobileConfirmedSnapshot.storeQty}
+            autoBaselineWarehouseQty={mobileAutoBaseline.warehouseQty}
+            autoBaselineStoreQty={mobileAutoBaseline.storeQty}
             lastInventoryCheckDates={lastInventoryCheckDates}
             disabled={mobileInventoryCheckSaving || mobileSaveState === "pending"}
+            rebaseDisabled={mobileInventoryCheckSaving || mobileSaveState === "dragging" || mobileSaveState === "pending"}
+            autoRebaseSequence={mobileAutoRebaseSequence}
             saveState={mobileSaveState}
             saveError={mobileSaveError}
             savedAtLabel={mobileEditPointAt ? formatDateTime(mobileEditPointAt) : null}
@@ -1608,12 +1637,16 @@ export function InventoryOperationPage({
             canUndo={mobileEditHistoryIndex > 0}
             canRedo={mobileEditHistoryIndex >= 0 && mobileEditHistoryIndex < mobileEditHistory.length - 1}
             onModeChange={(nextMode) => {
+              if (nextMode === mobileModeRef.current) return;
               commitUnsettledMobileDraft();
+              mobileModeRef.current = nextMode;
               setMobileMode(nextMode);
+              resetMobileAutoBaseline();
               resetMobileDraft(true);
             }}
             onDraftChange={handleMobileDraft}
             onCommit={handleMobileCommit}
+            onRebaseAutoBaseline={handleMobileAutoBaselineRebase}
             onInventoryCheck={(targetLocation) => void recordMobileInventoryCheck(targetLocation)}
             onOpenKeypad={setMobileKeypadTarget}
             onUndo={() => handleMobileHistoryNavigation("undo")}
@@ -1879,16 +1912,30 @@ export function InventoryOperationPage({
           <label htmlFor="inventory-memo" className="text-sm font-bold">
             메모
           </label>
-          <button
-            type="button"
-            onClick={() => void openMemoHistory()}
-            className="touch-button icon-button shrink-0"
-            aria-label="메모 히스토리"
-            title="메모 히스토리"
-          >
-            <History size={18} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setMemoOpen((open) => !open)}
+              className="touch-button icon-button shrink-0"
+              aria-label={memoOpen ? "메모 접기" : "메모 펼치기"}
+              aria-expanded={memoOpen}
+              aria-controls="inventory-memo-content"
+              title={memoOpen ? "메모 접기" : "메모 펼치기"}
+            >
+              <ChevronDown className={`transition-transform ${memoOpen ? "rotate-0" : "-rotate-90"}`} size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => void openMemoHistory()}
+              className="touch-button icon-button shrink-0"
+              aria-label="메모 히스토리"
+              title="메모 히스토리"
+            >
+              <History size={18} />
+            </button>
+          </div>
         </div>
+        <div id="inventory-memo-content" hidden={!memoOpen}>
         {latestMemo ? (
           <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -1930,6 +1977,7 @@ export function InventoryOperationPage({
         <button className="primary-button mt-2 min-h-10 w-full py-2 sm:min-h-11" type="submit" disabled={memoSaving || memoIsEmpty}>
           {memoSaving ? "저장 중..." : editingMemoId ? "수정 저장" : "저장"}
         </button>
+        </div>
       </form>
 
       {historyOpen ? (
@@ -1989,9 +2037,15 @@ export function InventoryOperationPage({
 
       <QuantityKeypadSheet
         open={mobileTouchUI && mobileKeypadTarget !== null}
-        title={`${mobileKeypadTarget === "warehouse" ? "창고" : "매장"} 수량 입력`}
-        initialValue={mobileKeypadTarget === "warehouse" ? mobileWarehouseQty : mobileStoreQty}
+        title={`${mobileKeypadTarget === "warehouse" ? "창고" : "매장"} ${mobileMode === "auto" ? "조정값" : "수량"} 입력`}
+        initialValue={mobileKeypadTarget === "warehouse"
+          ? mobileMode === "auto" ? mobileWarehouseQty - mobileAutoBaseline.warehouseQty : mobileWarehouseQty
+          : mobileMode === "auto" ? mobileStoreQty - mobileAutoBaseline.storeQty : mobileStoreQty}
+        min={mobileMode === "auto"
+          ? mobileKeypadTarget === "warehouse" ? -mobileAutoBaseline.warehouseQty : -mobileAutoBaseline.storeQty
+          : undefined}
         max={mobileMode === "move" ? mobileConfirmedSnapshot.warehouseQty + mobileConfirmedSnapshot.storeQty : undefined}
+        signed={mobileMode === "auto"}
         onClose={() => setMobileKeypadTarget(null)}
         onConfirm={handleMobileKeypadConfirm}
         formatValue={formatInventoryQuantity}

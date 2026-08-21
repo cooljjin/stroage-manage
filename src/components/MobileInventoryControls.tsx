@@ -1,8 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, Check, Redo2, Undo2 } from "lucide-react";
 import { formatInventoryQuantity } from "../lib/inventory";
-import { buildAuditTarget, buildAutoTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, type MobileInventoryTarget } from "../lib/mobileInventory";
+import { buildAuditTarget, buildAutoAdjustmentTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, type MobileInventoryTarget } from "../lib/mobileInventory";
 import type { Location, MobileInventoryMode } from "../types/domain";
-import { VerticalQuantityWheel } from "./VerticalQuantityWheel";
+import { VerticalQuantityWheel, type PeerWheelAnimation, type WheelInputKind } from "./VerticalQuantityWheel";
 
 type LocationCheckInfo = {
   checkedAt: string | null;
@@ -20,8 +21,12 @@ type Props = {
   storeQty: number;
   confirmedWarehouseQty: number;
   confirmedStoreQty: number;
+  autoBaselineWarehouseQty: number;
+  autoBaselineStoreQty: number;
   lastInventoryCheckDates: LocationCheckDates;
   disabled?: boolean;
+  rebaseDisabled?: boolean;
+  autoRebaseSequence?: number;
   saveState: "idle" | "dragging" | "pending" | "saved" | "error";
   saveError?: string;
   savedAtLabel?: string | null;
@@ -31,10 +36,16 @@ type Props = {
   onModeChange: (mode: MobileInventoryMode) => void;
   onDraftChange: (target: MobileInventoryTarget) => void;
   onCommit: (target: MobileInventoryTarget) => void;
+  onRebaseAutoBaseline: () => void;
   onInventoryCheck: (location: Location) => void;
   onOpenKeypad: (target: "warehouse" | "store") => void;
   onUndo: () => void;
   onRedo: () => void;
+};
+
+type PeerAnimationState = {
+  location: Location;
+  instruction: PeerWheelAnimation;
 };
 
 function formatCheckLabel(info: LocationCheckInfo): string {
@@ -49,8 +60,12 @@ export function MobileInventoryControls({
   storeQty,
   confirmedWarehouseQty,
   confirmedStoreQty,
+  autoBaselineWarehouseQty,
+  autoBaselineStoreQty,
   lastInventoryCheckDates,
   disabled = false,
+  rebaseDisabled = false,
+  autoRebaseSequence,
   saveState,
   saveError,
   savedAtLabel,
@@ -60,23 +75,54 @@ export function MobileInventoryControls({
   onModeChange,
   onDraftChange,
   onCommit,
+  onRebaseAutoBaseline,
   onInventoryCheck,
   onOpenKeypad,
   onUndo,
   onRedo
 }: Props) {
+  const [peerAnimation, setPeerAnimation] = useState<PeerAnimationState | null>(null);
+  const peerAnimationSequenceRef = useRef(0);
   const isMove = mode === "move";
+  const warehousePeerAnimation = isMove && peerAnimation?.location === "창고" ? peerAnimation.instruction : null;
+  const storePeerAnimation = isMove && peerAnimation?.location === "매장" ? peerAnimation.instruction : null;
+  useEffect(() => {
+    if (!isMove) setPeerAnimation(null);
+  }, [isMove]);
   const totalQty = clampMobileQuantity(confirmedWarehouseQty + confirmedStoreQty);
   const inferredMoveDirection = isMove
     ? getMoveDirectionForQuantities(warehouseQty, storeQty, confirmedWarehouseQty, confirmedStoreQty)
     : null;
 
-  function handleLocationDraft(location: Location, nextValue: number) {
+  function buildAutoAdjustment(location: Location, delta: number) {
+    const target = buildAutoAdjustmentTarget(location, delta, autoBaselineWarehouseQty, autoBaselineStoreQty);
+    return {
+      ...target,
+      warehouseQty: location === "창고" ? target.warehouseQty : warehouseQty,
+      storeQty: location === "매장" ? target.storeQty : storeQty
+    };
+  }
+
+  function handleLocationDraft(location: Location, nextValue: number, inputKind?: WheelInputKind) {
     const target = mode === "move"
       ? buildMoveTarget(location, nextValue, confirmedWarehouseQty, confirmedStoreQty)
       : mode === "audit"
         ? buildAuditTarget(location, nextValue, warehouseQty, storeQty)
-        : buildAutoTarget(location, nextValue, warehouseQty, storeQty);
+        : buildAutoAdjustment(location, nextValue);
+
+    if (mode === "move" && inputKind) {
+      const peerLocation = location === "창고" ? "매장" : "창고";
+      const fromValue = peerLocation === "창고" ? warehouseQty : storeQty;
+      const toValue = peerLocation === "창고" ? target.warehouseQty : target.storeQty;
+      if (fromValue !== toValue) {
+        peerAnimationSequenceRef.current += 1;
+        setPeerAnimation({
+          location: peerLocation,
+          instruction: { sequence: peerAnimationSequenceRef.current, fromValue, toValue }
+        });
+      }
+    }
+
     onDraftChange(target);
   }
 
@@ -85,15 +131,61 @@ export function MobileInventoryControls({
       ? buildMoveTarget(location, nextValue, confirmedWarehouseQty, confirmedStoreQty)
       : mode === "audit"
         ? buildAuditTarget(location, nextValue, warehouseQty, storeQty)
-        : buildAutoTarget(location, nextValue, warehouseQty, storeQty);
+        : buildAutoAdjustment(location, nextValue);
     onCommit(target);
+  }
+
+  function formatSignedQuantity(value: number) {
+    return `${value > 0 ? "+" : ""}${formatInventoryQuantity(value)}`;
+  }
+
+  function renderAutoLocation(location: Location) {
+    const isWarehouse = location === "창고";
+    const currentQty = isWarehouse ? warehouseQty : storeQty;
+    const baselineQty = isWarehouse ? autoBaselineWarehouseQty : autoBaselineStoreQty;
+    const delta = (isWarehouse ? warehouseQty : storeQty) - baselineQty;
+    const hint = formatCheckLabel(isWarehouse ? lastInventoryCheckDates.warehouse : lastInventoryCheckDates.store);
+    const keypadTarget = isWarehouse ? "warehouse" : "store";
+
+    return (
+      <div className="grid min-w-0 gap-1.5 sm:gap-3">
+        <button
+          type="button"
+          onClick={onRebaseAutoBaseline}
+          disabled={disabled || rebaseDisabled}
+          className="rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-center transition-colors active:bg-brand-50 dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40"
+          aria-label={`${location} 현재 재고 ${formatInventoryQuantity(currentQty)}, 조정 기준으로 재설정`}
+          title="현재 수량을 조정 기준으로 재설정"
+        >
+          <p className="text-xs font-extrabold text-black dark:text-black">{location} 현재 재고</p>
+          <p className="mt-1 text-2xl font-black tabular-nums text-black dark:text-black sm:text-3xl">{formatInventoryQuantity(currentQty)}</p>
+        </button>
+        <VerticalQuantityWheel
+          label={`${location} 조정`}
+          value={delta}
+          min={-baselineQty}
+          invertDrag
+          reverseDisplayOrder
+          authoritativeRebaseSequence={autoRebaseSequence}
+          disabled={disabled}
+          hint={hint}
+          ariaLabel={`${location} 조정값 ${formatSignedQuantity(delta)}, 현재 재고 ${formatInventoryQuantity(currentQty)}`}
+          formatValue={formatSignedQuantity}
+          onDraftChange={(value) => handleLocationDraft(location, value)}
+          onCommit={(value) => handleLocationCommit(location, value)}
+          onLongPress={() => onInventoryCheck(location)}
+          onOpenKeypad={() => onOpenKeypad(keypadTarget)}
+          onDragStart={() => undefined}
+        />
+      </div>
+    );
   }
 
   return (
     <section className="panel p-1.5 sm:p-4" aria-label="모바일 재고 작업">
       <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900 sm:gap-1.5 sm:p-1">
         {([
-          ["auto", "입,출고"],
+          ["auto", "입고,사용"],
           ["move", "이동"],
           ["audit", "실사"]
         ] as const).map(([value, label]) => (
@@ -111,34 +203,45 @@ export function MobileInventoryControls({
       </div>
 
       <div className="mt-1 grid grid-cols-2 gap-1.5 sm:mt-3 sm:gap-3">
-        <VerticalQuantityWheel
-          label="창고"
-          value={warehouseQty}
-          max={isMove ? totalQty : undefined}
-          disabled={disabled}
-          hint={formatCheckLabel(lastInventoryCheckDates.warehouse)}
-          ariaLabel={`창고 수량 ${formatInventoryQuantity(warehouseQty)}`}
-          formatValue={formatInventoryQuantity}
-          onDraftChange={(value) => handleLocationDraft("창고", value)}
-          onCommit={(value) => handleLocationCommit("창고", value)}
-          onLongPress={() => onInventoryCheck("창고")}
-          onOpenKeypad={() => onOpenKeypad("warehouse")}
-          onDragStart={() => undefined}
-        />
-        <VerticalQuantityWheel
-          label="매장"
-          value={storeQty}
-          max={isMove ? totalQty : undefined}
-          disabled={disabled}
-          hint={formatCheckLabel(lastInventoryCheckDates.store)}
-          ariaLabel={`매장 수량 ${formatInventoryQuantity(storeQty)}`}
-          formatValue={formatInventoryQuantity}
-          onDraftChange={(value) => handleLocationDraft("매장", value)}
-          onCommit={(value) => handleLocationCommit("매장", value)}
-          onLongPress={() => onInventoryCheck("매장")}
-          onOpenKeypad={() => onOpenKeypad("store")}
-          onDragStart={() => undefined}
-        />
+        {mode === "auto" ? (
+          <>
+            {renderAutoLocation("창고")}
+            {renderAutoLocation("매장")}
+          </>
+        ) : (
+          <>
+            <VerticalQuantityWheel
+              label="창고"
+              value={warehouseQty}
+              max={isMove ? totalQty : undefined}
+              disabled={disabled}
+              hint={formatCheckLabel(lastInventoryCheckDates.warehouse)}
+              ariaLabel={`창고 수량 ${formatInventoryQuantity(warehouseQty)}`}
+              formatValue={formatInventoryQuantity}
+              peerAnimation={warehousePeerAnimation}
+              onDraftChange={(value, inputKind) => handleLocationDraft("창고", value, inputKind)}
+              onCommit={(value) => handleLocationCommit("창고", value)}
+              onLongPress={() => onInventoryCheck("창고")}
+              onOpenKeypad={() => onOpenKeypad("warehouse")}
+              onDragStart={() => undefined}
+            />
+            <VerticalQuantityWheel
+              label="매장"
+              value={storeQty}
+              max={isMove ? totalQty : undefined}
+              disabled={disabled}
+              hint={formatCheckLabel(lastInventoryCheckDates.store)}
+              ariaLabel={`매장 수량 ${formatInventoryQuantity(storeQty)}`}
+              formatValue={formatInventoryQuantity}
+              peerAnimation={storePeerAnimation}
+              onDraftChange={(value, inputKind) => handleLocationDraft("매장", value, inputKind)}
+              onCommit={(value) => handleLocationCommit("매장", value)}
+              onLongPress={() => onInventoryCheck("매장")}
+              onOpenKeypad={() => onOpenKeypad("store")}
+              onDragStart={() => undefined}
+            />
+          </>
+        )}
       </div>
 
       <div className="mt-1 flex min-h-10 items-center gap-1.5 sm:mt-3 sm:gap-2">
