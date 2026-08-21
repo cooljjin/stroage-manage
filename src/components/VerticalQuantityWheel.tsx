@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { MOBILE_DRAG_STEP_PX, MOBILE_DRAG_THRESHOLD_PX, MOBILE_SETTLE_DELAY_MS, MOBILE_SNAP_DURATION_MS, getVerticalDragStepCount } from "../lib/mobileInventory";
 
@@ -89,11 +90,15 @@ export function VerticalQuantityWheel({
     return Math.max(min, Math.min(max ?? Number.POSITIVE_INFINITY, nextValue));
   }
 
-  function setLocalValue(nextValue: number) {
+  function setLocalValue(nextValue: number, syncVisualRebase = false) {
     if (nextValue === displayValueRef.current) return;
     displayValueRef.current = nextValue;
     pendingValueRef.current = nextValue === value ? null : nextValue;
-    setDisplayValue(nextValue);
+    if (syncVisualRebase) {
+      flushSync(() => setDisplayValue(nextValue));
+    } else {
+      setDisplayValue(nextValue);
+    }
     onDraftChange(nextValue);
   }
 
@@ -110,7 +115,10 @@ export function VerticalQuantityWheel({
   }
 
   function applyProjection(next: Projection) {
-    setLocalValue(next.value);
+    // Rebase the React-owned slot text before resetting the composited track.
+    // Keeping both writes in this rAF prevents the prior slot set from being
+    // painted in the center band at an exact drag-step boundary.
+    setLocalValue(next.value, true);
     setTrackOffset(-next.offset);
   }
 
