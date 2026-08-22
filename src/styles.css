@@ -134,6 +134,19 @@
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
   }
 
+  body.native-scanner-pending {
+    background: transparent;
+  }
+
+  body.native-scanner-pending > * {
+    visibility: hidden !important;
+  }
+
+  .native-scanner-fallback-hidden {
+    pointer-events: none;
+    visibility: hidden;
+  }
+
   .status-options {
     display: grid;
     grid-template-rows: 0fr;

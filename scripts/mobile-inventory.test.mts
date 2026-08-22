@@ -379,7 +379,15 @@ assert.doesNotMatch(nativeScannerSource, /startScan|barcodesScanned/, "the React
 assert.match(scanSource, /const \[showFallbackUi, setShowFallbackUi\] = useState\(!nativeScannerAvailable\);/, "the React barcode screen starts hidden on native platforms");
 assert.doesNotMatch(scanSource, /nativeScanActive|barcode-scanner-modal|barcode-scanner-active/, "native scanning does not render the React scanner screen as its camera UI");
 assert.match(scanSource, /if \(nativeScannerAvailable\) \{[\s\S]*?const result = await scanNativeBarcode\(\);/, "native scanning is attempted before the web screen");
-assert.match(scanSource, /if \(!result\.fallbackToWeb\) \{[\s\S]*?setShowFallbackUi\(true\)/, "the React scanner screen appears only for an explicit native fallback");
+assert.match(scanSource, /type ScanMode = "audit" \| "auto";/, "scan mode is represented as a mutually exclusive audit or receipt mode");
+assert.match(scanSource, /role="switch"[\s\S]*aria-label="실사모드"/, "fallback scan screen exposes the audit mode switch");
+assert.match(scanSource, /role="switch"[\s\S]*aria-label="입고모드"/, "fallback scan screen exposes the receipt mode switch");
+assert.match(scanSource, /const launchDelay = nativeScannerAvailable \? 0 : 250;/, "native scanning starts without the web-screen delay");
+assert.match(scanSource, /if \(nativeScannerAvailable\) \{[\s\S]*?setShowFallbackUi\(false\);[\s\S]*?const result = await scanNativeBarcode\(\);/, "every native launch hides a previously visible fallback screen before opening the scanner");
+assert.match(scanSource, /native-scanner-pending/, "native launch hides the surrounding React chrome while the native scanner is opening");
+assert.match(scanSource, /className=\{showFallbackUi \? undefined : "native-scanner-fallback-hidden"\}/, "the React scanner DOM stays mounted but is not visible until web fallback is selected");
+assert.match(scanSource, /setShowFallbackUi\(true\);[\s\S]*?new Html5Qrcode\(SCANNER_ID/, "the web scanner is created after the fallback DOM is kept mounted");
+assert.doesNotMatch(scanSource, /native-scanner-launch-screen/, "the native path does not render a separate React launch screen");
 
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 assert.match(appSource, /permittedRoute\.name === "product-edit" \? \([\s\S]*?border-0 bg-transparent[\s\S]*?<ArrowLeft size=\{18\} \/>/, "the product edit back action uses an icon-only button without a box");
