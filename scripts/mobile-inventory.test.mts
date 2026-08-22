@@ -90,8 +90,18 @@ assert.match(
 );
 assert.match(
   autoRender,
+  /className="rounded-xl min-h-\[68px\][^"]*sm:min-h-\[72px\]/,
+  "auto current-stock cards use the same fixed height as move compact current-stock dials"
+);
+assert.match(
+  autoRender,
   /<button[\s\S]*?onClick=\{onRebaseAutoBaseline\}[\s\S]*?disabled=\{disabled \|\| rebaseDisabled\}[\s\S]*?aria-label=\{`\$\{location\} 현재 재고 \$\{formatInventoryQuantity\(currentQty\)\}, 조정 기준으로 재설정`\}/,
   "each auto current-stock box is an accessible rebase button that shares the controls' pending/save disabled state"
+);
+assert.match(
+  autoRender,
+  /showDragHint=\{false\}/,
+  "auto adjustment wheels hide the drag instruction text and center their labels"
 );
 assert.match(
   autoRender,
@@ -112,6 +122,40 @@ assert.equal(
   getVerticalDragStepCount(100, 68, true) * -1,
   -1,
   "an inverted upward drag produces the negative signed adjustment"
+);
+
+assert.match(
+  controlsSource,
+  /function getMoveDelta\(location: Location, quantity: number\): number[\s\S]*?function getMoveAbsoluteValue\(location: Location, delta: number\): number/,
+  "move mode converts between confirmed absolute quantities and signed dial deltas"
+);
+assert.match(controlsSource, /function renderMoveLocation\(location: Location\)/, "move mode renders location cards with adjustment wheels");
+const moveRenderStart = controlsSource.indexOf("function renderMoveLocation");
+const moveRenderEnd = controlsSource.indexOf("\n  return (", moveRenderStart);
+const moveRender = controlsSource.slice(moveRenderStart, moveRenderEnd);
+assert.match(moveRender, /label=\{`\$\{location\} 현재 재고`\}/, "move mode current stock cards contain absolute quantity dials");
+assert.match(moveRender, /value=\{currentQty\}[\s\S]*?formatValue=\{formatInventoryQuantity\}/, "move current stock dials show and edit absolute quantities");
+assert.match(moveRender, /label=\{`\$\{location\} 현재 재고`\}[\s\S]*?compact/, "move current stock dials use the compact layout variant");
+assert.match(moveRender, /onDraftChange=\{\(value, inputKind\) => handleLocationDraft\(location, value, inputKind, "absolute"\)\}/, "current stock dial edits use absolute move quantities");
+assert.match(moveRender, /showDragHint=\{false\}/, "move adjustment wheels hide the drag instruction text");
+assert.match(moveRender, /label=\{`\$\{location\} 조정`\}/, "move mode labels its signed adjustment wheels");
+assert.match(moveRender, /invertDrag[\s\S]*?reverseDisplayOrder/, "move signed wheels use the same direction and display order as auto");
+assert.match(moveRender, /min=\{-[^}]+\}[\s\S]*?max=\{[^}]+\}/, "move signed wheels use baseline-aware transfer bounds");
+assert.match(
+  controlsSource,
+  /fromValue = getMoveDelta\(peerLocation, [^;]+\);[\s\S]*?toValue = getMoveDelta\(peerLocation, [^;]+\);/,
+  "move peer animation uses signed deltas on both sides"
+);
+
+assert.deepEqual(
+  buildMoveTarget("창고", 10 + 1, 10, 3),
+  { mode: "move", targetLocation: "매장", moveDirection: "store-to-warehouse", warehouseQty: 11, storeQty: 2 },
+  "a positive warehouse signed delta becomes one unit from store to warehouse"
+);
+assert.deepEqual(
+  buildMoveTarget("매장", 3 + 1, 10, 3),
+  { mode: "move", targetLocation: "창고", moveDirection: "warehouse-to-store", warehouseQty: 9, storeQty: 4 },
+  "a positive store signed delta becomes one unit from warehouse to store"
 );
 
 const warehouseMove = buildMoveTarget("창고", 7, 10, 3);
@@ -153,6 +197,8 @@ assert.deepEqual(
   "move targets clamp at the confirmed total while preserving the total"
 );
 
+assert.doesNotMatch(controlsSource, /총재고 .* 안에서 자유롭게 조정|창고에서 매장으로 이동|매장에서 창고로 이동/, "move mode hides the direction helper text");
+
 const wheelSource = readFileSync(new URL("../src/components/VerticalQuantityWheel.tsx", import.meta.url), "utf8");
 assert.match(
   wheelSource,
@@ -176,13 +222,13 @@ assert.match(
 );
 assert.match(
   controlsSource,
-  /peerAnimation=\{warehousePeerAnimation\}/,
-  "the warehouse wheel can receive only an explicit peer visual instruction"
+  /peerAnimation=\{peerAnimationForLocation\}/,
+  "the move adjustment wheel receives the signed peer visual instruction"
 );
 assert.match(
-  controlsSource,
-  /peerAnimation=\{storePeerAnimation\}/,
-  "the store wheel can receive only an explicit peer visual instruction"
+  moveRender,
+  /const peerAnimationForLocation = isWarehouse \? warehousePeerAnimation : storePeerAnimation;/,
+  "the opposite move wheel is selected by location"
 );
 assert.doesNotMatch(autoRender, /peerAnimation=/, "signed auto wheels never receive peer animation instructions");
 assert.match(
@@ -200,6 +246,20 @@ assert.match(
   "auto current-stock rebase buttons stay disabled through dragging and pending saves without disabling the wheels"
 );
 
+assert.match(
+  wheelSource,
+  /compact \? "min-h-\[68px\] px-3 py-2 sm:min-h-\[72px\]"/,
+  "compact current-stock dials match the auto current-stock card height"
+);
+assert.match(
+  wheelSource,
+  /\{compact \? <ChevronUp[\s\S]*\{compact \? <ChevronDown/,
+  "compact move current-stock dials show arrows above and below the number"
+);
+assert.ok(
+  wheelSource.includes('className={`flex w-full items-center gap-1 ${compact || !showDragHint ? "justify-center" : "justify-between"}`}'),
+  "compact move current-stock dial headers center their text without changing full wheel headers"
+);
 assert.match(
   wheelSource,
   /authoritativeRebaseSequence\?: number;/,
@@ -297,6 +357,11 @@ assert.match(
 );
 assert.match(
   pageSource,
+  /<button className="touch-button shrink-0 border-0 bg-transparent[^"]*" type="button" onClick=\{onBack\} aria-label="뒤로가기"/,
+  "the inventory operation back button keeps only the arrow without an icon box"
+);
+assert.match(
+  pageSource,
   /onClick=\{\(\) => navigate\(\{ name: "inventory" \}, \{ resetToRoot: true \}\)\}[\s\S]*?aria-label="재고현황으로 이동"/,
   "the inventory operation list button returns to the inventory overview root"
 );
@@ -308,13 +373,22 @@ assert.match(pageSource, /id="inventory-memo-content"[\s\S]*?hidden=\{!memoOpen\
 
 const scanSource = readFileSync(new URL("../src/pages/ScanPage.tsx", import.meta.url), "utf8");
 const nativeScannerSource = readFileSync(new URL("../src/lib/nativeBarcodeScanner.ts", import.meta.url), "utf8");
-assert.match(nativeScannerSource, /startScan: \(options\?: \{ formats\?: string\[\] \}\) => Promise<void>;/, "native scanner exposes the WebView-backed startScan API");
-assert.match(nativeScannerSource, /stopScan: \(\) => Promise<void>;/, "native scanner can stop the custom camera session");
-assert.match(nativeScannerSource, /addListener:[\s\S]*eventName: "barcodesScanned"/, "native scanner receives barcode events while the custom UI is visible");
-assert.match(scanSource, /const \[nativeScanActive, setNativeScanActive\] = useState\(false\);/, "the scan page tracks the native camera overlay state");
-assert.match(scanSource, /const autoStartKey = nativeScannerAvailable \? \(scanLaunchId \?\? "native-initial"\) : "web-initial";/, "native scanning keeps its automatic launch path");
-assert.match(scanSource, /document\.body\.classList\.add\("barcode-scanner-active"\)/, "native scanning makes the WebView camera background transparent");
-assert.match(scanSource, /className="barcode-scanner-modal"/, "native scanning renders a WebView overlay above the camera");
-assert.match(scanSource, /aria-label="네이티브 실사모드"/, "native scanning exposes the audit checkbox on the overlay");
+assert.match(nativeScannerSource, /scan: \(options: \{ formats: string\[\]; autoZoom: boolean \}\) => Promise<NativeBarcodeScanResponse>;/, "native scanner uses the ready-to-use native scan API");
+assert.match(nativeScannerSource, /fastIosBarcodeScanner/, "iOS uses the native fast scanner before fallback");
+assert.doesNotMatch(nativeScannerSource, /startScan|barcodesScanned/, "the React WebView scanner is not the native default path");
+assert.match(scanSource, /const \[showFallbackUi, setShowFallbackUi\] = useState\(!nativeScannerAvailable\);/, "the React barcode screen starts hidden on native platforms");
+assert.doesNotMatch(scanSource, /nativeScanActive|barcode-scanner-modal|barcode-scanner-active/, "native scanning does not render the React scanner screen as its camera UI");
+assert.match(scanSource, /if \(nativeScannerAvailable\) \{[\s\S]*?const result = await scanNativeBarcode\(\);/, "native scanning is attempted before the web screen");
+assert.match(scanSource, /if \(!result\.fallbackToWeb\) \{[\s\S]*?setShowFallbackUi\(true\)/, "the React scanner screen appears only for an explicit native fallback");
+
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+assert.match(appSource, /permittedRoute\.name === "product-edit" \? \([\s\S]*?border-0 bg-transparent[\s\S]*?<ArrowLeft size=\{18\} \/>/, "the product edit back action uses an icon-only button without a box");
+
+const operationHeaderStart = pageSource.indexOf("inventory-operation-header");
+const productSummaryStart = pageSource.indexOf("inventory-product-summary", operationHeaderStart);
+const productSummaryEnd = pageSource.indexOf("\n\n      {item.receipt_check_only", productSummaryStart);
+const productSummarySource = pageSource.slice(productSummaryStart, productSummaryEnd);
+assert.match(pageSource, /<h1 className="min-w-0 flex-1 truncate text-\[23px\] font-extrabold tracking-normal sm:text-\[27px\]">\{item\.name\}<\/h1>/, "the inventory operation header shows the item name in a larger bold style");
+assert.doesNotMatch(productSummarySource, /<p[^>]*>\{item\.name\}<\/p>/, "the item name is not duplicated below the header");
 
 console.log("mobile inventory and native scan protocol tests passed");

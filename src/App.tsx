@@ -826,16 +826,28 @@ export default function App() {
           </div>
         ) : null}
         {canGoBack && permittedRoute.name !== "operation" ? (
-          <button
-            type="button"
-            onClick={goBack}
-            className="secondary-button mb-4 inline-flex items-center gap-2"
-            aria-label="뒤로가기"
-            title="뒤로가기"
-          >
-            <ArrowLeft size={18} />
-            뒤로가기
-          </button>
+          permittedRoute.name === "product-edit" ? (
+            <button
+              type="button"
+              onClick={goBack}
+              className="touch-button mb-4 shrink-0 border-0 bg-transparent p-1 text-slate-600 shadow-none hover:bg-transparent dark:bg-transparent dark:text-slate-300"
+              aria-label="뒤로가기"
+              title="뒤로가기"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={goBack}
+              className="secondary-button mb-4 inline-flex items-center gap-2"
+              aria-label="뒤로가기"
+              title="뒤로가기"
+            >
+              <ArrowLeft size={18} />
+              뒤로가기
+            </button>
+          )
         ) : null}
         <LazyMotion features={domAnimation}>
           <m.div key={routeKey(permittedRoute)} initial={routeMotionProps.initial} animate={routeMotionProps.animate} transition={routeMotionProps.transition}>

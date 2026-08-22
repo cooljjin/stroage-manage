@@ -14,7 +14,7 @@ import { DEFAULT_ABUNDANT_MULTIPLIER } from "../lib/inventoryStock";
 import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { applyMobileInventoryChange, finalizeMobileInventorySession, recoverMobileInventorySessions, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
-import { buildAuditTarget, buildAutoAdjustmentTarget, buildMobileHistoryTarget, buildMoveTarget, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
+import { buildAuditTarget, buildAutoAdjustmentTarget, buildMobileHistoryTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
 import { useMobileViewport } from "../hooks/useMobileViewport";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
@@ -855,7 +855,7 @@ export function InventoryOperationPage({
     const snapshot = mobileConfirmedRef.current;
     if (mobileKeypadTarget === "warehouse") {
       if (mobileMode === "move") {
-        handleMobileCommit(buildMoveTarget("창고", value, snapshot.warehouseQty, snapshot.storeQty));
+        handleMobileCommit(buildMoveTarget("창고", clampMobileQuantity(snapshot.warehouseQty + value), snapshot.warehouseQty, snapshot.storeQty));
       } else {
         const target = mobileMode === "audit"
           ? buildAuditTarget("창고", value, mobileWarehouseQty, mobileStoreQty)
@@ -864,7 +864,7 @@ export function InventoryOperationPage({
       }
     } else if (mobileKeypadTarget === "store") {
       if (mobileMode === "move") {
-        handleMobileCommit(buildMoveTarget("매장", value, snapshot.warehouseQty, snapshot.storeQty));
+        handleMobileCommit(buildMoveTarget("매장", clampMobileQuantity(snapshot.storeQty + value), snapshot.warehouseQty, snapshot.storeQty));
       } else {
         const target = mobileMode === "audit"
           ? buildAuditTarget("매장", value, mobileWarehouseQty, mobileStoreQty)
@@ -1508,11 +1508,11 @@ export function InventoryOperationPage({
     <section className={isMobileViewport ? "mobile-inventory-page" : undefined}>
       <div className="inventory-operation-header mb-2 flex min-w-0 items-center gap-1.5 sm:mb-4 sm:gap-2">
         {canGoBack && onBack ? (
-          <button className="touch-button icon-button shrink-0" type="button" onClick={onBack} aria-label="뒤로가기" title="뒤로가기">
+          <button className="touch-button shrink-0 border-0 bg-transparent p-1 text-slate-600 shadow-none hover:bg-transparent dark:bg-transparent dark:text-slate-300" type="button" onClick={onBack} aria-label="뒤로가기" title="뒤로가기">
             <ArrowLeft size={18} />
           </button>
         ) : null}
-        <h1 className="min-w-0 flex-1 truncate text-xl font-bold tracking-normal sm:text-2xl">재고 작업</h1>
+        <h1 className="min-w-0 flex-1 truncate text-[23px] font-extrabold tracking-normal sm:text-[27px]">{item.name}</h1>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })} aria-label="상품 수정" title="수정">
             <Pencil size={18} />
@@ -1534,9 +1534,6 @@ export function InventoryOperationPage({
       </div>
 
       <div className="inventory-product-summary mb-2 flex min-w-0 items-start justify-between gap-1.5 sm:mb-3 sm:gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="break-words text-xl font-bold leading-tight text-slate-950 dark:text-slate-100 sm:text-2xl">{item.name}</p>
-        </div>
         <div className="flex max-w-[58%] shrink-0 flex-col items-end gap-1 text-[11px] sm:max-w-none sm:gap-1.5 sm:text-sm">
           <div className="flex flex-wrap justify-end gap-1">
             <span className="inventory-product-badge rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-semibold dark:border-slate-800 dark:bg-slate-900 sm:px-2 sm:py-1">
@@ -2037,15 +2034,27 @@ export function InventoryOperationPage({
 
       <QuantityKeypadSheet
         open={mobileTouchUI && mobileKeypadTarget !== null}
-        title={`${mobileKeypadTarget === "warehouse" ? "창고" : "매장"} ${mobileMode === "auto" ? "조정값" : "수량"} 입력`}
+        title={`${mobileKeypadTarget === "warehouse" ? "창고" : "매장"} ${mobileMode === "auto" || mobileMode === "move" ? "조정값" : "수량"} 입력`}
         initialValue={mobileKeypadTarget === "warehouse"
-          ? mobileMode === "auto" ? mobileWarehouseQty - mobileAutoBaseline.warehouseQty : mobileWarehouseQty
-          : mobileMode === "auto" ? mobileStoreQty - mobileAutoBaseline.storeQty : mobileStoreQty}
+          ? mobileMode === "auto"
+            ? mobileWarehouseQty - mobileAutoBaseline.warehouseQty
+            : mobileMode === "move"
+              ? mobileWarehouseQty - mobileConfirmedSnapshot.warehouseQty
+              : mobileWarehouseQty
+          : mobileMode === "auto"
+            ? mobileStoreQty - mobileAutoBaseline.storeQty
+            : mobileMode === "move"
+              ? mobileStoreQty - mobileConfirmedSnapshot.storeQty
+              : mobileStoreQty}
         min={mobileMode === "auto"
           ? mobileKeypadTarget === "warehouse" ? -mobileAutoBaseline.warehouseQty : -mobileAutoBaseline.storeQty
+          : mobileMode === "move"
+            ? mobileKeypadTarget === "warehouse" ? -mobileConfirmedSnapshot.warehouseQty : -mobileConfirmedSnapshot.storeQty
+            : undefined}
+        max={mobileMode === "move"
+          ? mobileKeypadTarget === "warehouse" ? mobileConfirmedSnapshot.storeQty : mobileConfirmedSnapshot.warehouseQty
           : undefined}
-        max={mobileMode === "move" ? mobileConfirmedSnapshot.warehouseQty + mobileConfirmedSnapshot.storeQty : undefined}
-        signed={mobileMode === "auto"}
+        signed={mobileMode === "auto" || mobileMode === "move"}
         onClose={() => setMobileKeypadTarget(null)}
         onConfirm={handleMobileKeypadConfirm}
         formatValue={formatInventoryQuantity}

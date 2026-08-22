@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, Check, Redo2, Undo2 } from "lucide-react";
+import { Check, Redo2, Undo2 } from "lucide-react";
 import { formatInventoryQuantity } from "../lib/inventory";
-import { buildAuditTarget, buildAutoAdjustmentTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, type MobileInventoryTarget } from "../lib/mobileInventory";
+import { buildAuditTarget, buildAutoAdjustmentTarget, buildMoveTarget, clampMobileQuantity, type MobileInventoryTarget } from "../lib/mobileInventory";
 import type { Location, MobileInventoryMode } from "../types/domain";
 import { VerticalQuantityWheel, type PeerWheelAnimation, type WheelInputKind } from "./VerticalQuantityWheel";
 
@@ -48,6 +48,8 @@ type PeerAnimationState = {
   instruction: PeerWheelAnimation;
 };
 
+type MoveWheelValueKind = "absolute" | "delta";
+
 function formatCheckLabel(info: LocationCheckInfo): string {
   if (!info.checkedAt) return "마지막 실사 -";
   const date = new Intl.DateTimeFormat("ko-KR", { month: "2-digit", day: "2-digit" }).format(new Date(info.checkedAt));
@@ -90,9 +92,6 @@ export function MobileInventoryControls({
     if (!isMove) setPeerAnimation(null);
   }, [isMove]);
   const totalQty = clampMobileQuantity(confirmedWarehouseQty + confirmedStoreQty);
-  const inferredMoveDirection = isMove
-    ? getMoveDirectionForQuantities(warehouseQty, storeQty, confirmedWarehouseQty, confirmedStoreQty)
-    : null;
 
   function buildAutoAdjustment(location: Location, delta: number) {
     const target = buildAutoAdjustmentTarget(location, delta, autoBaselineWarehouseQty, autoBaselineStoreQty);
@@ -102,18 +101,36 @@ export function MobileInventoryControls({
       storeQty: location === "매장" ? target.storeQty : storeQty
     };
   }
+  function getMoveBaseline(location: Location) {
+    return location === "창고" ? confirmedWarehouseQty : confirmedStoreQty;
+  }
 
-  function handleLocationDraft(location: Location, nextValue: number, inputKind?: WheelInputKind) {
+  function getMoveDelta(location: Location, quantity: number): number {
+    return quantity - getMoveBaseline(location);
+  }
+
+  function getMoveAbsoluteValue(location: Location, delta: number): number {
+    return clampMobileQuantity(getMoveBaseline(location) + delta);
+  }
+
+  function getMoveDeltaMax(location: Location) {
+    return location === "창고" ? confirmedStoreQty : confirmedWarehouseQty;
+  }
+
+  function handleLocationDraft(location: Location, nextValue: number, inputKind?: WheelInputKind, valueKind: MoveWheelValueKind = "delta") {
+    const absoluteNextValue = mode === "move" && valueKind === "delta" ? getMoveAbsoluteValue(location, nextValue) : nextValue;
     const target = mode === "move"
-      ? buildMoveTarget(location, nextValue, confirmedWarehouseQty, confirmedStoreQty)
+      ? buildMoveTarget(location, absoluteNextValue, confirmedWarehouseQty, confirmedStoreQty)
       : mode === "audit"
         ? buildAuditTarget(location, nextValue, warehouseQty, storeQty)
         : buildAutoAdjustment(location, nextValue);
 
     if (mode === "move" && inputKind) {
       const peerLocation = location === "창고" ? "매장" : "창고";
-      const fromValue = peerLocation === "창고" ? warehouseQty : storeQty;
-      const toValue = peerLocation === "창고" ? target.warehouseQty : target.storeQty;
+      const peerCurrentQuantity = peerLocation === "창고" ? warehouseQty : storeQty;
+      const peerTargetQuantity = peerLocation === "창고" ? target.warehouseQty : target.storeQty;
+      const fromValue = getMoveDelta(peerLocation, peerCurrentQuantity);
+      const toValue = getMoveDelta(peerLocation, peerTargetQuantity);
       if (fromValue !== toValue) {
         peerAnimationSequenceRef.current += 1;
         setPeerAnimation({
@@ -126,9 +143,10 @@ export function MobileInventoryControls({
     onDraftChange(target);
   }
 
-  function handleLocationCommit(location: Location, nextValue: number) {
+  function handleLocationCommit(location: Location, nextValue: number, valueKind: MoveWheelValueKind = "delta") {
+    const absoluteNextValue = mode === "move" && valueKind === "delta" ? getMoveAbsoluteValue(location, nextValue) : nextValue;
     const target = mode === "move"
-      ? buildMoveTarget(location, nextValue, confirmedWarehouseQty, confirmedStoreQty)
+      ? buildMoveTarget(location, absoluteNextValue, confirmedWarehouseQty, confirmedStoreQty)
       : mode === "audit"
         ? buildAuditTarget(location, nextValue, warehouseQty, storeQty)
         : buildAutoAdjustment(location, nextValue);
@@ -137,6 +155,57 @@ export function MobileInventoryControls({
 
   function formatSignedQuantity(value: number) {
     return `${value > 0 ? "+" : ""}${formatInventoryQuantity(value)}`;
+  }
+
+  function renderMoveLocation(location: Location) {
+    const isWarehouse = location === "창고";
+    const currentQty = isWarehouse ? warehouseQty : storeQty;
+    const baselineQty = getMoveBaseline(location);
+    const delta = getMoveDelta(location, currentQty);
+    const deltaMax = getMoveDeltaMax(location);
+    const hint = formatCheckLabel(isWarehouse ? lastInventoryCheckDates.warehouse : lastInventoryCheckDates.store);
+    const keypadTarget = isWarehouse ? "warehouse" : "store";
+    const peerAnimationForLocation = isWarehouse ? warehousePeerAnimation : storePeerAnimation;
+
+    return (
+      <div className="grid min-w-0 gap-1.5 sm:gap-3">
+        <VerticalQuantityWheel
+          label={`${location} 현재 재고`}
+          value={currentQty}
+          min={0}
+          max={totalQty}
+          invertDrag
+          compact
+          disabled={disabled}
+          ariaLabel={`${location} 현재 재고 ${formatInventoryQuantity(currentQty)}`}
+          formatValue={formatInventoryQuantity}
+          onDraftChange={(value, inputKind) => handleLocationDraft(location, value, inputKind, "absolute")}
+          onCommit={(value) => handleLocationCommit(location, value, "absolute")}
+          onLongPress={() => onInventoryCheck(location)}
+          onOpenKeypad={() => onOpenKeypad(keypadTarget)}
+          onDragStart={() => undefined}
+        />
+        <VerticalQuantityWheel
+          label={`${location} 조정`}
+          value={delta}
+          min={-baselineQty}
+          max={deltaMax}
+          invertDrag
+          reverseDisplayOrder
+          disabled={disabled}
+          hint={hint}
+          ariaLabel={`${location} 조정값 ${formatSignedQuantity(delta)}, 현재 재고 ${formatInventoryQuantity(currentQty)}`}
+          formatValue={formatSignedQuantity}
+          peerAnimation={peerAnimationForLocation}
+          showDragHint={false}
+          onDraftChange={(value, inputKind) => handleLocationDraft(location, value, inputKind)}
+          onCommit={(value) => handleLocationCommit(location, value)}
+          onLongPress={() => onInventoryCheck(location)}
+          onOpenKeypad={() => onOpenKeypad(keypadTarget)}
+          onDragStart={() => undefined}
+        />
+      </div>
+    );
   }
 
   function renderAutoLocation(location: Location) {
@@ -153,7 +222,7 @@ export function MobileInventoryControls({
           type="button"
           onClick={onRebaseAutoBaseline}
           disabled={disabled || rebaseDisabled}
-          className="rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-center transition-colors active:bg-brand-50 dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40"
+          className="rounded-xl min-h-[68px] border-2 border-slate-200 bg-slate-50 px-3 py-2 text-center transition-colors active:bg-brand-50 sm:min-h-[72px] dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40"
           aria-label={`${location} 현재 재고 ${formatInventoryQuantity(currentQty)}, 조정 기준으로 재설정`}
           title="현재 수량을 조정 기준으로 재설정"
         >
@@ -171,6 +240,7 @@ export function MobileInventoryControls({
           hint={hint}
           ariaLabel={`${location} 조정값 ${formatSignedQuantity(delta)}, 현재 재고 ${formatInventoryQuantity(currentQty)}`}
           formatValue={formatSignedQuantity}
+          showDragHint={false}
           onDraftChange={(value) => handleLocationDraft(location, value)}
           onCommit={(value) => handleLocationCommit(location, value)}
           onLongPress={() => onInventoryCheck(location)}
@@ -208,17 +278,20 @@ export function MobileInventoryControls({
             {renderAutoLocation("창고")}
             {renderAutoLocation("매장")}
           </>
+        ) : mode === "move" ? (
+          <>
+            {renderMoveLocation("창고")}
+            {renderMoveLocation("매장")}
+          </>
         ) : (
           <>
             <VerticalQuantityWheel
               label="창고"
               value={warehouseQty}
-              max={isMove ? totalQty : undefined}
               disabled={disabled}
               hint={formatCheckLabel(lastInventoryCheckDates.warehouse)}
               ariaLabel={`창고 수량 ${formatInventoryQuantity(warehouseQty)}`}
               formatValue={formatInventoryQuantity}
-              peerAnimation={warehousePeerAnimation}
               onDraftChange={(value, inputKind) => handleLocationDraft("창고", value, inputKind)}
               onCommit={(value) => handleLocationCommit("창고", value)}
               onLongPress={() => onInventoryCheck("창고")}
@@ -228,12 +301,10 @@ export function MobileInventoryControls({
             <VerticalQuantityWheel
               label="매장"
               value={storeQty}
-              max={isMove ? totalQty : undefined}
               disabled={disabled}
               hint={formatCheckLabel(lastInventoryCheckDates.store)}
               ariaLabel={`매장 수량 ${formatInventoryQuantity(storeQty)}`}
               formatValue={formatInventoryQuantity}
-              peerAnimation={storePeerAnimation}
               onDraftChange={(value, inputKind) => handleLocationDraft("매장", value, inputKind)}
               onCommit={(value) => handleLocationCommit("매장", value)}
               onLongPress={() => onInventoryCheck("매장")}
@@ -259,19 +330,6 @@ export function MobileInventoryControls({
           <Redo2 size={18} />
         </button>
       </div>
-
-      {mode === "move" ? (
-        <p className="mt-2 flex min-w-0 items-center gap-2 truncate text-xs font-semibold text-slate-500 dark:text-slate-400 sm:mt-3">
-          <ArrowLeftRight className="shrink-0" size={16} />
-          <span className="truncate">
-            {inferredMoveDirection === "warehouse-to-store"
-              ? "창고에서 매장으로 이동"
-              : inferredMoveDirection === "store-to-warehouse"
-                ? "매장에서 창고로 이동"
-                : `총재고 ${formatInventoryQuantity(totalQty)} 안에서 자유롭게 조정`}
-          </span>
-        </p>
-      ) : null}
     </section>
   );
 }

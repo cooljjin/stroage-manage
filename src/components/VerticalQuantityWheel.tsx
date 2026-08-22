@@ -35,6 +35,8 @@ type Props = {
   onOpenKeypad: () => void;
   onDragStart?: () => void;
   peerAnimation?: PeerWheelAnimation | null;
+  compact?: boolean;
+  showDragHint?: boolean;
   authoritativeRebaseSequence?: number;
   invertDrag?: boolean;
   reverseDisplayOrder?: boolean;
@@ -71,7 +73,7 @@ type AutomaticSpringMotion = {
 export function VerticalQuantityWheel({
   label, value, min = 0, max, disabled = false, hint, ariaLabel,
   onDraftChange, onCommit, onLongPress, onOpenKeypad, onDragStart, peerAnimation,
-  authoritativeRebaseSequence, invertDrag = false, reverseDisplayOrder = false, formatValue
+  compact = false, showDragHint = true, authoritativeRebaseSequence, invertDrag = false, reverseDisplayOrder = false, formatValue
 }: Props) {
   const pointerRef = useRef<PointerState | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -561,19 +563,21 @@ export function VerticalQuantityWheel({
   }
 
   return (
-    <button type="button" role="spinbutton" aria-label={ariaLabel} aria-valuemin={min} aria-valuemax={max} aria-valuenow={displayValue} disabled={disabled} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => releasePointer(event, false)} onPointerCancel={(event) => releasePointer(event, true)} onWheel={handleWheel} onContextMenu={(event) => event.preventDefault()} onKeyDown={handleKeyDown} title="위아래로 밀어 수량 조정 · 탭하여 직접 입력 · 길게 눌러 현재 수량 실사" className="relative flex min-h-44 min-w-0 touch-none select-none flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-50 px-2 py-2 text-center transition-colors active:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40 sm:min-h-48 sm:px-3 sm:py-4" style={{ WebkitUserSelect: "none", userSelect: "none" }}>
-      <div className="flex w-full items-center justify-between gap-1"><span className="text-xs font-extrabold text-black dark:text-black">{label}</span><span className="whitespace-nowrap text-[9px] font-bold text-black dark:text-black">위아래로 밀기</span></div>
-      <ChevronUp aria-hidden="true" className="mt-1 shrink-0 text-brand-600 dark:text-brand-300" size={15} strokeWidth={2.75} />
-      <div className="relative mt-0.5 h-24 w-full max-w-[8rem] overflow-hidden">
-        <div aria-hidden="true" className="absolute inset-0 overflow-hidden" style={{ contain: "paint", maskImage: "linear-gradient(to bottom, transparent 0%, black 34%, black 66%, transparent 100%)", WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 34%, black 66%, transparent 100%)" }}>
-          <div ref={trackRef} className="absolute inset-x-0 text-black dark:text-black" style={{ top: -MOBILE_DRAG_STEP_PX, transform: "translate3d(0, 0, 0)" }}>
-            {SLOT_OFFSETS.map((offset) => { const nextValue = previewValue(offset); return <span key={offset} className="block h-8 truncate text-2xl font-black leading-8 tabular-nums tracking-tight sm:text-3xl">{nextValue === null ? "·" : formatValue(nextValue)}</span>; })}
+    <button type="button" role="spinbutton" aria-label={ariaLabel} aria-valuemin={min} aria-valuemax={max} aria-valuenow={displayValue} disabled={disabled} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => releasePointer(event, false)} onPointerCancel={(event) => releasePointer(event, true)} onWheel={handleWheel} onContextMenu={(event) => event.preventDefault()} onKeyDown={handleKeyDown} title="위아래로 밀어 수량 조정 · 탭하여 직접 입력 · 길게 눌러 현재 수량 실사" className={`relative flex min-w-0 touch-none select-none flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-50 text-center transition-colors active:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40 ${compact ? "min-h-[68px] px-3 py-2 sm:min-h-[72px]" : "min-h-44 px-2 py-2 sm:min-h-48 sm:px-3 sm:py-4"}`} style={{ WebkitUserSelect: "none", userSelect: "none" }}>
+      <div className={`flex w-full items-center gap-1 ${compact || !showDragHint ? "justify-center" : "justify-between"}`}><span className="text-xs font-extrabold text-black dark:text-black">{label}</span>{showDragHint && !compact ? <span className="whitespace-nowrap text-[9px] font-bold text-black dark:text-black">위아래로 밀기</span> : null}</div>
+      {compact ? <ChevronUp aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 mx-auto text-brand-600 dark:text-brand-300" size={8} strokeWidth={2.75} /> : null}
+      {!compact ? <ChevronUp aria-hidden="true" className="mt-1 shrink-0 text-brand-600 dark:text-brand-300" size={15} strokeWidth={2.75} /> : null}
+      <div className={`relative w-full max-w-[8rem] overflow-hidden ${compact ? "h-8" : "mt-0.5 h-24"}`}>
+        <div aria-hidden="true" className="absolute inset-0 overflow-hidden" style={{ contain: "paint", maskImage: compact ? "linear-gradient(to bottom, black 0%, black 100%)" : "linear-gradient(to bottom, transparent 0%, black 34%, black 66%, transparent 100%)", WebkitMaskImage: compact ? "linear-gradient(to bottom, black 0%, black 100%)" : "linear-gradient(to bottom, transparent 0%, black 34%, black 66%, transparent 100%)" }}>
+          <div ref={trackRef} className="absolute inset-x-0 text-black dark:text-black" style={{ top: compact ? -MOBILE_DRAG_STEP_PX * 2 : -MOBILE_DRAG_STEP_PX, transform: "translate3d(0, 0, 0)" }}>
+            {SLOT_OFFSETS.map((offset) => { const nextValue = previewValue(offset); return <span key={offset} className={`block h-8 truncate font-black leading-8 tabular-nums tracking-tight ${compact ? "text-2xl" : "text-2xl sm:text-3xl"}`}>{nextValue === null ? "·" : formatValue(nextValue)}</span>; })}
           </div>
         </div>
-        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-8 h-8 border-y border-slate-200 dark:border-slate-700" />
+        {!compact ? <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-8 h-8 border-y border-slate-200 dark:border-slate-700" /> : null}
       </div>
-      <ChevronDown aria-hidden="true" className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-300" size={15} strokeWidth={2.75} />
-      {hint ? <span className="mt-0.5 line-clamp-2 text-[9px] font-semibold leading-tight text-black dark:text-black sm:mt-1 sm:text-[10px] sm:leading-snug">{hint}</span> : null}
+      {compact ? <ChevronDown aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-10 mx-auto text-brand-600 dark:text-brand-300" size={8} strokeWidth={2.75} /> : null}
+      {!compact ? <ChevronDown aria-hidden="true" className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-300" size={15} strokeWidth={2.75} /> : null}
+      {hint && !compact ? <span className="mt-0.5 line-clamp-2 text-[9px] font-semibold leading-tight text-black dark:text-black sm:mt-1 sm:text-[10px] sm:leading-snug">{hint}</span> : null}
     </button>
   );
 }
