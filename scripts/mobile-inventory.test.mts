@@ -9,6 +9,7 @@ import {
   getVerticalWheelSlotValue,
   getVerticalWheelTrackOffset,
   getVerticalWheelValueAfterSteps,
+  normalizeMobileScanMode,
   parseSignedMobileQuantity
 } from "../src/lib/mobileInventory.ts";
 
@@ -45,6 +46,10 @@ assert.equal(
 assert.equal(parseSignedMobileQuantity("+2.5"), 2.5, "signed keypad input accepts an explicit positive sign");
 assert.equal(parseSignedMobileQuantity("-2,5"), -2.5, "signed keypad input accepts comma decimals");
 assert.equal(parseSignedMobileQuantity("-"), null, "a sign alone is not a quantity");
+assert.equal(normalizeMobileScanMode("auto"), "auto", "stored receipt mode is accepted");
+assert.equal(normalizeMobileScanMode("audit"), "audit", "stored audit mode is accepted");
+assert.equal(normalizeMobileScanMode("unknown"), "auto", "invalid stored scan modes fall back to receipt mode");
+assert.equal(normalizeMobileScanMode(null), "auto", "missing stored scan modes fall back to receipt mode");
 assert.equal(
   getVerticalWheelValueAfterSteps(-0.5, 1, true),
   1,
@@ -409,7 +414,11 @@ assert.match(scanSource, /const \[nativeScanActive, setNativeScanActive\] = useS
 assert.match(scanSource, /if \(nativeScannerAvailable\) \{[\s\S]*?const result = await scanNativeBarcode\(\);/, "native scanning is attempted before the web screen");
 assert.match(scanSource, /setNativeScanActive\(true\);[\s\S]*?const result = await scanNativeBarcode\(\);/, "the native mode overlay is active before the camera promise starts");
 assert.match(scanSource, /handleBarcode\(result\.barcode, scanModeRef\.current === "audit" \? "audit" : "auto"\)/, "the selected native mode is passed to the operation route after scanning");
-assert.match(scanSource, /type ScanMode = "audit" \| "auto";/, "scan mode is represented as a mutually exclusive audit or receipt mode");
+assert.match(scanSource, /normalizeMobileScanMode, type MobileScanMode/, "scan mode is represented as a mutually exclusive audit or receipt mode");
+assert.match(scanSource, /const SCAN_MODE_STORAGE_KEY = "store-inventory-scan-mode";/, "native and fallback scan modes share a durable preference key");
+assert.match(scanSource, /useState<MobileScanMode>\(\(\) => readStoredScanMode\(\)\)/, "scan mode restores the last user-selected switch on remount");
+assert.match(scanSource, /normalizeMobileScanMode\(window\.localStorage\.getItem\(SCAN_MODE_STORAGE_KEY\)\)/, "stored scan mode is normalized before it reaches the switches");
+assert.match(scanSource, /window\.localStorage\.setItem\(SCAN_MODE_STORAGE_KEY, mode\)/, "changing either native switch persists its position until the next user change");
 assert.match(scanSource, /role="switch"[\s\S]*aria-label="실사모드"/, "fallback scan screen exposes the audit mode switch");
 assert.match(scanSource, /role="switch"[\s\S]*aria-label="입고모드"/, "fallback scan screen exposes the receipt mode switch");
 const nativeOverlayStart = scanSource.indexOf("native-scanner-overlay");

@@ -6,6 +6,11 @@ export const MOBILE_SETTLE_DELAY_MS = 300;
 export const MOBILE_SNAP_DURATION_MS = 180;
 
 export type MobileMoveDirection = "warehouse-to-store" | "store-to-warehouse";
+export type MobileScanMode = "auto" | "audit";
+
+export function normalizeMobileScanMode(value: unknown): MobileScanMode {
+  return value === "audit" ? "audit" : "auto";
+}
 
 export type MobileInventoryTarget = {
   mode: MobileInventoryMode;

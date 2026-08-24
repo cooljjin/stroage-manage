@@ -4,6 +4,7 @@ import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { useMobileViewport } from "../hooks/useMobileViewport";
+import { normalizeMobileScanMode, type MobileScanMode } from "../lib/mobileInventory";
 import { isNativeBarcodeScannerAvailable, scanNativeBarcode, stopNativeBarcode } from "../lib/nativeBarcodeScanner";
 import * as Services from "../services";
 import type { AppRoute, MobileInventoryEntryMode, Product } from "../types/domain";
@@ -30,12 +31,11 @@ const PRODUCT_BARCODE_FORMATS = [
 ];
 const DEFAULT_CAMERA_ZOOM = 2.5;
 const NATIVE_SCANNER_PENDING_CLASS = "native-scanner-pending";
+const SCAN_MODE_STORAGE_KEY = "store-inventory-scan-mode";
 
 type FocusMediaTrackConstraints = MediaTrackConstraints & {
   advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
 };
-
-type ScanMode = "audit" | "auto";
 
 type PendingScanEntry = {
   barcode: string;
@@ -53,6 +53,15 @@ function savePendingScanBarcode(barcode: string, storeId: string, initialInvento
 
 function clearPendingScanBarcode() {
   localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+}
+
+function readStoredScanMode(): MobileScanMode {
+  if (typeof window === "undefined") return "auto";
+  try {
+    return normalizeMobileScanMode(window.localStorage.getItem(SCAN_MODE_STORAGE_KEY));
+  } catch {
+    return "auto";
+  }
 }
 
 function consumePendingScanBarcode(storeId: string): PendingScanEntry | null {
@@ -105,7 +114,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const [zoom, setZoom] = useState(DEFAULT_CAMERA_ZOOM);
   const [nativeScanBusy, setNativeScanBusy] = useState(false);
   const [nativeScanActive, setNativeScanActive] = useState(false);
-  const [scanMode, setScanMode] = useState<ScanMode>("auto");
+  const [scanMode, setScanMode] = useState<MobileScanMode>(() => readStoredScanMode());
   const isMobileViewport = useMobileViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
   const nativeScannerAvailable = useMemo(() => isNativeBarcodeScannerAvailable(), []);
@@ -117,7 +126,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const mountedRef = useRef(true);
   const scanAttemptRef = useRef(0);
   const completedNavigationRef = useRef(false);
-  const scanModeRef = useRef<ScanMode>("auto");
+  const scanModeRef = useRef<MobileScanMode>(scanMode);
   const canWebScan = useMemo(() => "mediaDevices" in navigator, []);
   const canScan = canWebScan || nativeScannerAvailable;
 
@@ -415,9 +424,14 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     setLoadingSearch(false);
   }
 
-  function updateScanMode(mode: ScanMode) {
+  function updateScanMode(mode: MobileScanMode) {
     scanModeRef.current = mode;
     setScanMode(mode);
+    try {
+      window.localStorage.setItem(SCAN_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Keep the current session selection even when storage is unavailable.
+    }
   }
 
   return (
