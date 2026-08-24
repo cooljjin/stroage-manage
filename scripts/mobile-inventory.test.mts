@@ -8,6 +8,7 @@ import {
   getVerticalWheelStep,
   getVerticalWheelSlotValue,
   getVerticalWheelTrackOffset,
+  getVerticalWheelValueAfterSteps,
   parseSignedMobileQuantity
 } from "../src/lib/mobileInventory.ts";
 
@@ -44,6 +45,26 @@ assert.equal(
 assert.equal(parseSignedMobileQuantity("+2.5"), 2.5, "signed keypad input accepts an explicit positive sign");
 assert.equal(parseSignedMobileQuantity("-2,5"), -2.5, "signed keypad input accepts comma decimals");
 assert.equal(parseSignedMobileQuantity("-"), null, "a sign alone is not a quantity");
+assert.equal(
+  getVerticalWheelValueAfterSteps(-0.5, 1, true),
+  1,
+  "a positive signed dial step from a negative decimal starts at the next positive integer"
+);
+assert.equal(
+  getVerticalWheelValueAfterSteps(0.5, 1, true),
+  1,
+  "a positive signed dial step from a positive decimal drops the stale fractional part"
+);
+assert.equal(
+  getVerticalWheelValueAfterSteps(-0.5, -1, true),
+  -1,
+  "a negative signed dial step from a decimal also starts at the next whole number"
+);
+assert.equal(
+  getVerticalWheelValueAfterSteps(0.5, 1, false),
+  1.5,
+  "absolute wheels keep their existing fractional stepping behavior"
+);
 
 assert.equal(
   getVerticalWheelStep(-1),
@@ -210,6 +231,12 @@ assert.match(
   /onDraftChange: \(value: number, inputKind\?: WheelInputKind\) => void;/,
   "wheel drafts identify direct pointer, mouse-wheel, and keyboard input without changing commits"
 );
+assert.match(wheelSource, /snapFractionalValueOnStep\?: boolean;/, "the wheel can opt signed adjustment controls into whole-number stepping after decimal keypad input");
+assert.match(wheelSource, /getVerticalWheelValueAfterSteps\(startValue, stepCount, snapFractionalValueOnStep\)/, "pointer drags apply the decimal-to-whole-number boundary before normalizing");
+assert.match(wheelSource, /getVerticalWheelValueAfterSteps\(displayValueRef\.current, delta, snapFractionalValueOnStep\)/, "keyboard steps apply the same decimal-to-whole-number boundary");
+assert.match(wheelSource, /getVerticalWheelValueAfterSteps\(displayValueRef\.current, step, snapFractionalValueOnStep\)/, "mouse-wheel steps apply the same decimal-to-whole-number boundary");
+assert.match(autoRender, /snapFractionalValueOnStep/, "auto signed adjustment wheels enable whole-number stepping after decimal input");
+assert.match(moveRender, /label=\{`\$\{location\} 조정`\}[\s\S]*?snapFractionalValueOnStep/, "move signed adjustment wheels enable whole-number stepping after decimal input");
 assert.match(
   controlsSource,
   /onDraftChange=\{\(value, inputKind\) => handleLocationDraft\("창고", value, inputKind\)\}/,
@@ -373,21 +400,32 @@ assert.match(pageSource, /id="inventory-memo-content"[\s\S]*?hidden=\{!memoOpen\
 
 const scanSource = readFileSync(new URL("../src/pages/ScanPage.tsx", import.meta.url), "utf8");
 const nativeScannerSource = readFileSync(new URL("../src/lib/nativeBarcodeScanner.ts", import.meta.url), "utf8");
-assert.match(nativeScannerSource, /scan: \(options: \{ formats: string\[\]; autoZoom: boolean \}\) => Promise<NativeBarcodeScanResponse>;/, "native scanner uses the ready-to-use native scan API");
-assert.match(nativeScannerSource, /fastIosBarcodeScanner/, "iOS uses the native fast scanner before fallback");
-assert.doesNotMatch(nativeScannerSource, /startScan|barcodesScanned/, "the React WebView scanner is not the native default path");
+assert.match(nativeScannerSource, /startScan: \(options\?: \{ formats\?: string\[\] \}\) => Promise<void>;/, "native scanner starts the camera behind the WebView on both platforms");
+assert.match(nativeScannerSource, /addListener: \([\s\S]*?"barcodesScanned" \| "scanError"/, "native scanner exposes barcode and error events for the overlay path");
+assert.match(nativeScannerSource, /export async function stopNativeBarcode\(\)/, "native scanner exposes a cancellation path for the overlay stop button");
+assert.doesNotMatch(nativeScannerSource, /fastIosBarcodeScanner|\.scan\(\{/, "native scanning does not bypass the cross-platform overlay path with a ready-made screen");
 assert.match(scanSource, /const \[showFallbackUi, setShowFallbackUi\] = useState\(!nativeScannerAvailable\);/, "the React barcode screen starts hidden on native platforms");
-assert.doesNotMatch(scanSource, /nativeScanActive|barcode-scanner-modal|barcode-scanner-active/, "native scanning does not render the React scanner screen as its camera UI");
+assert.match(scanSource, /const \[nativeScanActive, setNativeScanActive\] = useState\(false\);/, "native scanning exposes only a minimal mode overlay state");
 assert.match(scanSource, /if \(nativeScannerAvailable\) \{[\s\S]*?const result = await scanNativeBarcode\(\);/, "native scanning is attempted before the web screen");
+assert.match(scanSource, /setNativeScanActive\(true\);[\s\S]*?const result = await scanNativeBarcode\(\);/, "the native mode overlay is active before the camera promise starts");
+assert.match(scanSource, /handleBarcode\(result\.barcode, scanModeRef\.current === "audit" \? "audit" : "auto"\)/, "the selected native mode is passed to the operation route after scanning");
 assert.match(scanSource, /type ScanMode = "audit" \| "auto";/, "scan mode is represented as a mutually exclusive audit or receipt mode");
 assert.match(scanSource, /role="switch"[\s\S]*aria-label="실사모드"/, "fallback scan screen exposes the audit mode switch");
 assert.match(scanSource, /role="switch"[\s\S]*aria-label="입고모드"/, "fallback scan screen exposes the receipt mode switch");
+const nativeOverlayStart = scanSource.indexOf("native-scanner-overlay");
+const nativeOverlayEnd = scanSource.indexOf("!nativeScanActive", nativeOverlayStart);
+const nativeOverlay = scanSource.slice(nativeOverlayStart, nativeOverlayEnd < 0 ? undefined : nativeOverlayEnd);
+assert.match(nativeOverlay, /role="switch"[\s\S]*aria-label="입고모드"/, "native camera overlay exposes the receipt mode switch");
+assert.match(nativeOverlay, /role="switch"[\s\S]*aria-label="실사모드"/, "native camera overlay exposes the audit mode switch");
+assert.match(nativeOverlay, /onClick=\{\(\) => updateScanMode\("auto"\)\}/, "native receipt mode updates the shared scan mode ref");
+assert.match(nativeOverlay, /onClick=\{\(\) => updateScanMode\("audit"\)\}/, "native audit mode updates the shared scan mode ref");
 assert.match(scanSource, /const launchDelay = nativeScannerAvailable \? 0 : 250;/, "native scanning starts without the web-screen delay");
 assert.match(scanSource, /if \(nativeScannerAvailable\) \{[\s\S]*?setShowFallbackUi\(false\);[\s\S]*?const result = await scanNativeBarcode\(\);/, "every native launch hides a previously visible fallback screen before opening the scanner");
 assert.match(scanSource, /native-scanner-pending/, "native launch hides the surrounding React chrome while the native scanner is opening");
 assert.match(scanSource, /className=\{showFallbackUi \? undefined : "native-scanner-fallback-hidden"\}/, "the React scanner DOM stays mounted but is not visible until web fallback is selected");
 assert.match(scanSource, /setShowFallbackUi\(true\);[\s\S]*?new Html5Qrcode\(SCANNER_ID/, "the web scanner is created after the fallback DOM is kept mounted");
 assert.doesNotMatch(scanSource, /native-scanner-launch-screen/, "the native path does not render a separate React launch screen");
+assert.match(controlsSource, /\["auto", "입고, 출고"\]/, "the receipt native mode lands on the receipt/outgoing mobile operation tab");
 
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 assert.match(appSource, /permittedRoute\.name === "product-edit" \? \([\s\S]*?border-0 bg-transparent[\s\S]*?<ArrowLeft size=\{18\} \/>/, "the product edit back action uses an icon-only button without a box");

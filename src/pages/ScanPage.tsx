@@ -4,7 +4,7 @@ import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { useMobileViewport } from "../hooks/useMobileViewport";
-import { isNativeBarcodeScannerAvailable, scanNativeBarcode } from "../lib/nativeBarcodeScanner";
+import { isNativeBarcodeScannerAvailable, scanNativeBarcode, stopNativeBarcode } from "../lib/nativeBarcodeScanner";
 import * as Services from "../services";
 import type { AppRoute, MobileInventoryEntryMode, Product } from "../types/domain";
 
@@ -104,6 +104,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_CAMERA_ZOOM);
   const [nativeScanBusy, setNativeScanBusy] = useState(false);
+  const [nativeScanActive, setNativeScanActive] = useState(false);
   const [scanMode, setScanMode] = useState<ScanMode>("auto");
   const isMobileViewport = useMobileViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
@@ -133,6 +134,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       if (scannerRef.current?.isScanning) {
         scannerRef.current.stop().catch(() => undefined);
       }
+      void stopNativeBarcode();
     };
   }, []);
 
@@ -169,6 +171,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const startWebScanner = useCallback(async (initialMessage = "", scanAttempt = scanAttemptRef.current) => {
     if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
     document.body.classList.remove(NATIVE_SCANNER_PENDING_CLASS);
+    setNativeScanActive(false);
     setShowFallbackUi(true);
     setMessage(initialMessage);
     if (!canWebScan) {
@@ -254,13 +257,14 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (nativeScannerAvailable) {
       setShowFallbackUi(false);
       document.body.classList.add(NATIVE_SCANNER_PENDING_CLASS);
+      setNativeScanActive(true);
       setNativeScanBusy(true);
       try {
         const result = await scanNativeBarcode();
         if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
 
         if (result.status === "success") {
-          await handleBarcode(result.barcode);
+          await handleBarcode(result.barcode, scanModeRef.current === "audit" ? "audit" : "auto");
           return;
         }
 
@@ -285,6 +289,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
         await startWebScanner(result.message, scanAttempt);
       } finally {
         document.body.classList.remove(NATIVE_SCANNER_PENDING_CLASS);
+        setNativeScanActive(false);
         setNativeScanBusy(false);
       }
       return;
@@ -318,8 +323,12 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
 
   async function stopScanner() {
     scanAttemptRef.current += 1;
+    if (nativeScanActive) await stopNativeBarcode();
     if (scannerRef.current?.isScanning) await scannerRef.current.stop();
     barcodeHandlingRef.current = false;
+    document.body.classList.remove(NATIVE_SCANNER_PENDING_CLASS);
+    setNativeScanActive(false);
+    setNativeScanBusy(false);
     setScannerActive(false);
     setZoomRange(null);
   }
@@ -412,7 +421,45 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   }
 
   return (
-    <section className={showFallbackUi ? undefined : "native-scanner-fallback-hidden"} aria-hidden={!showFallbackUi}>
+    <>
+      {nativeScanActive ? (
+        <div className="native-scanner-overlay" role="dialog" aria-modal="true" aria-label="네이티브 바코드 스캔">
+          <div className="native-scanner-mode-panel">
+            <p className="text-sm font-extrabold text-white">스캔 모드</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={scanMode === "auto"}
+                aria-label="입고모드"
+                onClick={() => updateScanMode("auto")}
+                className={`native-scanner-mode-switch ${scanMode === "auto" ? "native-scanner-mode-switch-active" : ""}`}
+              >
+                입고모드
+              </button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={scanMode === "audit"}
+                aria-label="실사모드"
+                onClick={() => updateScanMode("audit")}
+                className={`native-scanner-mode-switch ${scanMode === "audit" ? "native-scanner-mode-switch-active" : ""}`}
+              >
+                실사모드
+              </button>
+            </div>
+          </div>
+          <div className="native-scanner-bottom-panel">
+            <p className="rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
+              바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
+            </p>
+            <button type="button" onClick={() => void stopScanner()} className="secondary-button w-full bg-white/95">
+              스캔 중지
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <section className={showFallbackUi ? undefined : "native-scanner-fallback-hidden"} aria-hidden={!showFallbackUi}>
       <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
 
           {isMobileViewport && mobileTouchEnabled ? (
@@ -536,6 +583,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
               </div>
             </div>
           </div>
-    </section>
+      </section>
+    </>
   );
 }

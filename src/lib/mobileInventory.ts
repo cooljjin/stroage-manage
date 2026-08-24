@@ -72,6 +72,11 @@ export function getVerticalWheelStep(deltaY: number): number {
   return deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0;
 }
 
+export function getVerticalWheelValueAfterSteps(value: number, stepCount: number, snapFractionalValue = false): number {
+  if (!snapFractionalValue || stepCount === 0 || Number.isInteger(value)) return value + stepCount;
+  return Math.trunc(value) + stepCount;
+}
+
 export function quantityFromVerticalDrag(startValue: number, startY: number, currentY: number, max = Number.POSITIVE_INFINITY): number {
   const stepCount = getVerticalDragStepCount(startY, currentY);
   return clampMobileQuantity(startValue + stepCount, max);

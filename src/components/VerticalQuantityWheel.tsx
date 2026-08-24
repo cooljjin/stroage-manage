@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { MOBILE_DRAG_STEP_PX, MOBILE_DRAG_THRESHOLD_PX, MOBILE_SETTLE_DELAY_MS, MOBILE_SNAP_DURATION_MS, getVerticalDragStepCount, getVerticalWheelSlotValue, getVerticalWheelStep, getVerticalWheelTrackOffset } from "../lib/mobileInventory";
+import { MOBILE_DRAG_STEP_PX, MOBILE_DRAG_THRESHOLD_PX, MOBILE_SETTLE_DELAY_MS, MOBILE_SNAP_DURATION_MS, getVerticalDragStepCount, getVerticalWheelSlotValue, getVerticalWheelStep, getVerticalWheelTrackOffset, getVerticalWheelValueAfterSteps } from "../lib/mobileInventory";
 
 const SLOT_OFFSETS = [-2, -1, 0, 1, 2] as const;
 const MAX_BOUNDARY_DRAG_PX = 12;
@@ -40,6 +40,7 @@ type Props = {
   authoritativeRebaseSequence?: number;
   invertDrag?: boolean;
   reverseDisplayOrder?: boolean;
+  snapFractionalValueOnStep?: boolean;
   formatValue: (value: number) => string;
 };
 
@@ -73,7 +74,7 @@ type AutomaticSpringMotion = {
 export function VerticalQuantityWheel({
   label, value, min = 0, max, disabled = false, hint, ariaLabel,
   onDraftChange, onCommit, onLongPress, onOpenKeypad, onDragStart, peerAnimation,
-  compact = false, showDragHint = true, authoritativeRebaseSequence, invertDrag = false, reverseDisplayOrder = false, formatValue
+  compact = false, showDragHint = true, authoritativeRebaseSequence, invertDrag = false, reverseDisplayOrder = false, snapFractionalValueOnStep = false, formatValue
 }: Props) {
   const pointerRef = useRef<PointerState | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -329,7 +330,7 @@ export function VerticalQuantityWheel({
   function projection(startY: number, currentY: number, startValue: number, snap: boolean, startOffset = 0): Projection {
     const distance = (startY - currentY) * (invertDrag ? -1 : 1) + startOffset;
     const stepCount = getVerticalDragStepCount(startY, currentY, snap) * (invertDrag ? -1 : 1);
-    const nextValue = normalize(startValue + stepCount);
+    const nextValue = normalize(getVerticalWheelValueAfterSteps(startValue, stepCount, snapFractionalValueOnStep));
     let offset = distance - (nextValue - startValue) * MOBILE_DRAG_STEP_PX;
     const continuousValue = startValue + distance / MOBILE_DRAG_STEP_PX;
     if (continuousValue < min || (max !== undefined && continuousValue > max)) {
@@ -471,7 +472,7 @@ export function VerticalQuantityWheel({
       cancelAutomaticMotion();
       cancelPeerMotion();
       const delta = (event.key === "ArrowUp" ? 1 : -1) * (invertDrag ? -1 : 1);
-      const nextValue = normalize(displayValueRef.current + delta);
+      const nextValue = normalize(getVerticalWheelValueAfterSteps(displayValueRef.current, delta, snapFractionalValueOnStep));
       setLocalValue(nextValue, false, "keyboard");
       onCommit(nextValue);
     } else if (event.key === "Enter" || event.key === " ") {
@@ -483,7 +484,7 @@ export function VerticalQuantityWheel({
   function handleWheel(event: React.WheelEvent<HTMLButtonElement>) {
     if (disabled) return;
     const step = getVerticalWheelStep(event.deltaY) * (invertDrag ? -1 : 1);
-    const nextValue = normalize(displayValueRef.current + step);
+    const nextValue = normalize(getVerticalWheelValueAfterSteps(displayValueRef.current, step, snapFractionalValueOnStep));
     if (step === 0 || nextValue === displayValueRef.current) return;
     event.preventDefault();
     cancelAutomaticMotion();

@@ -192,6 +192,7 @@ export function MobileInventoryControls({
           max={deltaMax}
           invertDrag
           reverseDisplayOrder
+          snapFractionalValueOnStep
           disabled={disabled}
           hint={hint}
           ariaLabel={`${location} 조정값 ${formatSignedQuantity(delta)}, 현재 재고 ${formatInventoryQuantity(currentQty)}`}
@@ -235,6 +236,7 @@ export function MobileInventoryControls({
           min={-baselineQty}
           invertDrag
           reverseDisplayOrder
+          snapFractionalValueOnStep
           authoritativeRebaseSequence={autoRebaseSequence}
           disabled={disabled}
           hint={hint}
@@ -255,7 +257,7 @@ export function MobileInventoryControls({
     <section className="panel p-1.5 sm:p-4" aria-label="모바일 재고 작업">
       <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900 sm:gap-1.5 sm:p-1">
         {([
-          ["auto", "입고,사용"],
+          ["auto", "입고, 출고"],
           ["move", "이동"],
           ["audit", "실사"]
         ] as const).map(([value, label]) => (
@@ -321,7 +323,7 @@ export function MobileInventoryControls({
           {saveState === "pending" ? <span className="block w-full truncate font-semibold text-brand-700 dark:text-brand-100">재고를 저장하는 중...</span> : null}
           {saveState === "saved" ? <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300" title={savedAtLabel ? `${saveStatusLabel} · ${savedAtLabel}` : saveStatusLabel}><Check className="shrink-0" size={16} /><span className="truncate">{saveStatusLabel}{savedAtLabel ? ` · ${savedAtLabel}` : ""}</span></span> : null}
           {saveState === "error" ? <span className="block w-full truncate font-semibold text-rose-700 dark:text-rose-300" title={saveError ?? "저장하지 못했습니다."}>{saveError ?? "저장하지 못했습니다."}</span> : null}
-          {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{savedAtLabel ? `편집 시점 ${savedAtLabel}` : mode === "auto" ? "위로 밀면 입고, 아래로 밀면 사용" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요."}</span> : null}
+          {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{savedAtLabel ? `편집 시점 ${savedAtLabel}` : mode === "auto" ? "위로 밀면 입고, 아래로 밀면 출고" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요."}</span> : null}
         </div>
         <button type="button" onClick={onUndo} disabled={disabled || !canUndo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="뒤로가기" title="뒤로가기">
           <Undo2 size={18} />
