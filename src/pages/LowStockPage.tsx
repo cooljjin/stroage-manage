@@ -767,12 +767,12 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                 columnGap: `${2 * (1 - headerScrollProgress)}px`,
                 paddingInline: `${8 * (1 - headerScrollProgress)}px`
               }}
-              aria-label="발주하기"
-              title="발주하기"
+              aria-label="컨펌 확인"
+              title="컨펌 확인"
             >
               <ClipboardList className="shrink-0" size={16} />
               <span className="overflow-hidden whitespace-nowrap" style={{ maxWidth: `${52 * (1 - headerScrollProgress)}px`, opacity: 1 - headerScrollProgress }}>
-                발주하기
+                컨펌 확인
               </span>
             </button>
           </div>

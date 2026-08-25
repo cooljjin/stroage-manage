@@ -354,6 +354,14 @@ assert.doesNotMatch(rebaseEffect, /onDraftChange|onCommit/, "the authoritative r
 assert.ok(rebaseEffectStart < wheelSource.indexOf("if (pointerRef.current) return;"), "the authoritative rebase effect runs before normal value reconciliation");
 
 const pageSource = readFileSync(new URL("../src/pages/InventoryOperationPage.tsx", import.meta.url), "utf8");
+const inventoryListSource = readFileSync(new URL("../src/pages/InventoryListPage.tsx", import.meta.url), "utf8");
+const lowStockSource = readFileSync(new URL("../src/pages/LowStockPage.tsx", import.meta.url), "utf8");
+assert.match(inventoryListSource, /useState<InventoryOverviewMode>\(\(\) => initialState\?\.overviewMode \?\? "overview"\)/, "inventory status opens on the overview tab by default");
+assert.match(inventoryListSource, /useState\(\(\) => initialState\?\.overviewCompact \?\? true\)/, "inventory overview starts collapsed by default");
+assert.match(inventoryListSource, /\(\["overview", "list"\] as const\)/, "overview appears before list in the inventory status tabs");
+assert.doesNotMatch(inventoryListSource, /<PageTitle title="재고 현황"/, "inventory status removes the redundant page title and description");
+assert.match(lowStockSource, /aria-label="컨펌 확인"[\s\S]*title="컨펌 확인"[\s\S]*>\s*<ClipboardList[\s\S]*>\s*컨펌 확인\s*<\/span>/, "the low-stock confirmation button is labelled 컨펌 확인");
+assert.doesNotMatch(lowStockSource, /aria-label="발주하기"|title="발주하기"/, "the low-stock header no longer labels the confirmation button 발주하기");
 const rebaseHandlerStart = pageSource.indexOf("function handleMobileAutoBaselineRebase");
 const rebaseHandlerEnd = pageSource.indexOf("\n  }", rebaseHandlerStart) + "\n  }".length;
 const rebaseHandler = pageSource.slice(rebaseHandlerStart, rebaseHandlerEnd);
@@ -402,6 +410,13 @@ assert.match(pageSource, /onClick=\{\(\) => setMemoOpen\(\(open\) => !open\)\}/,
 assert.match(pageSource, /aria-expanded=\{memoOpen\}/, "the memo toggle exposes its expanded state");
 assert.match(pageSource, /aria-controls="inventory-memo-content"/, "the memo toggle points to the collapsible content");
 assert.match(pageSource, /id="inventory-memo-content"[\s\S]*?hidden=\{!memoOpen\}/, "memo content is hidden when collapsed");
+assert.match(pageSource, /const \[action, setAction\] = useState<StockOperationAction>\(initialInventoryMode === "audit" \? "조정" : "입고"\);/, "native audit and receipt modes initialize the button form action correctly");
+assert.match(pageSource, /setAction\(nextMode === "audit" \? "조정" : "입고"\);/, "changing the native entry mode resets the button form to its matching action");
+assert.match(pageSource, /const \[mobileDialMode, setMobileDialMode\] = useState\(true\);/, "the dial input mode is enabled by default on mobile operation screens");
+assert.match(pageSource, /const mobileTouchUI = mobileTouchEnabled && isMobileViewport && mobileDialMode;/, "the new input switch controls whether the dial controls are rendered");
+assert.match(pageSource, /role="switch"[\s\S]*aria-label="재고 작업 입력 방식"[\s\S]*aria-checked=\{mobileDialMode\}/, "the operation input mode switch exposes its current state");
+assert.match(pageSource, /inventory-operation-header[\s\S]*mobile-input-mode-switch[\s\S]*inventory-product-summary/, "the input mode switch is placed below the edit/list/history header and above the product summary");
+assert.match(pageSource, /mobileTouchUI \? \([\s\S]*?<MobileInventoryControls[\s\S]*: \([\s\S]*?ACTIONS\.map/, "the switch changes between dial controls and the existing button form");
 
 const scanSource = readFileSync(new URL("../src/pages/ScanPage.tsx", import.meta.url), "utf8");
 const nativeScannerSource = readFileSync(new URL("../src/lib/nativeBarcodeScanner.ts", import.meta.url), "utf8");

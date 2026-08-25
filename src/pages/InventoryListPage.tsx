@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search, Star, TriangleAlert } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
@@ -77,9 +76,9 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
   const [category, setCategory] = useState<CategoryFilter>(() => initialState?.category ?? "전체");
   const [categoryExpanded, setCategoryExpanded] = useState(() => initialState?.categoryExpanded ?? false);
   const [search, setSearch] = useState(() => initialState?.search ?? "");
-  const [overviewMode, setOverviewMode] = useState<InventoryOverviewMode>(() => initialState?.overviewMode ?? "list");
+  const [overviewMode, setOverviewMode] = useState<InventoryOverviewMode>(() => initialState?.overviewMode ?? "overview");
   const [overviewDisplay, setOverviewDisplay] = useState<InventoryOverviewDisplay>(() => initialState?.overviewDisplay ?? "activity");
-  const [overviewCompact, setOverviewCompact] = useState(() => initialState?.overviewCompact ?? false);
+  const [overviewCompact, setOverviewCompact] = useState(() => initialState?.overviewCompact ?? true);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(() => initialState?.activityCounts ?? {});
   const [abundantMultiplier, setAbundantMultiplier] = useState(() => initialState?.abundantMultiplier ?? DEFAULT_ABUNDANT_MULTIPLIER);
   const [loading, setLoading] = useState(() => (initialState?.items.length ?? 0) === 0);
@@ -190,10 +189,8 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
 
   return (
     <section>
-      <PageTitle title="재고 현황" description={overviewMode === "overview" ? "전체 품목의 재고 상태를 한눈에 확인합니다." : "카테고리와 검색으로 빠르게 확인합니다."} />
-
       <div className="mb-4 grid grid-cols-2 rounded-lg bg-slate-100 p-1 dark:bg-slate-900">
-        {(["list", "overview"] as const).map((mode) => (
+        {(["overview", "list"] as const).map((mode) => (
           <button
             key={mode}
             type="button"

@@ -295,7 +295,7 @@ export function InventoryOperationPage({
   const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [action, setAction] = useState<StockOperationAction>("조정");
+  const [action, setAction] = useState<StockOperationAction>(initialInventoryMode === "audit" ? "조정" : "입고");
   const [location, setLocation] = useState<Location>("창고");
   const [moveDirection, setMoveDirection] = useState<"warehouse-to-store" | "store-to-warehouse">("warehouse-to-store");
   const [quantity, setQuantity] = useState("");
@@ -334,6 +334,8 @@ export function InventoryOperationPage({
   const restoreMutationRequestRef = useRef(new Map<string, string>());
   const isMobileViewport = useMobileViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
+  const [mobileDialMode, setMobileDialMode] = useState(true);
+  const [mobileInputModeSwitching, setMobileInputModeSwitching] = useState(false);
   const [mobileMode, setMobileMode] = useState<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
   const [mobileWarehouseQty, setMobileWarehouseQty] = useState(0);
   const [mobileStoreQty, setMobileStoreQty] = useState(0);
@@ -408,7 +410,7 @@ export function InventoryOperationPage({
     setAbundantMultiplier(Number.isFinite(nextMultiplier) && nextMultiplier > 1 ? nextMultiplier : DEFAULT_ABUNDANT_MULTIPLIER);
   }, [currentStoreId]);
 
-  const mobileTouchUI = mobileTouchEnabled && isMobileViewport;
+  const mobileTouchUI = mobileTouchEnabled && isMobileViewport && mobileDialMode;
 
   function isMissingMobileSessionError(message: string | null | undefined): boolean {
     return message?.includes("모바일 재고 작업 세션을 찾을 수 없습니다.") ?? false;
@@ -533,6 +535,7 @@ export function InventoryOperationPage({
     setMobileSaveStatusLabel("서버에 저장됨");
     setMobileEditPointAt("");
     const nextMode = initialInventoryMode === "audit" ? "audit" : "auto";
+    setAction(nextMode === "audit" ? "조정" : "입고");
     mobileModeRef.current = nextMode;
     setMobileMode(nextMode);
     resetMobileAutoBaseline({ warehouseQty: 0, storeQty: 0 });
@@ -745,6 +748,22 @@ export function InventoryOperationPage({
     }
     mobileSessionIdRef.current = null;
     setMobileSaveState("idle");
+  }
+
+  async function changeMobileInputMode(nextDialMode: boolean) {
+    if (nextDialMode === mobileDialMode || mobileInputModeSwitching) return;
+    setMobileInputModeSwitching(true);
+    try {
+      if (!nextDialMode) {
+        setMobileKeypadTarget(null);
+        commitUnsettledMobileDraft();
+        if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
+        await finalizeMobileSession();
+      }
+      setMobileDialMode(nextDialMode);
+    } finally {
+      setMobileInputModeSwitching(false);
+    }
   }
 
   mobileFinalizeRef.current = finalizeMobileSession;
@@ -1532,6 +1551,23 @@ export function InventoryOperationPage({
           </button>
         </div>
       </div>
+
+      {mobileTouchEnabled && isMobileViewport ? (
+        <div className="mobile-input-mode-switch mb-2 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+          <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{mobileDialMode ? "다이얼 방식" : "버튼 방식"}</span>
+          <button
+            type="button"
+            role="switch"
+            aria-label="재고 작업 입력 방식"
+            aria-checked={mobileDialMode}
+            disabled={mobileInputModeSwitching}
+            onClick={() => void changeMobileInputMode(!mobileDialMode)}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${mobileDialMode ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}
+          >
+            <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${mobileDialMode ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+      ) : null}
 
       <div className="inventory-product-summary mb-2 flex min-w-0 items-start justify-between gap-1.5 sm:mb-3 sm:gap-2">
         <div className="flex max-w-[58%] shrink-0 flex-col items-end gap-1 text-[11px] sm:max-w-none sm:gap-1.5 sm:text-sm">
