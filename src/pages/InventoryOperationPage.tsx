@@ -11,7 +11,7 @@ import { getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryActionLabel, formatInventoryQuantity, formatLogContent, normalizeInventoryItem } from "../lib/inventory";
 import { DEFAULT_ABUNDANT_MULTIPLIER } from "../lib/inventoryStock";
-import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
+import { createMutationRequestId, finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { applyMobileInventoryChange, finalizeMobileInventorySession, recoverMobileInventorySessions, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
 import { buildAuditTarget, buildAutoTarget, buildMobileHistoryTarget, buildMoveTarget, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
@@ -46,6 +46,10 @@ type InventoryHistoryPoint = {
   log: InventoryLog;
   warehouseQty: number;
   storeQty: number;
+};
+
+type AliasHistoryLog = InventoryLog & {
+  aliasProductName: string;
 };
 
 type InventoryQuantityState = {
@@ -292,6 +296,7 @@ export function InventoryOperationPage({
 }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
+  const [aliasHistoryLogs, setAliasHistoryLogs] = useState<AliasHistoryLog[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [action, setAction] = useState<StockOperationAction>("조정");
@@ -360,11 +365,21 @@ export function InventoryOperationPage({
   const mobileEditHistoryLoadingRef = useRef(false);
   const mobileInventoryCheckRequestRef = useRef<string | null>(null);
   const [mobileInventoryCheckSaving, setMobileInventoryCheckSaving] = useState(false);
+  const memoRequestRef = useRef<string | null>(null);
 
   const loadProduct = useCallback(async () => {
     setLoading(true);
     setError("");
-    const { data, error: loadError } = await Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("id", productId).single();
+    const { data: referenceRows, error: referenceError } = await Services.DatabaseService.rpc("resolve_product_references", {
+      target_product_ids: [productId]
+    });
+    const resolvedProductId = referenceRows?.[0]?.canonical_product_id ?? productId;
+    const { data, error: loadError } = referenceError
+      ? { data: null, error: referenceError }
+      : await Services.DatabaseService.select("products", "*, inventory(*)")
+        .eq("store_id", currentStoreId)
+        .eq("id", resolvedProductId)
+        .single();
 
     if (loadError) {
       setError(loadError.message);
@@ -372,9 +387,9 @@ export function InventoryOperationPage({
       const nextItem = normalizeInventoryItem(data as Parameters<typeof normalizeInventoryItem>[0]);
 
       if (!nextItem.inventory) {
-        const { data: inventoryData, error: inventoryError } = await Services.DatabaseService.upsert("inventory", { product_id: productId, store_id: currentStoreId }, { onConflict: "product_id" })
-          .select()
-          .single();
+        const { data: inventoryData, error: inventoryError } = await Services.DatabaseService.rpc("ensure_inventory_row", {
+          target_product_id: resolvedProductId
+        });
 
         if (inventoryError) {
           setError(inventoryError.message);
@@ -1193,14 +1208,18 @@ export function InventoryOperationPage({
     setHistoryOpen(true);
     setHistoryLoading(true);
     setError("");
-    const { data, error: historyError } = await Services.DatabaseService.select("inventory_logs", "*")
-      .eq("store_id", currentStoreId)
-      .eq("product_id", item.id)
-      .neq("action", "메모")
-      .is("reverted_at", null)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(200);
+    const [historyResult, aliasResult] = await Promise.all([
+      Services.DatabaseService.select("inventory_logs", "*")
+        .eq("store_id", currentStoreId)
+        .eq("product_id", item.id)
+        .neq("action", "메모")
+        .is("reverted_at", null)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(200),
+      Services.DatabaseService.rpc("list_product_aliases", { target_product_id: item.id })
+    ]);
+    const { data, error: historyError } = historyResult;
 
     if (historyError) {
       setError(
@@ -1216,6 +1235,32 @@ export function InventoryOperationPage({
         item.store_qty
       );
       setHistory(points);
+    }
+
+    if (aliasResult.error) {
+      setAliasHistoryLogs([]);
+    } else {
+      const activeAliases = (aliasResult.data ?? []).filter((alias) => alias.merge_status === "active");
+      const aliasNames = new Map(activeAliases.map((alias) => [alias.alias_product_id, alias.alias_name]));
+      const aliasProductIds = [...aliasNames.keys()];
+      if (aliasProductIds.length === 0) {
+        setAliasHistoryLogs([]);
+      } else {
+        const aliasLogsResult = await Services.DatabaseService.select("inventory_logs", "*")
+          .eq("store_id", currentStoreId)
+          .in("product_id", aliasProductIds)
+          .neq("action", "메모")
+          .is("reverted_at", null)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(200);
+        setAliasHistoryLogs(aliasLogsResult.error
+          ? []
+          : ((aliasLogsResult.data ?? []) as InventoryLog[]).map((log) => ({
+              ...log,
+              aliasProductName: aliasNames.get(log.product_id) ?? "병합된 원본"
+            })));
+      }
     }
     setHistoryLoading(false);
   }
@@ -1328,23 +1373,11 @@ export function InventoryOperationPage({
     setMemoError("");
     setMemoSuccess("");
 
-    const { data: userData, error: userError } = await Services.AuthService.getUser();
-    if (userError || !userData.user) {
-      setMemoError(userError?.message ?? "로그인이 필요합니다.");
-      setMemoSaving(false);
-      return;
-    }
-
     if (editingMemoId) {
-      const { data: updatedMemo, error: updateError } = await Services.DatabaseService.update("inventory_logs", {
-          note: memoText.trim()
-        })
-        .eq("store_id", currentStoreId)
-        .eq("id", editingMemoId)
-        .eq("user_id", userData.user.id)
-        .eq("action", "메모")
-        .select("*")
-        .maybeSingle();
+      const { data: updatedMemo, error: updateError } = await Services.DatabaseService.rpc("update_inventory_memo", {
+        target_log_id: editingMemoId,
+        memo_text: memoText.trim()
+      });
 
       if (updateError) {
         setMemoError(formatMemoSaveError(updateError.message));
@@ -1362,28 +1395,18 @@ export function InventoryOperationPage({
       return;
     }
 
-    const { data: savedMemo, error: logError } = await Services.DatabaseService.insert("inventory_logs", {
-        store_id: currentStoreId,
-        product_id: item.id,
-        user_id: userData.user.id,
-        action: "메모",
-        source_location: null,
-        destination_location: null,
-        previous_quantity: null,
-        new_quantity: null,
-        quantity: null,
-        note: memoText.trim(),
-        warehouse_qty_before: item.warehouse_qty,
-        store_qty_before: item.store_qty,
-        warehouse_qty_after: item.warehouse_qty,
-        store_qty_after: item.store_qty
-      })
-      .select("*")
-      .single();
+    memoRequestRef.current ??= createMutationRequestId();
+    const { data: savedMemo, error: logError } = await Services.DatabaseService.rpc("record_inventory_memo", {
+      target_product_id: item.id,
+      memo_text: memoText.trim(),
+      request_id: memoRequestRef.current
+    });
 
     if (logError) {
+      finishMutationRequest(memoRequestRef, logError);
       setMemoError(formatMemoSaveError(logError.message));
     } else {
+      memoRequestRef.current = null;
       setMemoSuccess("메모를 저장했습니다.");
       setMemoText("");
       if (savedMemo) {
@@ -1984,6 +2007,23 @@ export function InventoryOperationPage({
                   </button>
                 ))}
               </div>
+              {!historyLoading && aliasHistoryLogs.length > 0 ? (
+                <section className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+                  <h3 className="text-sm font-extrabold">병합된 원본의 과거 기록</h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">원래 상품 ID와 상품명을 보존한 읽기 전용 기록입니다. 대표 상품 재고 복원 대상으로 사용하지 않습니다.</p>
+                  <div className="mt-3 space-y-2">
+                    {aliasHistoryLogs.map((log) => (
+                      <div key={log.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-slate-100 px-2 py-1 text-xs font-extrabold dark:bg-slate-800">{log.aliasProductName}</span>
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{formatDateTime(log.created_at)}</span>
+                        </div>
+                        <p className="mt-2 text-sm font-bold">{formatInventoryActionLabel(log.action)} · {formatLogContent(log)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
             </div>
           </div>
         </div>

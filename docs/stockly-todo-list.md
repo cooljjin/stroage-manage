@@ -10,11 +10,11 @@
 
 - 체크박스는 코드, 브라우저/기기, 필요한 DB 상태까지 확인한 뒤 완료 처리한다.
 - 이미 구현 흔적이 있는 항목은 다시 만들기 전에 현재 동작부터 검증한다.
-- 검증은 기본적으로 별도 매장인 `Stockly 테스트 매장`(store_id `222646b3-9b7c-4683-a7df-d2d74caab399`)에서 진행한다.
+- 검증은 기본적으로 별도 매장인 `Stockly 테스트 매장`(store_id `<PRIMARY_TEST_STORE_ID>`)에서 진행한다.
 - 테스트용 Supabase 계정은 다음 세 계정을 사용한다.
-  - `stockly-test-20260817@example.com`
-  - `stockly-staff-20260817@example.com`
-  - `stockly-staff-unpermissioned-20260817@example.com`
+  - `stockly-test-admin@example.invalid`
+  - `stockly-test-staff@example.invalid`
+  - `stockly-test-staff-limited@example.invalid`
 - `기본 매장`을 포함한 다른 매장에서 검증해야 할 경우에는 대상, 변경 내용, 복구 계획을 먼저 설명하고 사용자의 명시적 승인을 받은 뒤에만 진행한다.
 - 승인받지 않은 운영 매장 데이터는 검증 대상으로 임의 변경하지 않는다.
 - DB 변경은 새 migration으로 작성하고 적용 여부를 별도로 확인한다.
@@ -23,13 +23,13 @@
 
 ### 테스트용 계정
 
-- 기존 기본 검증 매장 `Stockly 테스트 매장`(`store_id`: `222646b3-9b7c-4683-a7df-d2d74caab399`)
-  - 관리자: `stockly-test-20260816@example.com` (`user_id`: `8cf9940c-a573-47fe-8731-2b2adf9b2135`, `role`: `store_admin`)
-  - 직원: `stockly-staff-check-20260816@example.com` (`user_id`: `a7253827-8e15-42c0-b5c7-11472e4b4bf5`, `role`: `staff`)
-- 2026-08-17 생성한 접근용 테스트 매장 `Stockly 테스트 매장 20260817`(`store_id`: `99e2ddfe-4d7c-414e-934f-15002ccbc353`)
-  - 관리자: `stockly-test-20260817@example.com` (`user_id`: `30768ea8-4563-4788-8edb-cfa2866037b2`, `role`: `store_admin`)
-  - 권한 직원: `stockly-staff-20260817@example.com` (`user_id`: `a2a503ea-c3b2-437f-85f1-91399fa82ff7`, `role`: `staff`)
-  - 무권한 직원: `stockly-staff-unpermissioned-20260817@example.com` (`user_id`: `a3acdf52-ea53-4255-b794-79a56a3c848a`, `role`: `staff`)
+- 기존 기본 검증 매장 `Stockly 테스트 매장`(`store_id`: `<PRIMARY_TEST_STORE_ID>`)
+  - 관리자: `stockly-test-admin@example.invalid` (`user_id`: `<PRIMARY_TEST_ADMIN_USER_ID>`, `role`: `store_admin`)
+  - 직원: `stockly-test-staff@example.invalid` (`user_id`: `<PRIMARY_TEST_STAFF_USER_ID>`, `role`: `staff`)
+- 역할 검증용 테스트 매장 `Stockly 권한 테스트 매장`(`store_id`: `<ROLE_TEST_STORE_ID>`)
+  - 관리자: `stockly-role-admin@example.invalid` (`user_id`: `<ROLE_TEST_ADMIN_USER_ID>`, `role`: `store_admin`)
+  - 권한 직원: `stockly-role-staff@example.invalid` (`user_id`: `<ROLE_TEST_STAFF_USER_ID>`, `role`: `staff`)
+  - 무권한 직원: `stockly-role-limited@example.invalid` (`user_id`: `<ROLE_TEST_LIMITED_USER_ID>`, `role`: `staff`)
 - 테스트 계정은 위에 연결된 테스트 매장에서만 사용한다. 비밀번호는 저장소 문서에 평문으로 기록하지 않는다.
 
 ## P0. 보안과 데이터 보호

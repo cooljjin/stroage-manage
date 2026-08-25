@@ -4,9 +4,10 @@ import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, P
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
-import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryQuantity } from "../lib/inventory";
 import { finishMutationRequest, formatMutationError, getMutationRequestId } from "../lib/mutationRequest";
 import { resolveStoreStaffNames } from "../lib/staffNames";
+import { loadResolvedInventoryItems, resolveProductByBarcode, searchResolvedProducts } from "../lib/resolvedProducts";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
@@ -83,6 +84,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [deletingUrgentIds, setDeletingUrgentIds] = useState<Set<string>>(new Set());
   const [freshModalOpen, setFreshModalOpen] = useState(false);
   const [freshSearch, setFreshSearch] = useState("");
+  const [freshResolvedProductIds, setFreshResolvedProductIds] = useState<Set<string> | null>(null);
   const [selectedFreshIds, setSelectedFreshIds] = useState<Set<string>>(new Set());
   const [selectedUrgentIds, setSelectedUrgentIds] = useState<Set<string>>(new Set());
   const [expandedFreshCategory, setExpandedFreshCategory] = useState<string | null>(null);
@@ -144,14 +146,14 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     setLoading(true);
     const [supplierResult, productResult] = await Promise.all([
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true })
+      loadResolvedInventoryItems(currentStoreId)
     ]);
-    const { data, error: loadError } = productResult;
+    const loadError = productResult.errorMessage;
     setSuppliers(supplierResult);
     if (loadError) {
-      setError(loadError.message);
+      setError(loadError);
     } else {
-      setItems(((data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
+      setItems(productResult.items);
     }
     setLoading(false);
   }, [currentStoreId]);
@@ -159,6 +161,32 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  useEffect(() => {
+    const keyword = freshSearch.trim();
+    if (!keyword) {
+      setFreshResolvedProductIds(null);
+      return;
+    }
+
+    setFreshResolvedProductIds(null);
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      void searchResolvedProducts(currentStoreId, keyword, 500).then((result) => {
+        if (cancelled) return;
+        if (result.errorMessage) {
+          setError(result.errorMessage);
+          return;
+        }
+        setFreshResolvedProductIds(new Set(result.products.map((product) => product.id)));
+      });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentStoreId, freshSearch]);
 
   const lowStockItems = useMemo(() => {
     return items
@@ -190,9 +218,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const freshProducts = useMemo(() => {
     const keyword = freshSearch.trim().toLocaleLowerCase("ko");
     return items.filter((item) => {
-      return !keyword || item.name.toLocaleLowerCase("ko").includes(keyword);
+      return !keyword
+        || freshResolvedProductIds?.has(item.id)
+        || (freshResolvedProductIds === null && item.name.toLocaleLowerCase("ko").includes(keyword));
     });
-  }, [freshSearch, items]);
+  }, [freshResolvedProductIds, freshSearch, items]);
 
   const freshSearchActive = freshSearch.trim().length > 0;
 
@@ -299,32 +329,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   }
 
   const findProductByFreshBarcode = useCallback(async (barcode: string) => {
-    const barcodeCandidates = getBarcodeCandidates(barcode);
-    const { data, error: productError } = await Services.DatabaseService.select("products", "*")
-      .eq("store_id", currentStoreId)
-      .in("barcode", barcodeCandidates)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    if (productError) return { product: null, errorMessage: productError.message };
-    if (data) return { product: data as InventoryItem, errorMessage: "" };
-
-    const { data: barcodeData, error: barcodeError } = await Services.DatabaseService.select("product_barcodes", "product_id")
-      .eq("store_id", currentStoreId)
-      .in("barcode", barcodeCandidates)
-      .limit(1)
-      .maybeSingle();
-    if (barcodeError) return { product: null, errorMessage: barcodeError.message };
-    if (!barcodeData) return { product: null, errorMessage: "" };
-
-    const { data: aliasProduct, error: aliasError } = await Services.DatabaseService.select("products", "*")
-      .eq("store_id", currentStoreId)
-      .eq("id", barcodeData.product_id)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (aliasError) return { product: null, errorMessage: aliasError.message };
-    return { product: (aliasProduct as InventoryItem | null) ?? null, errorMessage: "" };
-  }, [currentStoreId]);
+    const result = await resolveProductByBarcode(currentStoreId, getBarcodeCandidates(barcode));
+    if (!result.product) return { product: null, errorMessage: result.errorMessage };
+    const existingItem = items.find((item) => item.id === result.product?.id) ?? null;
+    return { product: existingItem, errorMessage: existingItem ? "" : "해당 상품의 재고 정보를 찾을 수 없습니다." };
+  }, [currentStoreId, items]);
 
   const handleFreshBarcode = useCallback(async (barcode: string) => {
     if (freshBarcodeHandlingRef.current) return;

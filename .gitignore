@@ -8,6 +8,14 @@ dist/
 dist-admin/
 .vite/
 .playwright-mcp/
+tmp/
+supabase/.temp/
+supabase/.branches/
+
+*.xcarchive
+*.ipa
+*.mobileprovision
+DerivedData/
 
 *.log
 *.tsbuildinfo

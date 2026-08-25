@@ -3,6 +3,8 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { formatInventoryQuantity } from "../lib/inventory";
+import { getCurrentStoreId } from "../lib/profiles";
+import { searchResolvedProducts } from "../lib/resolvedProducts";
 import * as Services from "../services";
 import type { AppRoute, Inventory, PrepItem, PrepItemIngredient, PrepItemRouteDraft, Product } from "../types/domain";
 import type { Json } from "../types/supabase";
@@ -155,6 +157,7 @@ type Props = {
 export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
   const [prepItems, setPrepItems] = useState<PrepItemWithDetails[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [resolvedProductIds, setResolvedProductIds] = useState<Map<string, string>>(new Map());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [shelfLifeEnabled, setShelfLifeEnabled] = useState(true);
@@ -167,7 +170,14 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const productsById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const productsById = useMemo(() => {
+    const next = new Map(products.map((product) => [product.id, product]));
+    resolvedProductIds.forEach((canonicalId, requestedId) => {
+      const canonicalProduct = next.get(canonicalId);
+      if (canonicalProduct) next.set(requestedId, canonicalProduct);
+    });
+    return next;
+  }, [products, resolvedProductIds]);
   const editingItem = useMemo(() => prepItems.find((item) => item.id === editingId) ?? null, [editingId, prepItems]);
 
   useEffect(() => {
@@ -194,11 +204,18 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     setLoading(true);
     setError("");
 
-    const prepResult = await Services.DatabaseService.select("prep_items", "*").order("sort_order", { ascending: true }).order("name", { ascending: true });
-    const productResult = await Services.DatabaseService.select("products", "*").eq("is_active", true).order("name", { ascending: true });
+    const storeResult = await getCurrentStoreId();
+    if (!storeResult.storeId) {
+      setError(storeResult.errorMessage);
+      setLoading(false);
+      return;
+    }
 
-    if (prepResult.error || productResult.error) {
-      setError(buildSchemaError(prepResult.error?.message ?? productResult.error?.message ?? "프랩 품목을 불러오지 못했습니다."));
+    const prepResult = await Services.DatabaseService.select("prep_items", "*").order("sort_order", { ascending: true }).order("name", { ascending: true });
+    const productResult = await searchResolvedProducts(storeResult.storeId, "", 500);
+
+    if (prepResult.error || productResult.errorMessage) {
+      setError(buildSchemaError(prepResult.error?.message ?? productResult.errorMessage ?? "프랩 품목을 불러오지 못했습니다."));
       setLoading(false);
       return;
     }
@@ -222,9 +239,20 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
     }
 
     const ingredients = (ingredientResult.data ?? []) as PrepItemIngredient[];
+    const referencedProductIds = [...new Set(ingredients.map((ingredient) => ingredient.ingredient_product_id).filter(Boolean) as string[])];
+    const referenceResult = referencedProductIds.length > 0
+      ? await Services.DatabaseService.rpc("resolve_product_references", { target_product_ids: referencedProductIds })
+      : { data: [], error: null };
+    if (referenceResult.error) {
+      setError(buildSchemaError(referenceResult.error.message));
+      setLoading(false);
+      return;
+    }
+
     const inventoryByProductId = new Map(((inventoryResult.data ?? []) as Inventory[]).map((inventory) => [inventory.product_id, inventory]));
 
-    setProducts((productResult.data ?? []) as Product[]);
+    setProducts(productResult.products);
+    setResolvedProductIds(new Map((referenceResult.data ?? []).map((item) => [item.requested_product_id, item.canonical_product_id])));
     setPrepItems(
       nextPrepItems.map((item) => ({
         ...item,
@@ -261,7 +289,7 @@ export function PrepItemManagementPage({ navigate, restoreDraft }: Props) {
             const savedQuantityUnit = normalizeUsageUnit(ingredient.ingredient_unit);
             const nextQuantityUnit: PrepUsageUnit = savedQuantityUnit ?? (unitBaseAmount ? (isVolumeUnit(unit) ? "ml" : "g") : "개");
             return {
-              productId: ingredient.ingredient_product_id ?? "",
+              productId: product?.id ?? ingredient.ingredient_product_id ?? "",
               customName: ingredient.ingredient_product_id ? "" : ingredient.ingredient_name ?? "",
               quantity: unitBaseAmount ? formatQuantityForUnit(ingredient.quantity_per_unit, nextQuantityUnit, unitBaseAmount) : formatAmountInput(ingredient.quantity_per_unit),
               quantityUnit: nextQuantityUnit,
