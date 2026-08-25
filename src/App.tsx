@@ -897,6 +897,7 @@ export default function App() {
                 currentStoreId={profile.store_id}
                 canConfirmOrderItems={profileRole !== "staff" || hasStaffPermission(staffPermissions, "order_confirmation")}
                 canAddUnconfirmedOrderItems={profileRole !== "staff"}
+                canManageConfirmationMemo={profileRole !== "staff"}
               />
             )}
             {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}

@@ -4,6 +4,7 @@ import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, P
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
+import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
 import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { resolveStoreStaffNames } from "../lib/staffNames";
@@ -18,6 +19,7 @@ type Props = {
   currentStoreId: string;
   canConfirmOrderItems: boolean;
   canAddUnconfirmedOrderItems: boolean;
+  canManageConfirmationMemo: boolean;
 };
 
 type ConfirmedOrderItem = Database["public"]["Tables"]["confirmed_order_items"]["Row"];
@@ -75,7 +77,7 @@ function parseRequiredQuantity(value: string): number | null {
   return Number.isFinite(quantity) ? quantity : null;
 }
 
-export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, canAddUnconfirmedOrderItems }: Props) {
+export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, canAddUnconfirmedOrderItems, canManageConfirmationMemo }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
@@ -103,6 +105,9 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
   const [confirmedCalendarOpen, setConfirmedCalendarOpen] = useState(false);
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
   const [confirmationMemo, setConfirmationMemo] = useState("");
+  const [confirmationMemoEditorOpen, setConfirmationMemoEditorOpen] = useState(false);
+  const [confirmationMemoDraft, setConfirmationMemoDraft] = useState("");
+  const [savingConfirmationMemo, setSavingConfirmationMemo] = useState(false);
   const [confirmedByNames, setConfirmedByNames] = useState<Map<string, string>>(new Map());
   const [loadingConfirmed, setLoadingConfirmed] = useState(false);
   const [savingConfirmation, setSavingConfirmation] = useState(false);
@@ -117,6 +122,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
   const addConfirmedRequestRef = useRef<string | null>(null);
   const removeConfirmedRequestRef = useRef<string | null>(null);
   const cancelConfirmedRequestRef = useRef<string | null>(null);
+  const updateConfirmationNoteRequestRef = useRef<string | null>(null);
   const placedOrderRequestRefs = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -265,6 +271,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
       .filter((item) => !keyword || item.name.toLocaleLowerCase("ko").includes(keyword));
   }, [canAddUnconfirmedOrderItems, confirmedItemSearch, confirmedProductIds, items, lowStockItems]);
   const canEditConfirmedItems = canConfirmOrderItems && confirmedOrderDate === todayOrderDate;
+  const canEditConfirmationMemo = canManageConfirmationMemo && confirmedOrderDate === todayOrderDate;
 
   const stopFreshScanner = useCallback(async () => {
     if (freshScannerRef.current?.isScanning) {
@@ -496,7 +503,10 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
     } else {
       const nextConfirmedItems = (data ?? []) as ConfirmedOrderItem[];
       setConfirmedItems(nextConfirmedItems);
-      const confirmedByIds = Array.from(new Set(nextConfirmedItems.map((item) => item.confirmed_by).filter(Boolean) as string[]));
+      const confirmedByIds = Array.from(new Set([
+        ...nextConfirmedItems.map((item) => item.confirmed_by),
+        ...nextConfirmedItems.map((item) => item.confirmation_note_by)
+      ].filter(Boolean) as string[]));
       if (confirmedByIds.length > 0) {
         const names = await resolveStoreStaffNames(currentStoreId, confirmedByIds);
         setConfirmedByNames((current) => new Map([...current, ...names]));
@@ -511,8 +521,50 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
     setConfirmedCalendarOpen(false);
     setConfirmedEditMode(false);
     setConfirmedItemSearch("");
+    setConfirmationMemoEditorOpen(false);
+    setConfirmationMemoDraft("");
     setConfirmedModalOpen(true);
     await loadConfirmedItems(orderDate);
+  }
+
+  function openConfirmationMemoEditor() {
+    if (!canEditConfirmationMemo || confirmedItems.length === 0) return;
+    setConfirmationMemoDraft(confirmedItems[0].confirmation_note ?? "");
+    setConfirmationMemoEditorOpen(true);
+  }
+
+  function closeConfirmationMemoEditor() {
+    if (savingConfirmationMemo) return;
+    setConfirmationMemoEditorOpen(false);
+    setConfirmationMemoDraft("");
+  }
+
+  async function saveConfirmationMemo() {
+    if (!canEditConfirmationMemo || confirmedItems.length === 0 || savingConfirmationMemo) return;
+
+    setSavingConfirmationMemo(true);
+    setError("");
+    setMessage("");
+    const requestId = getMutationRequestId(updateConfirmationNoteRequestRef);
+    const { data, error: saveError } = await Services.DatabaseService.rpc("update_confirmed_order_note_idempotent", {
+      target_store_id: currentStoreId,
+      target_order_date: confirmedOrderDate,
+      confirmation_note: confirmationMemoDraft.trim() || null,
+      request_id: requestId
+    });
+
+    if (saveError) {
+      setError(formatMutationError(saveError));
+      finishMutationRequest(updateConfirmationNoteRequestRef, saveError);
+    } else {
+      updateConfirmationNoteRequestRef.current = null;
+      setConfirmedItems((data ?? []) as ConfirmedOrderItem[]);
+      setConfirmationMemoEditorOpen(false);
+      setConfirmationMemoDraft("");
+      setMessage("확정품목 메모를 저장했습니다.");
+      await loadConfirmedItems(confirmedOrderDate);
+    }
+    setSavingConfirmationMemo(false);
   }
 
   async function changeConfirmedOrderDate(orderDate: string) {
@@ -1294,6 +1346,18 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
                         </button>
                       </>
                     ) : null}
+                    {canManageConfirmationMemo ? (
+                      <button
+                        type="button"
+                        disabled={!canEditConfirmationMemo || savingConfirmationMemo || confirmedItems.length === 0}
+                        onClick={openConfirmationMemoEditor}
+                        className="touch-button rounded-md border border-brand-600 px-2 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:opacity-60 dark:text-brand-100 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+                        aria-label="확정품목 메모 추가"
+                        title={canEditConfirmationMemo ? "확정품목 메모 추가" : "오늘 확정 목록만 메모를 수정할 수 있습니다."}
+                      >
+                        {confirmedItems[0]?.confirmation_note ? "메모 수정" : "메모 추가"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => setConfirmedModalOpen(false)}
@@ -1391,12 +1455,39 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
                   ) : null}
                   {!loadingConfirmed && confirmedItems.length > 0 ? (
                     <>
+                      {confirmationMemoEditorOpen ? (
+                        <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950" role="group" aria-label="확정품목 메모 편집">
+                          <label className="block">
+                            <span className="mb-1 block text-sm font-extrabold text-brand-700 dark:text-brand-100">확정품목 메모</span>
+                            <textarea
+                              className="field min-h-24 resize-y"
+                              value={confirmationMemoDraft}
+                              onChange={(event) => setConfirmationMemoDraft(event.target.value)}
+                              placeholder="확정품목에 남길 메모를 입력하세요"
+                              disabled={savingConfirmationMemo}
+                              aria-label="확정품목 메모"
+                              maxLength={1000}
+                            />
+                          </label>
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button type="button" className="secondary-button" onClick={closeConfirmationMemoEditor} disabled={savingConfirmationMemo}>취소</button>
+                            <button type="button" className="primary-button" onClick={() => void saveConfirmationMemo()} disabled={savingConfirmationMemo}>
+                              {savingConfirmationMemo ? "저장 중..." : "메모 저장"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                       {confirmedItems[0].confirmation_note ? (
                         <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950">
                           <p className="text-xs font-extrabold text-brand-700 dark:text-brand-100">컨펌 메모</p>
                           <p className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed">{confirmedItems[0].confirmation_note}</p>
                           <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                            작성자: {confirmedItems[0].confirmed_by ? confirmedByNames.get(confirmedItems[0].confirmed_by) ?? "직원" : "-"}
+                            작성자: {confirmedItems[0].confirmation_note_by
+                              ? confirmedByNames.get(confirmedItems[0].confirmation_note_by) ?? "관리자"
+                              : confirmedItems[0].confirmed_by
+                                ? confirmedByNames.get(confirmedItems[0].confirmed_by) ?? "직원"
+                                : "-"}
+                            {confirmedItems[0].confirmation_note_at ? ` · ${formatDateTime(confirmedItems[0].confirmation_note_at)}` : ""}
                           </p>
                         </div>
                       ) : null}

@@ -42,6 +42,16 @@ type MobileInventoryBaseline = Pick<ConfirmedInventorySnapshot, "warehouseQty" |
 
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
 const DEFAULT_LOCATION_LONG_PRESS_MS = 700;
+const MOBILE_INPUT_MODE_STORAGE_KEY = "store-inventory-input-mode";
+
+function readStoredMobileDialMode(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(MOBILE_INPUT_MODE_STORAGE_KEY) !== "button";
+  } catch {
+    return true;
+  }
+}
 
 type InventoryHistoryPoint = {
   log: InventoryLog;
@@ -339,7 +349,7 @@ export function InventoryOperationPage({
   const restoreMutationRequestRef = useRef(new Map<string, string>());
   const isMobileViewport = useMobileViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
-  const [mobileDialMode, setMobileDialMode] = useState(true);
+  const [mobileDialMode, setMobileDialMode] = useState(() => readStoredMobileDialMode());
   const [mobileInputModeSwitching, setMobileInputModeSwitching] = useState(false);
   const [mobileMode, setMobileMode] = useState<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
   const [mobileWarehouseQty, setMobileWarehouseQty] = useState(0);
@@ -443,7 +453,15 @@ export function InventoryOperationPage({
     setMobileAutoBaseline(nextBaseline);
   }
 
-  function handleMobileAutoBaselineRebase() {
+  function handleMobileAutoBaselineRebase(location: Location) {
+    const baseline = mobileAutoBaselineRef.current;
+    const warehouseDelta = mobileWarehouseQty - baseline.warehouseQty;
+    const storeDelta = mobileStoreQty - baseline.storeQty;
+    if (warehouseDelta === 0 && storeDelta === 0) {
+      setMobileKeypadTarget(location === "창고" ? "store" : "warehouse");
+      return;
+    }
+
     resetMobileAutoBaseline({ warehouseQty: mobileWarehouseQty, storeQty: mobileStoreQty });
     mobileAutoRebaseSequenceRef.current += 1;
     setMobileAutoRebaseSequence(mobileAutoRebaseSequenceRef.current);
@@ -776,6 +794,11 @@ export function InventoryOperationPage({
         await finalizeMobileSession();
       }
       setMobileDialMode(nextDialMode);
+      try {
+        window.localStorage.setItem(MOBILE_INPUT_MODE_STORAGE_KEY, nextDialMode ? "dial" : "button");
+      } catch {
+        // Keep the current session selection even when storage is unavailable.
+      }
     } finally {
       setMobileInputModeSwitching(false);
     }
@@ -1587,7 +1610,7 @@ export function InventoryOperationPage({
             onClick={() => void changeMobileInputMode(!mobileDialMode)}
             className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${mobileDialMode ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}
           >
-            <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${mobileDialMode ? "translate-x-6" : "translate-x-1"}`} />
+            <span className={`absolute left-0 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${mobileDialMode ? "translate-x-6" : "translate-x-1"}`} />
           </button>
         </div>
       ) : null}

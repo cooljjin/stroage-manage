@@ -36,7 +36,7 @@ type Props = {
   onModeChange: (mode: MobileInventoryMode) => void;
   onDraftChange: (target: MobileInventoryTarget) => void;
   onCommit: (target: MobileInventoryTarget) => void;
-  onRebaseAutoBaseline: () => void;
+  onRebaseAutoBaseline: (location: Location) => void;
   onInventoryCheck: (location: Location) => void;
   onOpenKeypad: (target: "warehouse" | "store") => void;
   onUndo: () => void;
@@ -170,14 +170,15 @@ export function MobileInventoryControls({
     return (
       <div className="grid min-w-0 gap-1.5 sm:gap-3">
         <VerticalQuantityWheel
-          label={`${location} 현재 재고`}
+          label={location}
+          labelClassName="text-sm font-extrabold"
           value={currentQty}
           min={0}
           max={totalQty}
           invertDrag
           compact
           disabled={disabled}
-          ariaLabel={`${location} 현재 재고 ${formatInventoryQuantity(currentQty)}`}
+          ariaLabel={`${location} ${formatInventoryQuantity(currentQty)}`}
           formatValue={formatInventoryQuantity}
           onDraftChange={(value, inputKind) => handleLocationDraft(location, value, inputKind, "absolute")}
           onCommit={(value) => handleLocationCommit(location, value, "absolute")}
@@ -186,7 +187,7 @@ export function MobileInventoryControls({
           onDragStart={() => undefined}
         />
         <VerticalQuantityWheel
-          label={`${location} 조정`}
+          label=""
           value={delta}
           min={-baselineQty}
           max={deltaMax}
@@ -221,17 +222,17 @@ export function MobileInventoryControls({
       <div className="grid min-w-0 gap-1.5 sm:gap-3">
         <button
           type="button"
-          onClick={onRebaseAutoBaseline}
+          onClick={() => onRebaseAutoBaseline(location)}
           disabled={disabled || rebaseDisabled}
           className="rounded-xl min-h-[68px] border-2 border-slate-200 bg-slate-50 px-3 py-2 text-center transition-colors active:bg-brand-50 sm:min-h-[72px] dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40"
-          aria-label={`${location} 현재 재고 ${formatInventoryQuantity(currentQty)}, 조정 기준으로 재설정`}
+          aria-label={`${location} ${formatInventoryQuantity(currentQty)}, 조정 기준으로 재설정`}
           title="현재 수량을 조정 기준으로 재설정"
         >
-          <p className="text-xs font-extrabold text-black dark:text-black">{location} 현재 재고</p>
+          <p className="text-sm font-extrabold text-black dark:text-black">{location}</p>
           <p className="mt-1 text-2xl font-black tabular-nums text-black dark:text-black sm:text-3xl">{formatInventoryQuantity(currentQty)}</p>
         </button>
         <VerticalQuantityWheel
-          label={`${location} 조정`}
+          label=""
           value={delta}
           min={-baselineQty}
           invertDrag
@@ -289,9 +290,11 @@ export function MobileInventoryControls({
           <>
             <VerticalQuantityWheel
               label="창고"
+              labelClassName="text-sm font-extrabold"
               value={warehouseQty}
               disabled={disabled}
               hint={formatCheckLabel(lastInventoryCheckDates.warehouse)}
+              showDragHint={false}
               ariaLabel={`창고 수량 ${formatInventoryQuantity(warehouseQty)}`}
               formatValue={formatInventoryQuantity}
               onDraftChange={(value, inputKind) => handleLocationDraft("창고", value, inputKind)}
@@ -302,9 +305,11 @@ export function MobileInventoryControls({
             />
             <VerticalQuantityWheel
               label="매장"
+              labelClassName="text-sm font-extrabold"
               value={storeQty}
               disabled={disabled}
               hint={formatCheckLabel(lastInventoryCheckDates.store)}
+              showDragHint={false}
               ariaLabel={`매장 수량 ${formatInventoryQuantity(storeQty)}`}
               formatValue={formatInventoryQuantity}
               onDraftChange={(value, inputKind) => handleLocationDraft("매장", value, inputKind)}

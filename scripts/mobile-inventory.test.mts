@@ -106,7 +106,7 @@ const autoRenderEnd = controlsSource.indexOf("\n  return (", autoRenderStart);
 const autoRender = controlsSource.slice(autoRenderStart, autoRenderEnd);
 assert.match(
   controlsSource,
-  /onRebaseAutoBaseline: \(\) => void;/,
+  /onRebaseAutoBaseline: \(location: Location\) => void;/,
   "mobile controls expose a narrow callback for rebasing auto adjustments without submitting an inventory target"
 );
 assert.match(
@@ -114,6 +114,7 @@ assert.match(
   /const currentQty = isWarehouse \? warehouseQty : storeQty;/,
   "the signed auto upper stock box reads the latest warehouse/store draft target"
 );
+assert.match(autoRender, /onClick=\{\(\) => onRebaseAutoBaseline\(location\)\}/, "auto current-stock boxes report which location was touched");
 assert.match(
   autoRender,
   /className="rounded-xl min-h-\[68px\][^"]*sm:min-h-\[72px\]/,
@@ -121,9 +122,11 @@ assert.match(
 );
 assert.match(
   autoRender,
-  /<button[\s\S]*?onClick=\{onRebaseAutoBaseline\}[\s\S]*?disabled=\{disabled \|\| rebaseDisabled\}[\s\S]*?aria-label=\{`\$\{location\} 현재 재고 \$\{formatInventoryQuantity\(currentQty\)\}, 조정 기준으로 재설정`\}/,
+  /<button[\s\S]*?onClick=\{\(\) => onRebaseAutoBaseline\(location\)\}[\s\S]*?disabled=\{disabled \|\| rebaseDisabled\}[\s\S]*?aria-label=\{`\$\{location\} \$\{formatInventoryQuantity\(currentQty\)\}, 조정 기준으로 재설정`\}/,
   "each auto current-stock box is an accessible rebase button that shares the controls' pending/save disabled state"
 );
+assert.match(autoRender, /<p className="text-sm font-extrabold text-black dark:text-black">\{location\}<\/p>/, "auto current-stock cards show the short, larger bold location label");
+assert.match(autoRender, /label=""/, "auto mode hides the visible signed adjustment wheel labels");
 assert.match(
   autoRender,
   /showDragHint=\{false\}/,
@@ -159,12 +162,12 @@ assert.match(controlsSource, /function renderMoveLocation\(location: Location\)/
 const moveRenderStart = controlsSource.indexOf("function renderMoveLocation");
 const moveRenderEnd = controlsSource.indexOf("\n  return (", moveRenderStart);
 const moveRender = controlsSource.slice(moveRenderStart, moveRenderEnd);
-assert.match(moveRender, /label=\{`\$\{location\} 현재 재고`\}/, "move mode current stock cards contain absolute quantity dials");
+assert.match(moveRender, /label=\{location\}[\s\S]*?labelClassName="text-sm font-extrabold"/, "move mode current stock cards use short, larger bold location labels");
 assert.match(moveRender, /value=\{currentQty\}[\s\S]*?formatValue=\{formatInventoryQuantity\}/, "move current stock dials show and edit absolute quantities");
-assert.match(moveRender, /label=\{`\$\{location\} 현재 재고`\}[\s\S]*?compact/, "move current stock dials use the compact layout variant");
+assert.match(moveRender, /label=\{location\}[\s\S]*?compact/, "move current stock dials use the compact layout variant");
 assert.match(moveRender, /onDraftChange=\{\(value, inputKind\) => handleLocationDraft\(location, value, inputKind, "absolute"\)\}/, "current stock dial edits use absolute move quantities");
 assert.match(moveRender, /showDragHint=\{false\}/, "move adjustment wheels hide the drag instruction text");
-assert.match(moveRender, /label=\{`\$\{location\} 조정`\}/, "move mode labels its signed adjustment wheels");
+assert.match(moveRender, /label=""/, "move mode hides the visible signed adjustment wheel labels");
 assert.match(moveRender, /invertDrag[\s\S]*?reverseDisplayOrder/, "move signed wheels use the same direction and display order as auto");
 assert.match(moveRender, /min=\{-[^}]+\}[\s\S]*?max=\{[^}]+\}/, "move signed wheels use baseline-aware transfer bounds");
 assert.match(
@@ -226,6 +229,7 @@ assert.deepEqual(
 assert.doesNotMatch(controlsSource, /총재고 .* 안에서 자유롭게 조정|창고에서 매장으로 이동|매장에서 창고로 이동/, "move mode hides the direction helper text");
 
 const wheelSource = readFileSync(new URL("../src/components/VerticalQuantityWheel.tsx", import.meta.url), "utf8");
+assert.match(wheelSource, /labelClassName\?: string;/, "vertical quantity wheels support a label-specific visual class");
 assert.match(
   wheelSource,
   /export type PeerWheelAnimation = \{\s*sequence: number;\s*fromValue: number;\s*toValue: number;\s*\};/,
@@ -241,7 +245,7 @@ assert.match(wheelSource, /getVerticalWheelValueAfterSteps\(startValue, stepCoun
 assert.match(wheelSource, /getVerticalWheelValueAfterSteps\(displayValueRef\.current, delta, snapFractionalValueOnStep\)/, "keyboard steps apply the same decimal-to-whole-number boundary");
 assert.match(wheelSource, /getVerticalWheelValueAfterSteps\(displayValueRef\.current, step, snapFractionalValueOnStep\)/, "mouse-wheel steps apply the same decimal-to-whole-number boundary");
 assert.match(autoRender, /snapFractionalValueOnStep/, "auto signed adjustment wheels enable whole-number stepping after decimal input");
-assert.match(moveRender, /label=\{`\$\{location\} 조정`\}[\s\S]*?snapFractionalValueOnStep/, "move signed adjustment wheels enable whole-number stepping after decimal input");
+assert.match(moveRender, /label=""[\s\S]*?snapFractionalValueOnStep/, "move signed adjustment wheels enable whole-number stepping after decimal input");
 assert.match(
   controlsSource,
   /onDraftChange=\{\(value, inputKind\) => handleLocationDraft\("창고", value, inputKind\)\}/,
@@ -356,12 +360,29 @@ assert.ok(rebaseEffectStart < wheelSource.indexOf("if (pointerRef.current) retur
 const pageSource = readFileSync(new URL("../src/pages/InventoryOperationPage.tsx", import.meta.url), "utf8");
 const inventoryListSource = readFileSync(new URL("../src/pages/InventoryListPage.tsx", import.meta.url), "utf8");
 const lowStockSource = readFileSync(new URL("../src/pages/LowStockPage.tsx", import.meta.url), "utf8");
+const appPageSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const homeSource = readFileSync(new URL("../src/pages/HomePage.tsx", import.meta.url), "utf8");
+const handoverMigrationSource = readFileSync(new URL("../supabase/migrations/081_handover_visibility_schedule.sql", import.meta.url), "utf8");
+const handoverPolicyMigrationSource = readFileSync(new URL("../supabase/migrations/082_handover_author_delete_policy.sql", import.meta.url), "utf8");
 assert.match(inventoryListSource, /useState<InventoryOverviewMode>\(\(\) => initialState\?\.overviewMode \?\? "overview"\)/, "inventory status opens on the overview tab by default");
 assert.match(inventoryListSource, /useState\(\(\) => initialState\?\.overviewCompact \?\? true\)/, "inventory overview starts collapsed by default");
 assert.match(inventoryListSource, /\(\["overview", "list"\] as const\)/, "overview appears before list in the inventory status tabs");
 assert.doesNotMatch(inventoryListSource, /<PageTitle title="재고 현황"/, "inventory status removes the redundant page title and description");
 assert.match(lowStockSource, /aria-label="컨펌 확인"[\s\S]*title="컨펌 확인"[\s\S]*>\s*<ClipboardList[\s\S]*>\s*컨펌 확인\s*<\/span>/, "the low-stock confirmation button is labelled 컨펌 확인");
 assert.doesNotMatch(lowStockSource, /aria-label="발주하기"|title="발주하기"/, "the low-stock header no longer labels the confirmation button 발주하기");
+assert.match(lowStockSource, /canManageConfirmationMemo: boolean/, "the confirmed-order memo capability is a separate admin-only prop");
+assert.match(appPageSource, /canManageConfirmationMemo=\{profileRole !== "staff"\}/, "only store admins and master can add confirmed-order memos");
+assert.match(lowStockSource, /confirmationMemoEditorOpen|확정품목 메모 추가/, "the confirmed-order modal exposes a memo editor");
+assert.match(lowStockSource, /update_confirmed_order_note_idempotent/, "confirmed-order memos use a dedicated idempotent RPC");
+assert.match(homeSource, /visible_until/, "home handovers carry an optional visibility end date");
+assert.match(homeSource, /aria-label="인수인계 추가"/, "the handover section exposes an add button beside history");
+assert.match(homeSource, /노출 기간|작성자가 삭제할 때까지/, "handover creation provides a visibility schedule and an indefinite option");
+assert.match(homeSource, /onPointerDown|onPointerMove|onPointerUp/, "handover visibility calendar supports pointer dragging");
+assert.match(homeSource, /인수인계 히스토리[\s\S]*grid-cols-7/, "handover history is rendered as a calendar");
+assert.match(homeSource, /\.eq\("created_by", currentUserId\)/, "handover deletion is limited to the author in the client query");
+assert.match(handoverMigrationSource, /visible_until date/, "handover visibility migration adds an optional end date");
+assert.match(handoverMigrationSource, /created_by = auth\.uid\(\)/, "handover deletion policy is author-only");
+assert.match(handoverPolicyMigrationSource, /drop policy if exists "Users can delete future handover notes in their store"/, "legacy broad handover delete policy is removed");
 const rebaseHandlerStart = pageSource.indexOf("function handleMobileAutoBaselineRebase");
 const rebaseHandlerEnd = pageSource.indexOf("\n  }", rebaseHandlerStart) + "\n  }".length;
 const rebaseHandler = pageSource.slice(rebaseHandlerStart, rebaseHandlerEnd);
@@ -412,9 +433,15 @@ assert.match(pageSource, /aria-controls="inventory-memo-content"/, "the memo tog
 assert.match(pageSource, /id="inventory-memo-content"[\s\S]*?hidden=\{!memoOpen\}/, "memo content is hidden when collapsed");
 assert.match(pageSource, /const \[action, setAction\] = useState<StockOperationAction>\(initialInventoryMode === "audit" \? "조정" : "입고"\);/, "native audit and receipt modes initialize the button form action correctly");
 assert.match(pageSource, /setAction\(nextMode === "audit" \? "조정" : "입고"\);/, "changing the native entry mode resets the button form to its matching action");
-assert.match(pageSource, /const \[mobileDialMode, setMobileDialMode\] = useState\(true\);/, "the dial input mode is enabled by default on mobile operation screens");
+assert.match(pageSource, /const \[mobileDialMode, setMobileDialMode\] = useState\(\(\) => readStoredMobileDialMode\(\)\);/, "the dial input mode restores a saved preference and defaults to dial mode on mobile operation screens");
+assert.match(pageSource, /const MOBILE_INPUT_MODE_STORAGE_KEY = "store-inventory-input-mode";/, "the inventory input mode uses a durable preference key");
+assert.match(pageSource, /readStoredMobileDialMode/, "the inventory input mode reads the saved preference on mount");
+assert.match(pageSource, /useState\(\(\) => readStoredMobileDialMode\(\)\)/, "the saved inventory input mode is restored when re-entering the operation screen");
+assert.match(pageSource, /window\.localStorage\.setItem\(MOBILE_INPUT_MODE_STORAGE_KEY, nextDialMode \? "dial" : "button"\)/, "changing the inventory input mode persists the selected presentation");
 assert.match(pageSource, /const mobileTouchUI = mobileTouchEnabled && isMobileViewport && mobileDialMode;/, "the new input switch controls whether the dial controls are rendered");
 assert.match(pageSource, /role="switch"[\s\S]*aria-label="재고 작업 입력 방식"[\s\S]*aria-checked=\{mobileDialMode\}/, "the operation input mode switch exposes its current state");
+assert.match(pageSource, /absolute left-0 top-1 h-5 w-5/, "input mode switch thumb is anchored to the track before translation");
+assert.match(pageSource, /function handleMobileAutoBaselineRebase\(location: Location\)[\s\S]*?warehouseDelta[\s\S]*?storeDelta[\s\S]*?if \(warehouseDelta === 0 && storeDelta === 0\)[\s\S]*?setMobileKeypadTarget\(location === "창고" \? "store" : "warehouse"\)/, "a second current-stock box tap opens the opposite adjustment keypad only when both auto dials are zero");
 assert.match(pageSource, /inventory-operation-header[\s\S]*mobile-input-mode-switch[\s\S]*inventory-product-summary/, "the input mode switch is placed below the edit/list/history header and above the product summary");
 assert.match(pageSource, /mobileTouchUI \? \([\s\S]*?<MobileInventoryControls[\s\S]*: \([\s\S]*?ACTIONS\.map/, "the switch changes between dial controls and the existing button form");
 

@@ -415,6 +415,7 @@ export type HandoverNote = {
   id: string;
   store_id: string;
   handover_date: string;
+  visible_until: string | null;
   content: string;
   created_by: string;
   created_at: string;

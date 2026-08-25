@@ -23,6 +23,7 @@ export type PeerWheelAnimation = {
 
 type Props = {
   label: string;
+  labelClassName?: string;
   value: number;
   min?: number;
   max?: number;
@@ -72,7 +73,7 @@ type AutomaticSpringMotion = {
 };
 
 export function VerticalQuantityWheel({
-  label, value, min = 0, max, disabled = false, hint, ariaLabel,
+  label, labelClassName, value, min = 0, max, disabled = false, hint, ariaLabel,
   onDraftChange, onCommit, onLongPress, onOpenKeypad, onDragStart, peerAnimation,
   compact = false, showDragHint = true, authoritativeRebaseSequence, invertDrag = false, reverseDisplayOrder = false, snapFractionalValueOnStep = false, formatValue
 }: Props) {
@@ -565,7 +566,7 @@ export function VerticalQuantityWheel({
 
   return (
     <button type="button" role="spinbutton" aria-label={ariaLabel} aria-valuemin={min} aria-valuemax={max} aria-valuenow={displayValue} disabled={disabled} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => releasePointer(event, false)} onPointerCancel={(event) => releasePointer(event, true)} onWheel={handleWheel} onContextMenu={(event) => event.preventDefault()} onKeyDown={handleKeyDown} title="위아래로 밀어 수량 조정 · 탭하여 직접 입력 · 길게 눌러 현재 수량 실사" className={`relative flex min-w-0 touch-none select-none flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-50 text-center transition-colors active:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:active:bg-brand-950/40 ${compact ? "min-h-[68px] px-3 py-2 sm:min-h-[72px]" : "min-h-44 px-2 py-2 sm:min-h-48 sm:px-3 sm:py-4"}`} style={{ WebkitUserSelect: "none", userSelect: "none" }}>
-      <div className={`flex w-full items-center gap-1 ${compact || !showDragHint ? "justify-center" : "justify-between"}`}><span className="text-xs font-extrabold text-black dark:text-black">{label}</span>{showDragHint && !compact ? <span className="whitespace-nowrap text-[9px] font-bold text-black dark:text-black">위아래로 밀기</span> : null}</div>
+      <div className={`flex w-full items-center gap-1 ${compact || !showDragHint ? "justify-center" : "justify-between"}`}><span className={`${labelClassName ?? "text-xs font-extrabold"} text-black dark:text-black`}>{label}</span>{showDragHint && !compact ? <span className="whitespace-nowrap text-[9px] font-bold text-black dark:text-black">위아래로 밀기</span> : null}</div>
       {compact ? <ChevronUp aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 mx-auto text-brand-600 dark:text-brand-300" size={8} strokeWidth={2.75} /> : null}
       {!compact ? <ChevronUp aria-hidden="true" className="mt-1 shrink-0 text-brand-600 dark:text-brand-300" size={15} strokeWidth={2.75} /> : null}
       <div className={`relative w-full max-w-[8rem] overflow-hidden ${compact ? "h-8" : "mt-0.5 h-24"}`}>
