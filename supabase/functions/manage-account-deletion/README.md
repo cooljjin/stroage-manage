@@ -2,7 +2,7 @@
 
 마지막 소스 점검: 2026-08-13
 
-이 함수는 계정 역할과 매장 형태에 따라 탈퇴 가능 여부, 탈퇴 요청, 개인 매장 복구, 만료된 개인 매장 영구 정리를 처리한다.
+이 함수는 계정 역할과 매장 형태에 따라 탈퇴 가능 여부, 탈퇴 요청, 개인 매장 복구를 처리한다. 만료 계정 영구 정리는 별도 `account-purge-scheduler` 함수가 담당한다.
 
 ## 요청 종류
 
@@ -12,10 +12,6 @@
 - `{"action":"request"}`: 탈퇴 실행
 - `{"action":"request","transferToUserId":"<user-id>"}`: 공동 매장 관리자의 관리자 이관 후 탈퇴
 - `{"action":"restore"}`: 30일 안의 개인 매장 탈퇴 요청 복구
-
-scheduler secret이 필요한 요청:
-
-- `{"action":"purge"}`: `purge_after`가 지난 개인 매장과 계정 영구 삭제
 
 ## 역할별 동작
 
@@ -34,33 +30,13 @@ Supabase가 기본 제공하는 값:
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-직접 설정할 secret:
-
-- `ACCOUNT_PURGE_SECRET`
-
-service-role key와 purge secret은 클라이언트 코드, Git, 로그에 넣지 않는다.
+service-role key는 클라이언트 코드, Git, 로그에 넣지 않는다.
 
 ## 배포 전제
 
 - migration `043_account_deletion_recovery.sql`의 계정 탈퇴·복구 컬럼이 적용되어야 한다.
 - 현재 역할 검증 변경은 Edge Function을 다시 배포해야 운영에 반영된다.
 - 배포와 scheduler 등록은 사용자의 명시적 지시 후 수행한다.
-
-## purge scheduler 호출
-
-Supabase Scheduled Edge Functions 또는 외부 scheduler에서 하루 한 번 호출한다.
-
-```text
-POST https://<project-ref>.supabase.co/functions/v1/manage-account-deletion
-apikey: <anon-key>
-Authorization: Bearer <anon-key>
-x-account-purge-secret: <ACCOUNT_PURGE_SECRET>
-Content-Type: application/json
-
-{"action":"purge"}
-```
-
-함수는 `x-account-purge-secret`을 서버의 `ACCOUNT_PURGE_SECRET`과 비교한다. scheduler가 없거나 호출이 실패하면 30일이 지난 개인 매장은 자동 영구 삭제되지 않는다.
 
 ## 검증 체크리스트
 
@@ -71,7 +47,6 @@ Content-Type: application/json
 - 이관 대상이 관리자 또는 다른 매장 사용자면 거부하는지
 - 개인 매장 요청 후 로그인 시 복구 화면이 표시되는지
 - 30일 안 복구 시 매장·프로필 상태가 정상화되는지
-- 잘못된 purge secret이 401을 반환하는지
-- 만료 전 매장은 purge하지 않는지
+- `purge` action이 더 이상 이 사용자용 함수에서 실행되지 않는지
 
 운영 계정으로 직접 검증하지 말고 허용된 테스트 매장과 테스트 계정을 사용한다.

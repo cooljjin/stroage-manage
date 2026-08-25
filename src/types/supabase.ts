@@ -14,6 +14,8 @@ export type Database = {
           created_by: string | null;
           deletion_requested_at: string | null;
           purge_after: string | null;
+          purge_started_at: string | null;
+          purge_owner_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -25,6 +27,8 @@ export type Database = {
           created_by?: string | null;
           deletion_requested_at?: string | null;
           purge_after?: string | null;
+          purge_started_at?: string | null;
+          purge_owner_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -35,6 +39,8 @@ export type Database = {
           created_by?: string | null;
           deletion_requested_at?: string | null;
           purge_after?: string | null;
+          purge_started_at?: string | null;
+          purge_owner_id?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -243,6 +249,8 @@ export type Database = {
           urgent_order_requested: boolean;
           urgent_order_quantity: number | null;
           order_completed: boolean;
+          order_placed_at: string | null;
+          order_placed_by: string | null;
           confirmation_note: string | null;
           receipt_expected_deleted_at: string | null;
           receipt_expected_deleted_by: string | null;
@@ -266,6 +274,8 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          order_placed_at?: string | null;
+          order_placed_by?: string | null;
           confirmation_note?: string | null;
           receipt_expected_deleted_at?: string | null;
           receipt_expected_deleted_by?: string | null;
@@ -288,6 +298,8 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          order_placed_at?: string | null;
+          order_placed_by?: string | null;
           confirmation_note?: string | null;
           receipt_expected_deleted_at?: string | null;
           receipt_expected_deleted_by?: string | null;
@@ -319,6 +331,47 @@ export type Database = {
           target_product_id?: string;
           merged_by?: string | null;
           merged_at?: string;
+        };
+        Relationships: [];
+      };
+      product_alias_links: {
+        Row: {
+          id: string;
+          store_id: string;
+          canonical_product_id: string;
+          alias_product_id: string;
+          merged_by: string | null;
+          merged_at: string;
+          merge_request_id: string;
+          product_snapshot: Json;
+          barcode_snapshot: Json;
+          merge_inventory_snapshot: Json;
+          unmerged_by: string | null;
+          unmerged_at: string | null;
+          unmerge_request_id: string | null;
+          unmerge_inventory_snapshot: Json | null;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          canonical_product_id: string;
+          alias_product_id: string;
+          merged_by?: string | null;
+          merged_at?: string;
+          merge_request_id: string;
+          product_snapshot: Json;
+          barcode_snapshot: Json;
+          merge_inventory_snapshot: Json;
+          unmerged_by?: string | null;
+          unmerged_at?: string | null;
+          unmerge_request_id?: string | null;
+          unmerge_inventory_snapshot?: Json | null;
+        };
+        Update: {
+          unmerged_by?: string | null;
+          unmerged_at?: string | null;
+          unmerge_request_id?: string | null;
+          unmerge_inventory_snapshot?: Json | null;
         };
         Relationships: [];
       };
@@ -577,6 +630,13 @@ export type Database = {
           completed_segments: number;
           error_message: string | null;
           source_expires_at: string | null;
+          source_uploaded_at: string | null;
+          source_manifest: Json | null;
+          processing_started_at: string | null;
+          processing_claimed_by: string | null;
+          gemini_started_at: string | null;
+          verified_file_size: number | null;
+          verified_mime_type: string | null;
           created_at: string;
           updated_at: string;
           completed_at: string | null;
@@ -603,6 +663,13 @@ export type Database = {
           completed_segments?: number;
           error_message?: string | null;
           source_expires_at?: string | null;
+          source_uploaded_at?: string | null;
+          source_manifest?: Json | null;
+          processing_started_at?: string | null;
+          processing_claimed_by?: string | null;
+          gemini_started_at?: string | null;
+          verified_file_size?: number | null;
+          verified_mime_type?: string | null;
           created_at?: string;
           updated_at?: string;
           completed_at?: string | null;
@@ -619,6 +686,13 @@ export type Database = {
           completed_segments?: number;
           error_message?: string | null;
           source_expires_at?: string | null;
+          source_uploaded_at?: string | null;
+          source_manifest?: Json | null;
+          processing_started_at?: string | null;
+          processing_claimed_by?: string | null;
+          gemini_started_at?: string | null;
+          verified_file_size?: number | null;
+          verified_mime_type?: string | null;
           updated_at?: string;
           completed_at?: string | null;
         };
@@ -794,6 +868,143 @@ export type Database = {
           unit_context?: string | null;
           confirmed_count?: number;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      recipe_import_usage: {
+        Row: {
+          id: string;
+          job_id: string;
+          store_id: string;
+          user_id: string;
+          week_start: string;
+          started_at: string;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          store_id: string;
+          user_id: string;
+          week_start: string;
+          started_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      recipe_import_extra_use_requests: {
+        Row: {
+          id: string;
+          store_id: string;
+          user_id: string;
+          week_start: string;
+          requested_uses: number;
+          reason: string;
+          status: "pending" | "approved" | "rejected";
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          review_reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          user_id: string;
+          week_start: string;
+          requested_uses: number;
+          reason: string;
+          status?: "pending" | "approved" | "rejected";
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          review_reason?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          status?: "pending" | "approved" | "rejected";
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          review_reason?: string | null;
+        };
+        Relationships: [];
+      };
+      recipe_import_usage_grants: {
+        Row: {
+          id: string;
+          store_id: string;
+          user_id: string;
+          week_start: string;
+          additional_uses: number;
+          approved_by: string;
+          reason: string;
+          request_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_id: string;
+          user_id: string;
+          week_start: string;
+          additional_uses: number;
+          approved_by: string;
+          reason: string;
+          request_id?: string | null;
+          created_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      recipe_import_cost_approvals: {
+        Row: {
+          id: string;
+          job_id: string;
+          store_id: string;
+          user_id: string | null;
+          approved_cost_usd: number;
+          approved_by: string;
+          reason: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          store_id: string;
+          user_id?: string | null;
+          approved_cost_usd: number;
+          approved_by: string;
+          reason: string;
+          created_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      retention_job_runs: {
+        Row: {
+          id: string;
+          job_type: "recipe_source_cleanup" | "account_purge";
+          dry_run: boolean;
+          candidate_count: number;
+          success_count: number;
+          failure_count: number;
+          error_codes: Json;
+          started_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          job_type: "recipe_source_cleanup" | "account_purge";
+          dry_run: boolean;
+          candidate_count?: number;
+          success_count?: number;
+          failure_count?: number;
+          error_codes?: Json;
+          started_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          candidate_count?: number;
+          success_count?: number;
+          failure_count?: number;
+          error_codes?: Json;
+          completed_at?: string | null;
         };
         Relationships: [];
       };
@@ -1477,12 +1688,195 @@ export type Database = {
         };
         Returns: undefined;
       };
+      merge_products_reversible: {
+        Args: {
+          target_product_id: string;
+          source_product_id: string;
+          expected_target_warehouse_version: number;
+          expected_target_store_version: number;
+          expected_source_warehouse_version: number;
+          expected_source_store_version: number;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["product_alias_links"]["Row"];
+      };
+      preview_product_unmerge: {
+        Args: {
+          alias_link_id: string;
+        };
+        Returns: {
+          link_id: string;
+          canonical_product_id: string;
+          canonical_name: string;
+          alias_product_id: string;
+          alias_name: string;
+          current_canonical_warehouse_qty: number;
+          current_canonical_store_qty: number;
+          current_alias_warehouse_qty: number;
+          current_alias_store_qty: number;
+          canonical_warehouse_version: number;
+          canonical_store_version: number;
+          alias_warehouse_version: number;
+          alias_store_version: number;
+          merge_canonical_warehouse_qty: number;
+          merge_canonical_store_qty: number;
+          merge_alias_warehouse_qty: number;
+          merge_alias_store_qty: number;
+          has_open_mobile_session: boolean;
+          has_barcode_conflict: boolean;
+        }[];
+      };
+      unmerge_product_alias: {
+        Args: {
+          alias_link_id: string;
+          canonical_warehouse_qty: number;
+          canonical_store_qty: number;
+          alias_warehouse_qty: number;
+          alias_store_qty: number;
+          expected_canonical_warehouse_version: number;
+          expected_canonical_store_version: number;
+          expected_alias_warehouse_version: number;
+          expected_alias_store_version: number;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["product_alias_links"]["Row"];
+      };
+      resolve_canonical_product_id: {
+        Args: {
+          target_product_id: string;
+        };
+        Returns: string;
+      };
+      resolve_product_by_barcode: {
+        Args: {
+          target_store_id: string;
+          target_barcode: string;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"][];
+      };
+      search_products_resolved: {
+        Args: {
+          target_store_id: string;
+          keyword: string;
+          result_limit?: number;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"][];
+      };
+      list_product_aliases: {
+        Args: {
+          target_product_id: string;
+        };
+        Returns: {
+          alias_link_id: string | null;
+          canonical_product_id: string;
+          alias_product_id: string;
+          alias_name: string;
+          merged_at: string;
+          merged_by: string | null;
+          merge_kind: "reversible" | "legacy";
+          merge_status: "active" | "unmerged" | "legacy";
+          can_unmerge: boolean;
+        }[];
+      };
+      resolve_product_references: {
+        Args: {
+          target_product_ids: string[];
+        };
+        Returns: {
+          requested_product_id: string;
+          canonical_product_id: string;
+          canonical_name: string;
+          is_active_alias: boolean;
+        }[];
+      };
+      ensure_inventory_row: {
+        Args: {
+          target_product_id: string;
+        };
+        Returns: Database["public"]["Tables"]["inventory"]["Row"];
+      };
+      create_product_with_inventory: {
+        Args: {
+          product_store_id: string;
+          product_data: Json;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"];
+      };
+      restore_product_with_inventory: {
+        Args: {
+          target_product_id: string;
+          product_data: Json;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"];
+      };
+      record_inventory_memo: {
+        Args: {
+          target_product_id: string;
+          memo_text: string;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["inventory_logs"]["Row"];
+      };
+      update_inventory_memo: {
+        Args: {
+          target_log_id: string;
+          memo_text: string;
+        };
+        Returns: Database["public"]["Tables"]["inventory_logs"]["Row"];
+      };
+      get_my_profile: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
+      sync_my_profile_email: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
+      update_store_staff_display_name: {
+        Args: {
+          target_user_id: string;
+          target_display_name: string;
+        };
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
+      update_staff_profile_admin: {
+        Args: {
+          target_user_id: string;
+          target_display_name: string;
+          target_store_id: string;
+        };
+        Returns: Database["public"]["Tables"]["profiles"]["Row"];
+      };
+      list_store_staff_directory: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          display_name: string;
+          role: "master" | "store_admin" | "staff";
+        }[];
+      };
+      list_store_staff_admin: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["profiles"]["Row"][];
+      };
       register_and_merge_product: {
         Args: {
           product_store_id: string;
           product_data: Json;
           existing_product_id: string;
           keep_new_product: boolean;
+        };
+        Returns: string;
+      };
+      register_and_merge_product_reversible: {
+        Args: {
+          product_store_id: string;
+          product_data: Json;
+          existing_product_id: string;
+          keep_new_product: boolean;
+          expected_existing_warehouse_version: number;
+          expected_existing_store_version: number;
+          request_id: string;
         };
         Returns: string;
       };
@@ -1631,6 +2025,14 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
       };
+      set_confirmed_order_item_order_placed: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+          is_order_placed: boolean;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
       remove_confirmed_order_item: {
         Args: {
           target_store_id: string;
@@ -1715,6 +2117,15 @@ export type Database = {
           target_order_date: string;
           target_product_id: string;
           required_quantity_value: number | null;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
+      set_confirmed_order_item_order_placed_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+          is_order_placed: boolean;
           request_id: string;
         };
         Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
@@ -1867,10 +2278,65 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
       };
+      recipe_import_week_start: {
+        Args: {
+          target_time?: string;
+        };
+        Returns: string;
+      };
+      get_my_recipe_import_quota: {
+        Args: Record<string, never>;
+        Returns: {
+          week_start: string;
+          base_uses: number;
+          additional_uses: number;
+          used_uses: number;
+          remaining_uses: number;
+        }[];
+      };
+      request_recipe_import_extra_uses: {
+        Args: {
+          requested_uses: number;
+          reason: string;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_extra_use_requests"]["Row"];
+      };
+      reject_recipe_import_extra_use_request: {
+        Args: {
+          target_request_id: string;
+          reason: string;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_extra_use_requests"]["Row"];
+      };
+      grant_recipe_import_extra_uses: {
+        Args: {
+          target_user_id: string;
+          target_week_start: string;
+          additional_uses: number;
+          reason: string;
+          target_request_id?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_usage_grants"]["Row"];
+      };
+      approve_recipe_import_cost: {
+        Args: {
+          target_job_id: string;
+          target_approved_cost_usd: number;
+          reason: string;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_cost_approvals"]["Row"];
+      };
       approve_recipe_import_job: {
         Args: {
           target_job_id: string;
           target_approved_cost_usd: number;
+        };
+        Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
+      };
+      save_recipe_import_manifest: {
+        Args: {
+          target_job_id: string;
+          target_manifest: Json;
         };
         Returns: Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
       };

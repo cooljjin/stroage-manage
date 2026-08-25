@@ -4,9 +4,10 @@ import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, P
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
-import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
-import { finishMutationRequest, formatMutationError, getMutationRequestId } from "../lib/mutationRequest";
+import { formatInventoryQuantity } from "../lib/inventory";
+import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { resolveStoreStaffNames } from "../lib/staffNames";
+import { loadResolvedInventoryItems, resolveProductByBarcode, searchResolvedProducts } from "../lib/resolvedProducts";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
@@ -16,6 +17,7 @@ type Props = {
   navigate: (route: AppRoute) => void;
   currentStoreId: string;
   canConfirmOrderItems: boolean;
+  canAddUnconfirmedOrderItems: boolean;
 };
 
 type ConfirmedOrderItem = Database["public"]["Tables"]["confirmed_order_items"]["Row"];
@@ -73,7 +75,7 @@ function parseRequiredQuantity(value: string): number | null {
   return Number.isFinite(quantity) ? quantity : null;
 }
 
-export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }: Props) {
+export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, canAddUnconfirmedOrderItems }: Props) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({});
@@ -83,6 +85,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [deletingUrgentIds, setDeletingUrgentIds] = useState<Set<string>>(new Set());
   const [freshModalOpen, setFreshModalOpen] = useState(false);
   const [freshSearch, setFreshSearch] = useState("");
+  const [freshResolvedProductIds, setFreshResolvedProductIds] = useState<Set<string> | null>(null);
   const [selectedFreshIds, setSelectedFreshIds] = useState<Set<string>>(new Set());
   const [selectedUrgentIds, setSelectedUrgentIds] = useState<Set<string>>(new Set());
   const [expandedFreshCategory, setExpandedFreshCategory] = useState<string | null>(null);
@@ -93,7 +96,9 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const [confirmedItems, setConfirmedItems] = useState<ConfirmedOrderItem[]>([]);
   const [confirmedModalOpen, setConfirmedModalOpen] = useState(false);
   const [confirmedEditMode, setConfirmedEditMode] = useState(false);
+  const [confirmedItemSearch, setConfirmedItemSearch] = useState("");
   const [savingConfirmedEdit, setSavingConfirmedEdit] = useState(false);
+  const [updatingPlacedOrderIds, setUpdatingPlacedOrderIds] = useState<Set<string>>(new Set());
   const [confirmedOrderDate, setConfirmedOrderDate] = useState(() => todayDateValue());
   const [confirmedCalendarOpen, setConfirmedCalendarOpen] = useState(false);
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
@@ -112,6 +117,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const addConfirmedRequestRef = useRef<string | null>(null);
   const removeConfirmedRequestRef = useRef<string | null>(null);
   const cancelConfirmedRequestRef = useRef<string | null>(null);
+  const placedOrderRequestRefs = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     return () => {
@@ -144,14 +150,14 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     setLoading(true);
     const [supplierResult, productResult] = await Promise.all([
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true })
+      loadResolvedInventoryItems(currentStoreId)
     ]);
-    const { data, error: loadError } = productResult;
+    const loadError = productResult.errorMessage;
     setSuppliers(supplierResult);
     if (loadError) {
-      setError(loadError.message);
+      setError(loadError);
     } else {
-      setItems(((data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
+      setItems(productResult.items);
     }
     setLoading(false);
   }, [currentStoreId]);
@@ -159,6 +165,32 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  useEffect(() => {
+    const keyword = freshSearch.trim();
+    if (!keyword) {
+      setFreshResolvedProductIds(null);
+      return;
+    }
+
+    setFreshResolvedProductIds(null);
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      void searchResolvedProducts(currentStoreId, keyword, 500).then((result) => {
+        if (cancelled) return;
+        if (result.errorMessage) {
+          setError(result.errorMessage);
+          return;
+        }
+        setFreshResolvedProductIds(new Set(result.products.map((product) => product.id)));
+      });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentStoreId, freshSearch]);
 
   const lowStockItems = useMemo(() => {
     return items
@@ -190,9 +222,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const freshProducts = useMemo(() => {
     const keyword = freshSearch.trim().toLocaleLowerCase("ko");
     return items.filter((item) => {
-      return !keyword || item.name.toLocaleLowerCase("ko").includes(keyword);
+      return !keyword
+        || freshResolvedProductIds?.has(item.id)
+        || (freshResolvedProductIds === null && item.name.toLocaleLowerCase("ko").includes(keyword));
     });
-  }, [freshSearch, items]);
+  }, [freshResolvedProductIds, freshSearch, items]);
 
   const freshSearchActive = freshSearch.trim().length > 0;
 
@@ -224,10 +258,12 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   const todayOrderDate = todayDateValue();
   const confirmCheckedItems = useMemo(() => lowStockItems.filter((item) => item.order_completed), [lowStockItems]);
   const confirmedProductIds = useMemo(() => new Set(confirmedItems.map((item) => item.product_id)), [confirmedItems]);
-  const confirmedItemCandidates = useMemo(
-    () => lowStockItems.filter((item) => !confirmedProductIds.has(item.id)),
-    [confirmedProductIds, lowStockItems]
-  );
+  const confirmedItemCandidates = useMemo(() => {
+    const keyword = confirmedItemSearch.trim().toLocaleLowerCase("ko");
+    return (canAddUnconfirmedOrderItems ? items : lowStockItems)
+      .filter((item) => !confirmedProductIds.has(item.id))
+      .filter((item) => !keyword || item.name.toLocaleLowerCase("ko").includes(keyword));
+  }, [canAddUnconfirmedOrderItems, confirmedItemSearch, confirmedProductIds, items, lowStockItems]);
   const canEditConfirmedItems = canConfirmOrderItems && confirmedOrderDate === todayOrderDate;
 
   const stopFreshScanner = useCallback(async () => {
@@ -299,32 +335,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
   }
 
   const findProductByFreshBarcode = useCallback(async (barcode: string) => {
-    const barcodeCandidates = getBarcodeCandidates(barcode);
-    const { data, error: productError } = await Services.DatabaseService.select("products", "*")
-      .eq("store_id", currentStoreId)
-      .in("barcode", barcodeCandidates)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    if (productError) return { product: null, errorMessage: productError.message };
-    if (data) return { product: data as InventoryItem, errorMessage: "" };
-
-    const { data: barcodeData, error: barcodeError } = await Services.DatabaseService.select("product_barcodes", "product_id")
-      .eq("store_id", currentStoreId)
-      .in("barcode", barcodeCandidates)
-      .limit(1)
-      .maybeSingle();
-    if (barcodeError) return { product: null, errorMessage: barcodeError.message };
-    if (!barcodeData) return { product: null, errorMessage: "" };
-
-    const { data: aliasProduct, error: aliasError } = await Services.DatabaseService.select("products", "*")
-      .eq("store_id", currentStoreId)
-      .eq("id", barcodeData.product_id)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (aliasError) return { product: null, errorMessage: aliasError.message };
-    return { product: (aliasProduct as InventoryItem | null) ?? null, errorMessage: "" };
-  }, [currentStoreId]);
+    const result = await resolveProductByBarcode(currentStoreId, getBarcodeCandidates(barcode));
+    if (!result.product) return { product: null, errorMessage: result.errorMessage };
+    const existingItem = items.find((item) => item.id === result.product?.id) ?? null;
+    return { product: existingItem, errorMessage: existingItem ? "" : "해당 상품의 재고 정보를 찾을 수 없습니다." };
+  }, [currentStoreId, items]);
 
   const handleFreshBarcode = useCallback(async (barcode: string) => {
     if (freshBarcodeHandlingRef.current) return;
@@ -495,6 +510,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     setConfirmedOrderDate(orderDate);
     setConfirmedCalendarOpen(false);
     setConfirmedEditMode(false);
+    setConfirmedItemSearch("");
     setConfirmedModalOpen(true);
     await loadConfirmedItems(orderDate);
   }
@@ -632,6 +648,41 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
     await loadItems();
     setMessage("오늘 확정한 품목을 모두 취소했습니다.");
     setSavingConfirmedEdit(false);
+  }
+
+  async function toggleConfirmedOrderPlaced(item: ConfirmedOrderItem, isOrderPlaced: boolean) {
+    if (!canConfirmOrderItems) return;
+
+    setError("");
+    setUpdatingPlacedOrderIds((current) => new Set(current).add(item.id));
+    setConfirmedItems((current) => current.map((confirmedItem) => (
+      confirmedItem.id === item.id
+        ? { ...confirmedItem, order_placed_at: isOrderPlaced ? new Date().toISOString() : null }
+        : confirmedItem
+    )));
+
+    const requestId = getMappedMutationRequestId(placedOrderRequestRefs, item.id);
+    const { data: savedItem, error: updateError } = await Services.DatabaseService.rpc("set_confirmed_order_item_order_placed_idempotent", {
+      target_store_id: currentStoreId,
+      target_confirmed_item_id: item.id,
+      is_order_placed: isOrderPlaced,
+      request_id: requestId
+    });
+
+    if (updateError) {
+      setConfirmedItems((current) => current.map((confirmedItem) => (confirmedItem.id === item.id ? item : confirmedItem)));
+      setError(formatMutationError(updateError));
+      finishMappedMutationRequest(placedOrderRequestRefs, item.id, updateError);
+    } else {
+      placedOrderRequestRefs.current.delete(item.id);
+      setConfirmedItems((current) => current.map((confirmedItem) => (confirmedItem.id === item.id ? savedItem as ConfirmedOrderItem : confirmedItem)));
+    }
+
+    setUpdatingPlacedOrderIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
   }
 
   async function deleteUrgentOrder(item: InventoryItem) {
@@ -1307,7 +1358,19 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                   {!loadingConfirmed && confirmedEditMode ? (
                     <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950">
                       <p className="text-sm font-extrabold text-brand-700 dark:text-brand-100">확정 품목 추가</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">현재 부족 재고 목록에서 추가할 품목을 선택하세요.</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {canAddUnconfirmedOrderItems ? "컨펌되지 않은 활성 품목도 임의로 추가할 수 있습니다." : "현재 부족 재고 목록에서 추가할 품목을 선택하세요."}
+                      </p>
+                      {canAddUnconfirmedOrderItems ? (
+                        <input
+                          type="search"
+                          value={confirmedItemSearch}
+                          onChange={(event) => setConfirmedItemSearch(event.target.value)}
+                          className="field mt-2 w-full"
+                          placeholder="품목명 검색"
+                          aria-label="추가할 확정 품목 검색"
+                        />
+                      ) : null}
                       <div className="mt-2 space-y-2">
                         {confirmedItemCandidates.length === 0 ? <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">추가할 수 있는 품목이 없습니다.</p> : null}
                         {confirmedItemCandidates.map((item) => (
@@ -1340,9 +1403,14 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                       <div className="space-y-2">
                         {confirmedItems.map((item) => {
                           const product = itemsById.get(item.product_id);
+                          const isOrderPlaced = item.order_placed_at !== null;
+                          const isUpdatingOrderPlaced = updatingPlacedOrderIds.has(item.id);
 
                           return (
-                            <div key={item.id} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+                            <div
+                              key={item.id}
+                              className={`rounded-md border border-slate-200 bg-white p-3 transition-opacity dark:border-slate-800 dark:bg-slate-950 ${isOrderPlaced ? "opacity-50" : ""}`}
+                            >
                               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                                 <div className="min-w-0">
                                   <div className="flex flex-wrap items-center gap-2">
@@ -1368,10 +1436,21 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                                   </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
+                                  <label className="flex flex-col items-center gap-1 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={isOrderPlaced}
+                                      disabled={!canConfirmOrderItems || isUpdatingOrderPlaced}
+                                      onChange={(event) => void toggleConfirmedOrderPlaced(item, event.target.checked)}
+                                      className="h-5 w-5 accent-brand-600 disabled:cursor-not-allowed"
+                                      aria-label={`${item.product_name} 발주 완료`}
+                                    />
+                                    <span>{isUpdatingOrderPlaced ? "저장 중" : "발주 완료"}</span>
+                                  </label>
                                   {confirmedEditMode ? (
                                     <button
                                       type="button"
-                                      disabled={savingConfirmedEdit}
+                                      disabled={savingConfirmedEdit || isOrderPlaced}
                                       onClick={() => void removeConfirmedItem(item)}
                                       className="touch-button icon-button border-red-200 text-red-700 dark:border-red-900 dark:text-red-200"
                                       aria-label={`${item.product_name} 확정 목록에서 삭제`}
@@ -1386,6 +1465,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems }:
                                     supplier={item.supplier_name ? suppliersByName.get(item.supplier_name) ?? null : null}
                                     quantity={orderQuantities[item.product_id] ?? ""}
                                     onQuantityChange={(quantity) => setOrderQuantities((current) => ({ ...current, [item.product_id]: quantity }))}
+                                    disabled={isOrderPlaced}
                                   />
                                   ) : null}
                                 </div>

@@ -289,7 +289,7 @@ export default function App() {
       .addListener("appUrlOpen", (event) => {
         const urlOpenEvent = event as URLOpenListenerEvent;
         const url = urlOpenEvent.url;
-        if (!url.startsWith("com.jinkim.stockly://auth/callback")) return;
+        if (!Services.AuthService.isNativeAuthCallbackUrl(url)) return;
         void Services.AuthService.handleOAuthCallbackUrl(url).then(({ data, error }) => {
           if (cancelled) return;
           if (!error) {
@@ -891,7 +891,14 @@ export default function App() {
                 onStateChange={setInventoryListState}
               />
             )}
-            {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} canConfirmOrderItems={profileRole !== "staff" || hasStaffPermission(staffPermissions, "order_confirmation")} />}
+            {permittedRoute.name === "low-stock" && (
+              <LowStockPage
+                navigate={navigate}
+                currentStoreId={profile.store_id}
+                canConfirmOrderItems={profileRole !== "staff" || hasStaffPermission(staffPermissions, "order_confirmation")}
+                canAddUnconfirmedOrderItems={profileRole !== "staff"}
+              />
+            )}
             {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
             {permittedRoute.name === "todo-routines" && <TodoRoutinesPage currentStoreId={profile.store_id} />}

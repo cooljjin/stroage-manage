@@ -1,0 +1,98 @@
+# Stockly 인증 RPC 허용 목록
+
+기준 migration: `001~078`
+
+이 문서는 `authenticated` 역할이 실행할 수 있는 `public` 함수의 최종 릴리스 허용 목록입니다. 함수가 이 목록에 있다는 사실은 모든 사용자에게 같은 데이터가 열린다는 뜻이 아닙니다. 각 RPC는 `auth.uid()`, 역할, 매장 범위와 대상 행을 다시 검증해야 합니다.
+
+네이티브 전환 기간에는 아래 구형 호환 RPC 3개가 추가로 열려 있습니다. 새 iOS/Android 설치 확인 뒤 `supabase/sql/post_native_security_lockdown.sql`로 회수합니다.
+
+- `merge_products(uuid, uuid)`
+- `register_and_merge_product(uuid, jsonb, uuid, boolean)`
+- `restore_inventory_to_log(uuid, numeric, numeric)`
+
+최종 허용 목록은 다음 80개 시그니처입니다.
+
+```text
+accept_store_invite_code(invite_code text)
+add_confirmed_order_item(target_store_id uuid, target_order_date date, target_product_id uuid, required_quantity_value numeric)
+add_confirmed_order_item_idempotent(target_store_id uuid, target_order_date date, target_product_id uuid, required_quantity_value numeric, request_id uuid)
+apply_group_order_recipe_import_idempotent(target_job_id uuid, request_id uuid)
+apply_mobile_inventory_change(target_session_id uuid, target_product_id uuid, operation_mode text, target_location text, move_direction text, requested_warehouse_qty numeric, requested_store_qty numeric, expected_inventory_updated_at timestamp with time zone, request_id uuid, entry_source text)
+apply_mobile_inventory_change_v2(target_session_id uuid, target_product_id uuid, operation_mode text, target_location text, move_direction text, requested_warehouse_qty numeric, requested_store_qty numeric, expected_warehouse_version bigint, expected_store_version bigint, request_id uuid, entry_source text)
+approve_recipe_import_cost(target_job_id uuid, target_approved_cost_usd numeric, reason text)
+approve_recipe_import_job(target_job_id uuid, target_approved_cost_usd numeric)
+can_access_store(target_store_id uuid)
+can_admin_store(target_store_id uuid)
+can_manage_store_task(target_store_id uuid, requested_permission text)
+cancel_confirmed_order(target_store_id uuid, target_order_date date)
+cancel_confirmed_order_idempotent(target_store_id uuid, target_order_date date, request_id uuid)
+create_personal_store(store_name text)
+create_product_with_inventory(product_store_id uuid, product_data jsonb)
+create_recipe_import_job(target_store_id uuid, target_source_type text, target_file_name text, target_file_size bigint, target_file_hash text, target_estimated_cost_usd numeric)
+create_store_invite(target_role profile_role)
+current_role(user_id uuid)
+current_store_id(user_id uuid)
+delete_dashboard_expected_receipt(target_product_id uuid, target_order_dates date[])
+delete_dashboard_expected_receipt_idempotent(target_product_id uuid, target_order_dates date[], request_id uuid)
+delete_prep_item(target_prep_item_id uuid)
+delete_today_product_receipts(target_product_id uuid)
+delete_today_product_receipts_idempotent(target_product_id uuid, request_id uuid)
+diagnose_store_consistency(target_store_id uuid)
+ensure_inventory_row(target_product_id uuid)
+finalize_mobile_inventory_session(target_session_id uuid, finalization_reason text)
+get_my_profile()
+get_my_recipe_import_quota()
+grant_recipe_import_extra_uses(target_user_id uuid, target_week_start date, additional_uses integer, reason text, target_request_id uuid)
+has_staff_permission(target_store_id uuid, requested_permission text)
+is_admin(user_id uuid)
+is_master(user_id uuid)
+is_store_admin(user_id uuid)
+is_store_closed(target_store_id uuid, target_date date)
+link_recipe_product_alias(target_store_id uuid, target_alias text, target_product_id uuid, target_unit_context text)
+list_product_aliases(target_product_id uuid)
+list_store_staff_admin()
+list_store_staff_directory()
+mark_recipe_import_uploaded(target_job_id uuid)
+merge_products_reversible(target_product_id uuid, source_product_id uuid, expected_target_warehouse_version bigint, expected_target_store_version bigint, expected_source_warehouse_version bigint, expected_source_store_version bigint, request_id uuid)
+next_store_business_date(target_store_id uuid, start_date date)
+preview_product_unmerge(alias_link_id uuid)
+recipe_import_week_start(target_time timestamp with time zone)
+record_inventory_check(target_product_id uuid, target_location text, expected_warehouse_version bigint, expected_store_version bigint, request_id uuid)
+record_inventory_memo(target_product_id uuid, memo_text text, request_id uuid)
+record_inventory_operation(target_product_id uuid, operation_action text, target_location text, move_direction text, operation_quantity numeric, expected_inventory_updated_at timestamp with time zone)
+record_inventory_operation_idempotent(target_product_id uuid, operation_action text, target_location text, move_direction text, operation_quantity numeric, expected_inventory_updated_at timestamp with time zone, request_id uuid)
+record_inventory_operation_idempotent_v2(target_product_id uuid, operation_action text, target_location text, move_direction text, operation_quantity numeric, expected_warehouse_version bigint, expected_store_version bigint, request_id uuid)
+record_prep_operation(target_prep_item_id uuid, operation_type text, operation_quantity numeric)
+record_receipt_check(target_product_id uuid, receipt_quantity numeric, receipt_note text)
+record_receipt_check_idempotent(target_product_id uuid, receipt_quantity numeric, receipt_note text, request_id uuid)
+recover_mobile_inventory_sessions(active_session_id uuid)
+register_and_merge_product_reversible(product_store_id uuid, product_data jsonb, existing_product_id uuid, keep_new_product boolean, expected_existing_warehouse_version bigint, expected_existing_store_version bigint, request_id uuid)
+reject_recipe_import_extra_use_request(target_request_id uuid, reason text)
+remove_confirmed_order_item(target_store_id uuid, target_confirmed_item_id uuid)
+remove_confirmed_order_item_idempotent(target_store_id uuid, target_confirmed_item_id uuid, request_id uuid)
+rename_product_unit(target_unit_id uuid, next_name text)
+reorder_prep_items(ordered_prep_item_ids uuid[])
+replace_confirmed_order_items(target_store_id uuid, target_order_date date, item_rows jsonb, confirmation_note text)
+replace_confirmed_order_items_idempotent(target_store_id uuid, target_order_date date, item_rows jsonb, confirmation_note text, request_id uuid)
+request_recipe_import_extra_uses(requested_uses integer, reason text)
+resolve_canonical_product_id(target_product_id uuid)
+resolve_product_by_barcode(target_store_id uuid, target_barcode text)
+resolve_product_references(target_product_ids uuid[])
+resolve_store_staff_names(target_store_id uuid, user_ids uuid[])
+restore_inventory_to_log_v2(target_log_id uuid, restored_warehouse_qty numeric, restored_store_qty numeric, expected_warehouse_version bigint, expected_store_version bigint, request_id uuid)
+restore_inventory_to_mobile_session(target_session_id uuid, restored_warehouse_qty numeric, restored_store_qty numeric)
+restore_inventory_to_mobile_session_v2(target_session_id uuid, restored_warehouse_qty numeric, restored_store_qty numeric, expected_warehouse_version bigint, expected_store_version bigint, request_id uuid)
+restore_latest_dashboard_receipt_deletion()
+restore_latest_dashboard_receipt_deletion_idempotent(request_id uuid)
+restore_product_with_inventory(target_product_id uuid, product_data jsonb)
+save_prep_item(target_prep_item_id uuid, item_name text, item_shelf_life_enabled boolean, item_shelf_life_days integer, item_sort_order integer, ingredient_rows jsonb, item_is_active boolean)
+save_recipe_import_manifest(target_job_id uuid, target_manifest jsonb)
+search_products_resolved(target_store_id uuid, keyword text, result_limit integer)
+sync_my_profile_email()
+unmerge_product_alias(alias_link_id uuid, canonical_warehouse_qty numeric, canonical_store_qty numeric, alias_warehouse_qty numeric, alias_store_qty numeric, expected_canonical_warehouse_version bigint, expected_canonical_store_version bigint, expected_alias_warehouse_version bigint, expected_alias_store_version bigint, request_id uuid)
+update_inventory_memo(target_log_id uuid, memo_text text)
+update_staff_profile_admin(target_user_id uuid, target_display_name text, target_store_id uuid)
+update_store_staff_display_name(target_user_id uuid, target_display_name text)
+```
+
+검증 쿼리는 함수명뿐 아니라 인자 시그니처까지 비교해야 합니다. 최종 권한 회수 뒤 목록이 80개가 아니거나 목록 밖 함수가 나타나면 배포를 중단합니다. `anon` 또는 `PUBLIC`이 실행할 수 있는 `SECURITY DEFINER` 함수와 고정 `search_path`가 없는 `SECURITY DEFINER` 함수는 각각 0개여야 합니다.

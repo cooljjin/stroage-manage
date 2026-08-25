@@ -70,7 +70,7 @@ export function MasterUsersPage() {
 
     const [storesResult, profilesResult] = await Promise.all([
       Services.DatabaseService.select("stores", "*").order("name", { ascending: true }),
-      Services.DatabaseService.select("profiles", "*").order("created_at", { ascending: true })
+      Services.DatabaseService.rpc("list_store_staff_admin")
     ]);
 
     if (storesResult.error) {
@@ -152,8 +152,11 @@ export function MasterUsersPage() {
     setError("");
     setMessage("");
 
-    const { error: updateError } = await Services.DatabaseService.update("profiles", { display_name: displayName, store_id: storeId, updated_at: new Date().toISOString() })
-      .eq("id", profile.id);
+    const { error: updateError } = await Services.DatabaseService.rpc("update_staff_profile_admin", {
+      target_user_id: profile.id,
+      target_display_name: displayName,
+      target_store_id: storeId
+    });
 
     if (updateError) {
       setError(updateError.message);

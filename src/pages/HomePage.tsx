@@ -8,7 +8,7 @@ import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
 import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import * as Services from "../services";
-import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryLog, Product, StaffProfile, TodoRoutine } from "../types/domain";
+import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryLog, Product, TodoRoutine } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -641,7 +641,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         .is("deleted_at", null)
         .order("created_at", { ascending: true }),
       Services.DatabaseService.select("handover_notes", "*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
-      Services.DatabaseService.select("profiles", "*"),
+      Services.DatabaseService.rpc("list_store_staff_directory"),
       Services.DatabaseService.select("dashboard_receipt_deletions", "id, log_ids")
         .eq("store_id", currentStoreId)
         .is("restored_at", null)
@@ -732,7 +732,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     }
     if (!handoverResult.error) setHandovers((handoverResult.data ?? []) as HandoverNote[]);
     if (!profileResult.error) {
-      setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
+      setProfiles(new Map((profileResult.data ?? []).map((profile) => [profile.id, profile.display_name])));
     }
     if (!receiptDeletionResult.error) setHasReceiptDeletion(!isTodayStoreClosure && activeReceiptDeletions.length > 0);
     setLoading(false);

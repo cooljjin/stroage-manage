@@ -26,7 +26,7 @@ export function StaffPermissionsPage({ currentStoreId }: Props) {
     setLoading(true);
     setError("");
     const [profilesResult, permissionsResult] = await Promise.all([
-      Services.DatabaseService.select("profiles", "*").eq("store_id", currentStoreId).order("display_name", { ascending: true }),
+      Services.DatabaseService.rpc("list_store_staff_admin"),
       Services.DatabaseService.select("staff_permissions", "*").eq("store_id", currentStoreId)
     ]);
 
