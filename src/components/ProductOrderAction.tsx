@@ -6,6 +6,7 @@ type Props = {
   supplier: ProductSupplier | null;
   quantity: string;
   onQuantityChange: (quantity: string) => void;
+  disabled?: boolean;
 };
 
 function buildSmsBody(item: InventoryItem, supplier: ProductSupplier, quantity: string) {
@@ -25,13 +26,13 @@ function buildSmsHref(phone: string, body: string) {
   return `sms:${encodeURIComponent(phone)}${separator}body=${encodeURIComponent(body)}`;
 }
 
-export function ProductOrderAction({ item, supplier, quantity, onQuantityChange }: Props) {
+export function ProductOrderAction({ item, supplier, quantity, onQuantityChange, disabled: externallyDisabled = false }: Props) {
   const isSmsOrder = supplier?.order_method === "sms";
   const hasProductUrl = Boolean(item.product_url);
   const hasSmsPhone = Boolean(supplier?.sms_phone?.trim());
   const hasQuantity = Boolean(quantity.trim());
   const showQuantityInput = isSmsOrder && hasSmsPhone;
-  const disabled = isSmsOrder ? !hasSmsPhone || !hasQuantity : !hasProductUrl;
+  const disabled = externallyDisabled || (isSmsOrder ? !hasSmsPhone || !hasQuantity : !hasProductUrl);
   const actionLabel = isSmsOrder ? `${item.name} 문자 발주` : `${item.name} 링크 열기`;
 
   function handleAction() {
@@ -53,6 +54,7 @@ export function ProductOrderAction({ item, supplier, quantity, onQuantityChange 
           className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-1 text-center text-sm font-bold tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           inputMode="numeric"
           pattern="[0-9]*"
+          disabled={externallyDisabled}
           value={quantity}
           onChange={(event) => onQuantityChange(event.target.value.replace(/\D/g, ""))}
           placeholder="수량"

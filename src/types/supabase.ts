@@ -249,6 +249,8 @@ export type Database = {
           urgent_order_requested: boolean;
           urgent_order_quantity: number | null;
           order_completed: boolean;
+          order_placed_at: string | null;
+          order_placed_by: string | null;
           confirmation_note: string | null;
           receipt_expected_deleted_at: string | null;
           receipt_expected_deleted_by: string | null;
@@ -272,6 +274,8 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          order_placed_at?: string | null;
+          order_placed_by?: string | null;
           confirmation_note?: string | null;
           receipt_expected_deleted_at?: string | null;
           receipt_expected_deleted_by?: string | null;
@@ -294,6 +298,8 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          order_placed_at?: string | null;
+          order_placed_by?: string | null;
           confirmation_note?: string | null;
           receipt_expected_deleted_at?: string | null;
           receipt_expected_deleted_by?: string | null;
@@ -2019,6 +2025,14 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
       };
+      set_confirmed_order_item_order_placed: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+          is_order_placed: boolean;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
       remove_confirmed_order_item: {
         Args: {
           target_store_id: string;
@@ -2103,6 +2117,15 @@ export type Database = {
           target_order_date: string;
           target_product_id: string;
           required_quantity_value: number | null;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
+      set_confirmed_order_item_order_placed_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+          is_order_placed: boolean;
           request_id: string;
         };
         Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
