@@ -10,25 +10,27 @@ type NativeBarcode = {
   rawValue?: string;
 };
 
-type NativeBarcodeScanResponse = {
+type NativeScannerEvent = {
   barcodes?: NativeBarcode[];
+  message?: string;
 };
 
-type GoogleBarcodeScannerModuleStatus = {
-  available: boolean;
+type NativeScannerListener = {
+  remove: () => Promise<void>;
 };
 
 type NativeBarcodeScannerPlugin = {
   isSupported?: () => Promise<{ supported: boolean }>;
   checkPermissions?: () => Promise<BarcodeScannerPermissionStatus>;
   requestPermissions?: () => Promise<BarcodeScannerPermissionStatus>;
-  isGoogleBarcodeScannerModuleAvailable?: () => Promise<GoogleBarcodeScannerModuleStatus>;
+  isGoogleBarcodeScannerModuleAvailable?: () => Promise<{ available: boolean }>;
   installGoogleBarcodeScannerModule?: () => Promise<void>;
-  scan: (options: { formats: string[]; autoZoom: boolean }) => Promise<NativeBarcodeScanResponse>;
-};
-
-type FastIosBarcodeScannerPlugin = {
-  scan: (options: { formats: string[]; zoomFactor?: number }) => Promise<{ action?: "register"; barcode?: string; rawValue?: string; cancelled?: boolean }>;
+  startScan: (options?: { formats?: string[] }) => Promise<void>;
+  stopScan: () => Promise<void>;
+  addListener: (
+    eventName: "barcodesScanned" | "scanError",
+    listener: (event: NativeScannerEvent) => void
+  ) => Promise<NativeScannerListener>;
 };
 
 type NativeBarcodeScanResult =
@@ -52,51 +54,12 @@ const PRODUCT_NATIVE_BARCODE_FORMATS = [
   "CODABAR"
 ];
 
-const fastIosBarcodeScanner = registerPlugin<FastIosBarcodeScannerPlugin>("FastBarcodeScanner");
 const barcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>("BarcodeScanner");
-
-function getNativePlatform(): string {
-  return Capacitor.getPlatform();
-}
+let activeNativeScanCancel: (() => void) | null = null;
+let activeNativeScanCleanup: (() => Promise<void>) | null = null;
 
 export function isNativeBarcodeScannerAvailable() {
   return Capacitor.isNativePlatform();
-}
-
-async function scanFastIosBarcode(): Promise<NativeBarcodeScanResult | null> {
-  if (getNativePlatform() !== "ios") return null;
-
-  try {
-    const result = await fastIosBarcodeScanner.scan({
-      formats: PRODUCT_NATIVE_BARCODE_FORMATS,
-      zoomFactor: 1.25
-    });
-
-    if (result.cancelled) {
-      return {
-        status: "cancelled",
-        message: "스캔이 취소되었습니다.",
-        fallbackToWeb: false
-      };
-    }
-
-    if (result.action === "register") {
-      return { status: "register" };
-    }
-
-    const barcode = (result.barcode ?? result.rawValue ?? "").trim();
-    if (!barcode) {
-      return {
-        status: "cancelled",
-        message: "스캔된 바코드가 없습니다.",
-        fallbackToWeb: false
-      };
-    }
-
-    return { status: "success", barcode };
-  } catch {
-    return null;
-  }
 }
 
 export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
@@ -107,9 +70,6 @@ export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
       fallbackToWeb: true
     };
   }
-
-  const fastIosResult = await scanFastIosBarcode();
-  if (fastIosResult) return fastIosResult;
 
   const supported = await barcodeScanner.isSupported?.().catch(() => ({ supported: true }));
   if (supported && !supported.supported) {
@@ -132,7 +92,7 @@ export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
     }
   }
 
-  if (getNativePlatform() === "android" && barcodeScanner.isGoogleBarcodeScannerModuleAvailable && barcodeScanner.installGoogleBarcodeScannerModule) {
+  if (Capacitor.getPlatform() === "android" && barcodeScanner.isGoogleBarcodeScannerModuleAvailable && barcodeScanner.installGoogleBarcodeScannerModule) {
     const moduleStatus = await barcodeScanner.isGoogleBarcodeScannerModuleAvailable().catch(() => ({ available: true }));
     if (!moduleStatus.available) {
       await barcodeScanner.installGoogleBarcodeScannerModule().catch(() => undefined);
@@ -144,27 +104,68 @@ export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
     }
   }
 
-  try {
-    const result = await barcodeScanner.scan({
-      formats: PRODUCT_NATIVE_BARCODE_FORMATS,
-      autoZoom: true
-    });
-    const barcode = result.barcodes?.find((item) => item.rawValue?.trim())?.rawValue?.trim();
+  return new Promise((resolve) => {
+    let settled = false;
+    let cleanupPromise: Promise<void> | null = null;
+    const listenerPromises: Array<Promise<NativeScannerListener>> = [];
 
-    if (!barcode) {
-      return {
-        status: "cancelled",
-        message: "스캔된 바코드가 없습니다.",
-        fallbackToWeb: false
-      };
-    }
-
-    return { status: "success", barcode };
-  } catch {
-    return {
-      status: "error",
-      message: "네이티브 스캐너 실행에 실패해 웹 스캐너로 전환합니다.",
-      fallbackToWeb: true
+    const cleanup = () => {
+      if (cleanupPromise) return cleanupPromise;
+      cleanupPromise = (async () => {
+        const listeners = await Promise.all(listenerPromises.map((promise) => promise.catch(() => null)));
+        await Promise.all(listeners.filter((listener): listener is NativeScannerListener => listener !== null).map((listener) => listener.remove().catch(() => undefined)));
+        await barcodeScanner.stopScan().catch(() => undefined);
+        if (activeNativeScanCancel === cancel) activeNativeScanCancel = null;
+        if (activeNativeScanCleanup === cleanup) activeNativeScanCleanup = null;
+      })();
+      return cleanupPromise;
     };
+
+    const finish = (result: NativeBarcodeScanResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+      void cleanup();
+    };
+
+    const cancel = () => finish({ status: "cancelled", message: "스캔이 취소되었습니다.", fallbackToWeb: false });
+    activeNativeScanCancel = cancel;
+    activeNativeScanCleanup = cleanup;
+
+    void (async () => {
+      try {
+        listenerPromises.push(barcodeScanner.addListener("barcodesScanned", (event) => {
+          const barcode = event.barcodes?.find((item) => item.rawValue?.trim())?.rawValue?.trim();
+          if (barcode) finish({ status: "success", barcode });
+        }));
+        listenerPromises.push(barcodeScanner.addListener("scanError", (event) => {
+          finish({
+            status: "error",
+            message: event.message ?? "네이티브 스캐너 실행에 실패해 웹 스캐너로 전환합니다.",
+            fallbackToWeb: true
+          });
+        }));
+        await barcodeScanner.startScan({ formats: PRODUCT_NATIVE_BARCODE_FORMATS });
+      } catch {
+        finish({
+          status: "error",
+          message: "네이티브 스캐너 실행에 실패해 웹 스캐너로 전환합니다.",
+          fallbackToWeb: true
+        });
+      }
+    })();
+  });
+}
+
+export async function stopNativeBarcode() {
+  if (activeNativeScanCancel) {
+    activeNativeScanCancel();
+    if (activeNativeScanCleanup) await activeNativeScanCleanup();
+    return;
   }
+  if (activeNativeScanCleanup) {
+    await activeNativeScanCleanup();
+    return;
+  }
+  await barcodeScanner.stopScan().catch(() => undefined);
 }

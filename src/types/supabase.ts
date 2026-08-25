@@ -249,7 +249,11 @@ export type Database = {
           urgent_order_requested: boolean;
           urgent_order_quantity: number | null;
           order_completed: boolean;
+          order_placed_at: string | null;
+          order_placed_by: string | null;
           confirmation_note: string | null;
+          confirmation_note_by: string | null;
+          confirmation_note_at: string | null;
           receipt_expected_deleted_at: string | null;
           receipt_expected_deleted_by: string | null;
           confirmed_by: string | null;
@@ -272,7 +276,11 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          order_placed_at?: string | null;
+          order_placed_by?: string | null;
           confirmation_note?: string | null;
+          confirmation_note_by?: string | null;
+          confirmation_note_at?: string | null;
           receipt_expected_deleted_at?: string | null;
           receipt_expected_deleted_by?: string | null;
           confirmed_by?: string | null;
@@ -294,7 +302,11 @@ export type Database = {
           urgent_order_requested?: boolean;
           urgent_order_quantity?: number | null;
           order_completed?: boolean;
+          order_placed_at?: string | null;
+          order_placed_by?: string | null;
           confirmation_note?: string | null;
+          confirmation_note_by?: string | null;
+          confirmation_note_at?: string | null;
           receipt_expected_deleted_at?: string | null;
           receipt_expected_deleted_by?: string | null;
           confirmed_by?: string | null;
@@ -1616,6 +1628,7 @@ export type Database = {
           id: string;
           store_id: string;
           handover_date: string;
+          visible_until: string | null;
           content: string;
           created_by: string;
           created_at: string;
@@ -1624,11 +1637,13 @@ export type Database = {
           id?: string;
           store_id?: string;
           handover_date: string;
+          visible_until?: string | null;
           content: string;
           created_by: string;
           created_at?: string;
         };
         Update: {
+          visible_until?: string | null;
           content?: string;
         };
         Relationships: [];
@@ -2019,6 +2034,14 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
       };
+      set_confirmed_order_item_order_placed: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+          is_order_placed: boolean;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
       remove_confirmed_order_item: {
         Args: {
           target_store_id: string;
@@ -2097,12 +2120,30 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"][];
       };
+      update_confirmed_order_note_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_order_date: string;
+          confirmation_note: string | null;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"][];
+      };
       add_confirmed_order_item_idempotent: {
         Args: {
           target_store_id: string;
           target_order_date: string;
           target_product_id: string;
           required_quantity_value: number | null;
+          request_id: string;
+        };
+        Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
+      };
+      set_confirmed_order_item_order_placed_idempotent: {
+        Args: {
+          target_store_id: string;
+          target_confirmed_item_id: string;
+          is_order_placed: boolean;
           request_id: string;
         };
         Returns: Database["public"]["Tables"]["confirmed_order_items"]["Row"];
