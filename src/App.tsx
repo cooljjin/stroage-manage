@@ -933,7 +933,7 @@ export default function App() {
             {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
             {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "unit-management" && <ProductUnitManagementPage currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
+            {permittedRoute.name === "supplier-management" && <SupplierManagementPage currentStoreId={profile.store_id} />}
             {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
             {permittedRoute.name === "staff-management" && <StaffManagementPage />}
             {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}
