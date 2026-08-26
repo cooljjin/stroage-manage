@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Capacitor } from "@capacitor/core";
+import { LazyMotion, domAnimation } from "motion/react";
 import App from "./App";
 import "./styles.css";
 
@@ -20,6 +21,8 @@ if (shouldClearServiceWorkerCache && "caches" in window) {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <LazyMotion features={domAnimation} strict>
+      <App />
+    </LazyMotion>
   </React.StrictMode>
 );

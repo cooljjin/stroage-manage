@@ -1,11 +1,12 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import { App as CapacitorApp, type URLOpenListenerEvent } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 import { ArrowLeft, KeyRound, Plus } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RoleBadge, TopMenu } from "./components/TopMenu";
+import { RouteErrorBoundary, RouteLoadingFallback } from "./components/RouteLoadingBoundary";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PasswordResetPage } from "./pages/PasswordResetPage";
@@ -13,31 +14,36 @@ import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { SupportPage } from "./pages/SupportPage";
 import { AccountDeletionRecoveryPage } from "./pages/AccountDeletionRecoveryPage";
 import { MasterAccountBlockedPage } from "./pages/MasterAccountBlockedPage";
-import { HomePage } from "./pages/HomePage";
-import { TimelineCalendarPage } from "./pages/TimelineCalendarPage";
 import { recoverMobileInventorySessions } from "./lib/mobileInventorySession";
-import { ScanPage } from "./pages/ScanPage";
-import { ProductEditPage } from "./pages/ProductEditPage";
-import { InventoryOperationPage } from "./pages/InventoryOperationPage";
-import { InventoryListPage, type InventoryListPageState } from "./pages/InventoryListPage";
-import { LowStockPage } from "./pages/LowStockPage";
-import { StatusItemsPage } from "./pages/StatusItemsPage";
-import { LogsPage } from "./pages/LogsPage";
-import { TodoRoutinesPage } from "./pages/TodoRoutinesPage";
-import { GroupOrderCalculatorPage } from "./pages/GroupOrderCalculatorPage";
-import { RecipeImportPage } from "./pages/RecipeImportPage";
-import { PrepItemManagementPage } from "./pages/PrepItemManagementPage";
-import { PrepModePage } from "./pages/PrepModePage";
-import { CategoryManagementPage } from "./pages/CategoryManagementPage";
-import { ProductUnitManagementPage } from "./pages/ProductUnitManagementPage";
-import { SupplierManagementPage } from "./pages/SupplierManagementPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { StaffManagementPage } from "./pages/StaffManagementPage";
-import { StaffPermissionsPage } from "./pages/StaffPermissionsPage";
+import type { InventoryListPageState } from "./pages/InventoryListPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
 import { hasStaffPermission, permissionForRoute } from "./lib/staffPermissions";
 import { pageTransitionMotion, reducedPageTransitionMotion } from "./lib/animations";
 import { ensureCurrentProfile } from "./lib/profiles";
+import { useIdleRoutePreload } from "./hooks/useIdleRoutePreload";
+import {
+  CategoryManagementPage,
+  GroupOrderCalculatorPage,
+  HomePage,
+  InventoryListPage,
+  InventoryOperationPage,
+  LogsPage,
+  LowStockPage,
+  PrepItemManagementPage,
+  PrepModePage,
+  ProductEditPage,
+  ProductUnitManagementPage,
+  RecipeImportPage,
+  ScanPage,
+  SettingsPage,
+  StaffManagementPage,
+  StaffPermissionsPage,
+  StatusItemsPage,
+  SupplierManagementPage,
+  TimelineCalendarPage,
+  TodoRoutinesPage,
+  preloadRoutePage
+} from "./routes/lazyPages";
 import * as Services from "./services";
 import { ACCOUNT_LINK_RETURN_STORAGE_KEY } from "./services";
 import type { Session } from "./services";
@@ -219,6 +225,11 @@ function maxWindowScrollY() {
   return Math.max(0, scrollHeight - window.innerHeight);
 }
 
+function IdleRoutePreloader({ routeName }: { routeName: RouteName }) {
+  useIdleRoutePreload(routeName);
+  return null;
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -366,6 +377,7 @@ export default function App() {
     if (!session) return;
     if (route.name === "landing" || route.name === "login") {
       const homeRoute = consumeAccountLinkReturnRoute() ?? consumePostScanRoute() ?? defaultSignedInRoute();
+      void preloadRoutePage(homeRoute.name);
       navigateRef.current(homeRoute, { resetHistory: true, replace: true });
     }
   }, [session, route.name]);
@@ -837,88 +849,91 @@ export default function App() {
             뒤로가기
           </button>
         ) : null}
-        <LazyMotion features={domAnimation}>
-          <m.div key={routeKey(permittedRoute)} initial={routeMotionProps.initial} animate={routeMotionProps.animate} transition={routeMotionProps.transition}>
-            {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "timeline-calendar" && <TimelineCalendarPage currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
-            {permittedRoute.name === "register" && (
-              <ProductEditPage
-                barcode={permittedRoute.barcode ?? ""}
-                navigate={navigate}
-                currentStoreId={profile.store_id}
-              />
-            )}
-            {permittedRoute.name === "product-edit" && (
-              <ProductEditPage
-                productId={permittedRoute.productId ?? ""}
-                navigate={navigate}
-                currentStoreId={profile.store_id}
-                returnTo={permittedRoute.returnTo}
-                prepDraft={permittedRoute.prepDraft}
-                groupOrderDraft={permittedRoute.groupOrderDraft}
-              />
-            )}
-            {permittedRoute.name === "operation" && (
-              <InventoryOperationPage
-                productId={permittedRoute.productId ?? ""}
-                navigate={navigate}
-                canGoBack={canGoBack}
-                onBack={goBack}
-                currentStoreId={profile.store_id}
-                initialInventoryMode={permittedRoute.initialInventoryMode}
-                registerBeforeLeave={registerBeforeLeave}
-              />
-            )}
-            {permittedRoute.name === "inventory" && (
-              <InventoryListPage
-                navigate={navigate}
-                currentStoreId={profile.store_id}
-                canManageImportantItems={profileRole !== "staff"}
-                initialState={inventoryListState}
-                onStateChange={setInventoryListState}
-              />
-            )}
-            {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} canConfirmOrderItems={profileRole !== "staff" || hasStaffPermission(staffPermissions, "order_confirmation")} />}
-            {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "todo-routines" && <TodoRoutinesPage currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "group-order" && (
-              <GroupOrderCalculatorPage
-                mode="calculator"
-                navigate={navigate}
-                currentStoreId={profile.store_id}
-                canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
-                restoreDraft={permittedRoute.groupOrderDraft}
-              />
-            )}
-            {permittedRoute.name === "group-order-recipes" && (
-              <GroupOrderCalculatorPage
-                mode="recipes"
-                navigate={navigate}
-                currentStoreId={profile.store_id}
-                canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
-                restoreDraft={permittedRoute.groupOrderDraft}
-              />
-            )}
-            {permittedRoute.name === "group-order-recipe-import" && (
-              <RecipeImportPage
-                navigate={navigate}
-                currentStoreId={profile.store_id}
-                canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
-                jobId={permittedRoute.recipeImportJobId}
-              />
-            )}
-            {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
-            {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
-            {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "unit-management" && <ProductUnitManagementPage currentStoreId={profile.store_id} />}
-            {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
-            {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
-            {permittedRoute.name === "staff-management" && <StaffManagementPage />}
-            {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}
-          </m.div>
-        </LazyMotion>
+        <RouteErrorBoundary key={routeKey(permittedRoute)} onBack={canGoBack ? () => void goBack() : undefined}>
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <IdleRoutePreloader routeName={permittedRoute.name} />
+            <m.div key={routeKey(permittedRoute)} initial={routeMotionProps.initial} animate={routeMotionProps.animate} transition={routeMotionProps.transition}>
+              {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "timeline-calendar" && <TimelineCalendarPage currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
+              {permittedRoute.name === "register" && (
+                <ProductEditPage
+                  barcode={permittedRoute.barcode ?? ""}
+                  navigate={navigate}
+                  currentStoreId={profile.store_id}
+                />
+              )}
+              {permittedRoute.name === "product-edit" && (
+                <ProductEditPage
+                  productId={permittedRoute.productId ?? ""}
+                  navigate={navigate}
+                  currentStoreId={profile.store_id}
+                  returnTo={permittedRoute.returnTo}
+                  prepDraft={permittedRoute.prepDraft}
+                  groupOrderDraft={permittedRoute.groupOrderDraft}
+                />
+              )}
+              {permittedRoute.name === "operation" && (
+                <InventoryOperationPage
+                  productId={permittedRoute.productId ?? ""}
+                  navigate={navigate}
+                  canGoBack={canGoBack}
+                  onBack={goBack}
+                  currentStoreId={profile.store_id}
+                  initialInventoryMode={permittedRoute.initialInventoryMode}
+                  registerBeforeLeave={registerBeforeLeave}
+                />
+              )}
+              {permittedRoute.name === "inventory" && (
+                <InventoryListPage
+                  navigate={navigate}
+                  currentStoreId={profile.store_id}
+                  canManageImportantItems={profileRole !== "staff"}
+                  initialState={inventoryListState}
+                  onStateChange={setInventoryListState}
+                />
+              )}
+              {permittedRoute.name === "low-stock" && <LowStockPage navigate={navigate} currentStoreId={profile.store_id} canConfirmOrderItems={profileRole !== "staff" || hasStaffPermission(staffPermissions, "order_confirmation")} />}
+              {permittedRoute.name === "status-items" && <StatusItemsPage navigate={navigate} currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "logs" && <LogsPage navigate={navigate} currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "todo-routines" && <TodoRoutinesPage currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "group-order" && (
+                <GroupOrderCalculatorPage
+                  mode="calculator"
+                  navigate={navigate}
+                  currentStoreId={profile.store_id}
+                  canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
+                  restoreDraft={permittedRoute.groupOrderDraft}
+                />
+              )}
+              {permittedRoute.name === "group-order-recipes" && (
+                <GroupOrderCalculatorPage
+                  mode="recipes"
+                  navigate={navigate}
+                  currentStoreId={profile.store_id}
+                  canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
+                  restoreDraft={permittedRoute.groupOrderDraft}
+                />
+              )}
+              {permittedRoute.name === "group-order-recipe-import" && (
+                <RecipeImportPage
+                  navigate={navigate}
+                  currentStoreId={profile.store_id}
+                  canManageRecipes={profileRole !== "staff" || hasStaffPermission(staffPermissions, "group_order_recipe_management")}
+                  jobId={permittedRoute.recipeImportJobId}
+                />
+              )}
+              {permittedRoute.name === "prep-items" && <PrepItemManagementPage navigate={navigate} restoreDraft={permittedRoute.prepDraft} />}
+              {permittedRoute.name === "prep-mode" && <PrepModePage navigate={navigate} />}
+              {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "unit-management" && <ProductUnitManagementPage currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "supplier-management" && <SupplierManagementPage />}
+              {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
+              {permittedRoute.name === "staff-management" && <StaffManagementPage />}
+              {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}
+            </m.div>
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
 
       <BottomNav activeRoute={activeTab} onNavigate={navigateFromBottomNav} />

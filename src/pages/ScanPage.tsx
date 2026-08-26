@@ -1,10 +1,10 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { useMobileViewport } from "../hooks/useMobileViewport";
 import { isNativeBarcodeScannerAvailable, scanNativeBarcode } from "../lib/nativeBarcodeScanner";
+import { createWebBarcodeScanner, preloadWebBarcodeScanner, webBarcodeCameraErrorMessage, type WebBarcodeScanner } from "../lib/webBarcodeScanner";
 import * as Services from "../services";
 import type { AppRoute, MobileInventoryEntryMode, Product } from "../types/domain";
 
@@ -17,17 +17,6 @@ type Props = {
 const SCANNER_ID = "barcode-scanner";
 const PENDING_SCAN_STORAGE_KEY = "store-inventory-pending-scan";
 const PENDING_SCAN_TTL_MS = 5 * 60 * 1000;
-const PRODUCT_BARCODE_FORMATS = [
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.CODABAR
-];
 const DEFAULT_CAMERA_ZOOM = 2.5;
 
 type FocusMediaTrackConstraints = MediaTrackConstraints & {
@@ -101,22 +90,25 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_CAMERA_ZOOM);
   const [nativeScanBusy, setNativeScanBusy] = useState(false);
+  const [webScannerLoading, setWebScannerLoading] = useState(false);
   const [auditModeEnabled, setAuditModeEnabled] = useState(false);
   const isMobileViewport = useMobileViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
   const nativeScannerAvailable = useMemo(() => isNativeBarcodeScannerAvailable(), []);
   const [showFallbackUi, setShowFallbackUi] = useState(!nativeScannerAvailable);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerRef = useRef<WebBarcodeScanner | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const barcodeHandlingRef = useRef(false);
   const lastAutoStartKeyRef = useRef<string | number | null>(null);
   const mountedRef = useRef(true);
   const scanAttemptRef = useRef(0);
+  const webScannerLoadingAttemptRef = useRef<number | null>(null);
   const completedNavigationRef = useRef(false);
   const canWebScan = useMemo(() => "mediaDevices" in navigator, []);
   const canScan = canWebScan || nativeScannerAvailable;
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       scanAttemptRef.current += 1;
@@ -125,6 +117,11 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (nativeScannerAvailable) return;
+    void preloadWebBarcodeScanner().catch(() => undefined);
+  }, [nativeScannerAvailable]);
 
   const handleBarcode = useCallback(async (barcode: string, initialInventoryMode: MobileInventoryEntryMode = auditModeEnabled && mobileTouchEnabled && isMobileViewport ? "audit" : "auto") => {
     if (barcodeHandlingRef.current) return;
@@ -165,15 +162,29 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       return;
     }
 
-    if (scannerRef.current?.isScanning) return;
+    if (scannerRef.current?.isScanning || webScannerLoadingAttemptRef.current !== null) return;
 
-    const scanner = new Html5Qrcode(SCANNER_ID, {
-      formatsToSupport: PRODUCT_BARCODE_FORMATS,
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true
-      },
-      verbose: false
-    });
+    webScannerLoadingAttemptRef.current = scanAttempt;
+    setWebScannerLoading(true);
+
+    let scanner: WebBarcodeScanner;
+    try {
+      await preloadWebBarcodeScanner();
+      if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
+      scanner = await createWebBarcodeScanner(SCANNER_ID);
+      if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
+    } catch {
+      if (mountedRef.current && !completedNavigationRef.current && scanAttempt === scanAttemptRef.current) {
+        setMessage("스캐너 기능을 불러오지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.");
+      }
+      return;
+    } finally {
+      if (webScannerLoadingAttemptRef.current === scanAttempt) {
+        webScannerLoadingAttemptRef.current = null;
+        if (mountedRef.current) setWebScannerLoading(false);
+      }
+    }
+
     scannerRef.current = scanner;
     barcodeHandlingRef.current = false;
     setZoomRange(null);
@@ -225,7 +236,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     } catch (error) {
       if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
       setScannerActive(false);
-      setMessage(error instanceof Error ? error.message : "카메라 실행에 실패했습니다.");
+      setMessage(webBarcodeCameraErrorMessage(error));
     }
   }, [canWebScan, handleBarcode]);
 
@@ -287,7 +298,9 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       return () => window.clearTimeout(timer);
     }
 
-    const autoStartKey = nativeScannerAvailable ? (scanLaunchId ?? "native-initial") : "web-initial";
+    if (!nativeScannerAvailable) return;
+
+    const autoStartKey = scanLaunchId ?? "native-initial";
     if (lastAutoStartKeyRef.current === autoStartKey) return;
     lastAutoStartKeyRef.current = autoStartKey;
     const timer = window.setTimeout(() => {
@@ -300,7 +313,9 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
 
   async function stopScanner() {
     scanAttemptRef.current += 1;
-    if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+    webScannerLoadingAttemptRef.current = null;
+    setWebScannerLoading(false);
+    if (scannerRef.current?.isScanning) await scannerRef.current.stop().catch(() => undefined);
     barcodeHandlingRef.current = false;
     setScannerActive(false);
     setZoomRange(null);
@@ -324,6 +339,9 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     event.target.value = "";
     if (!file) return;
 
+    const scanAttempt = scanAttemptRef.current + 1;
+    scanAttemptRef.current = scanAttempt;
+
     setMessage("사진에서 바코드를 찾는 중...");
     if (scannerRef.current?.isScanning) {
       await scannerRef.current.stop().catch(() => undefined);
@@ -331,20 +349,37 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       setZoomRange(null);
     }
 
-    const imageScanner = new Html5Qrcode(SCANNER_ID, {
-      formatsToSupport: PRODUCT_BARCODE_FORMATS,
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true
-      },
-      verbose: false
-    });
+    webScannerLoadingAttemptRef.current = scanAttempt;
+    setWebScannerLoading(true);
+
+    let imageScanner: WebBarcodeScanner;
+    try {
+      await preloadWebBarcodeScanner();
+      if (!mountedRef.current || scanAttempt !== scanAttemptRef.current) return;
+      imageScanner = await createWebBarcodeScanner(SCANNER_ID);
+      if (!mountedRef.current || scanAttempt !== scanAttemptRef.current) return;
+    } catch {
+      if (mountedRef.current && scanAttempt === scanAttemptRef.current) {
+        setMessage("스캐너 기능을 불러오지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.");
+      }
+      return;
+    } finally {
+      if (webScannerLoadingAttemptRef.current === scanAttempt) {
+        webScannerLoadingAttemptRef.current = null;
+        if (mountedRef.current) setWebScannerLoading(false);
+      }
+    }
+
     scannerRef.current = imageScanner;
 
     try {
       const result = await imageScanner.scanFileV2(file, false);
+      if (!mountedRef.current || scanAttempt !== scanAttemptRef.current) return;
       await handleBarcode(result.decodedText);
     } catch {
-      setMessage("사진에서 바코드를 찾지 못했습니다. 바코드가 화면을 크게 차지하도록 다시 촬영해 주세요.");
+      if (mountedRef.current && scanAttempt === scanAttemptRef.current) {
+        setMessage("사진에서 바코드를 찾지 못했습니다. 바코드가 화면을 크게 차지하도록 다시 촬영해 주세요.");
+      }
     }
   }
 
@@ -443,11 +478,11 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
               ) : null}
 
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <button type="button" onClick={startScanner} disabled={scannerActive || nativeScanBusy} className="primary-button inline-flex items-center justify-center gap-2">
+                <button type="button" onClick={startScanner} disabled={scannerActive || nativeScanBusy || webScannerLoading} className="primary-button inline-flex items-center justify-center gap-2">
                   <ScanLine size={20} />
-                  {nativeScanBusy ? "스캔 중..." : "바코드 스캔"}
+                  {nativeScanBusy ? "스캔 중..." : webScannerLoading ? "준비 중..." : "바코드 스캔"}
                 </button>
-                <button type="button" onClick={stopScanner} disabled={!scannerActive} className="secondary-button">
+                <button type="button" onClick={stopScanner} disabled={!scannerActive && !webScannerLoading} className="secondary-button">
                   중지
                 </button>
               </div>
@@ -462,12 +497,13 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
+                disabled={webScannerLoading}
                 className="secondary-button mt-3 inline-flex w-full items-center justify-center gap-2"
               >
                 <Camera size={19} />
                 사진으로 바코드 인식
               </button>
-              {message ? <div className="mt-3"><StatusMessage type={message.includes("실패") ? "error" : "info"}>{message}</StatusMessage></div> : null}
+              {message ? <div className="mt-3"><StatusMessage type={message.includes("실패") || message.includes("못했습니다") || message.includes("권한") ? "error" : "info"}>{message}</StatusMessage></div> : null}
             </div>
 
             <div className="panel p-4">
