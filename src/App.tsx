@@ -244,6 +244,7 @@ export default function App() {
   const goBackRef = useRef<() => boolean>(() => false);
   const routeLeaveHandlerRef = useRef<RouteLeaveHandler | null>(null);
   const routeLeaveInFlightRef = useRef<Promise<void> | null>(null);
+  const nativeAuthCallbackUrlRef = useRef<string | null>(null);
   const shouldReduceMotion = useReducedMotion();
 
   routeRef.current = route;
@@ -285,20 +286,28 @@ export default function App() {
     let listenerHandle: PluginListenerHandle | null = null;
     let cancelled = false;
 
+    async function handleNativeAuthUrl(url: string) {
+      if (
+        cancelled
+        || nativeAuthCallbackUrlRef.current === url
+        || !Services.AuthService.isNativeAuthCallbackUrl(url)
+      ) return;
+
+      nativeAuthCallbackUrlRef.current = url;
+      await Services.AuthService.closeNativeAuthBrowser();
+      const { data, error } = await Services.AuthService.handleOAuthCallbackUrl(url);
+      if (cancelled || error) return;
+
+      setSession(data.session);
+      if (Services.AuthService.isPasswordRecoveryUrl(url)) {
+        navigateRef.current({ name: "password-reset" }, { resetHistory: true });
+      }
+    }
+
     CapacitorApp
       .addListener("appUrlOpen", (event) => {
         const urlOpenEvent = event as URLOpenListenerEvent;
-        const url = urlOpenEvent.url;
-        if (!Services.AuthService.isNativeAuthCallbackUrl(url)) return;
-        void Services.AuthService.handleOAuthCallbackUrl(url).then(({ data, error }) => {
-          if (cancelled) return;
-          if (!error) {
-            setSession(data.session);
-            if (Services.AuthService.isPasswordRecoveryUrl(url)) {
-              navigateRef.current({ name: "password-reset" }, { resetHistory: true });
-            }
-          }
-        });
+        void handleNativeAuthUrl(urlOpenEvent.url);
       })
       .then((handle) => {
         if (cancelled) {
@@ -306,6 +315,12 @@ export default function App() {
         } else {
           listenerHandle = handle;
         }
+      })
+      .catch(() => undefined);
+
+    void CapacitorApp.getLaunchUrl()
+      .then((launchUrl) => {
+        if (launchUrl?.url) void handleNativeAuthUrl(launchUrl.url);
       })
       .catch(() => undefined);
 

@@ -81,8 +81,8 @@ export function LoginPage({ initialMode = "login", initialEmail = "", onOpenPriv
 
     if (oauthError) {
       setError(oauthError.message);
-      setOauthLoading(null);
     }
+    setOauthLoading(null);
   }
 
   async function handleSubmit(event: FormEvent) {

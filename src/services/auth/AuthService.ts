@@ -1,4 +1,5 @@
 import type { AuthChangeEvent, Provider, Session, SignInWithPasswordCredentials, SignUpWithPasswordCredentials, UserIdentity } from "@supabase/supabase-js";
+import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "../../lib/supabase";
 
@@ -69,14 +70,43 @@ function getPasswordResetRedirectUrl() {
   return `${window.location.origin}/password-reset`;
 }
 
-function signInWithOAuthProvider(provider: Provider, scopes?: string) {
-  return supabase.auth.signInWithOAuth({
+async function openNativeAuthBrowser(url: string | null) {
+  if (!url) {
+    return new Error("소셜 로그인 인증 주소를 확인하지 못했습니다.");
+  }
+
+  try {
+    const authUrl = new URL(url);
+    if (authUrl.protocol !== "https:") {
+      return new Error("안전하지 않은 소셜 로그인 인증 주소가 차단되었습니다.");
+    }
+  } catch {
+    return new Error("올바르지 않은 소셜 로그인 인증 주소입니다.");
+  }
+
+  try {
+    await Browser.open({ url, presentationStyle: "fullscreen" });
+    return null;
+  } catch {
+    return new Error("인앱 인증 화면을 열지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+}
+
+async function signInWithOAuthProvider(provider: Provider, scopes?: string) {
+  const isNative = Capacitor.isNativePlatform();
+  const result = await supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: getAuthRedirectUrl(),
-      scopes
+      scopes,
+      skipBrowserRedirect: isNative
     }
   });
+
+  if (result.error || !isNative) return result;
+
+  const browserError = await openNativeAuthBrowser(result.data.url);
+  return browserError ? { data: result.data, error: browserError } : result;
 }
 
 function getOAuthScopes(provider: Provider) {
@@ -89,7 +119,8 @@ function getOAuthScopes(provider: Provider) {
 function getOAuthOptions(provider: Provider) {
   return {
     redirectTo: getAuthRedirectUrl("account-link"),
-    scopes: getOAuthScopes(provider)
+    scopes: getOAuthScopes(provider),
+    skipBrowserRedirect: Capacitor.isNativePlatform()
   };
 }
 
@@ -194,6 +225,15 @@ export const AuthService = {
 
   },
 
+  async closeNativeAuthBrowser() {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      await Browser.close();
+    } catch {
+      // The callback can cold-launch the app without an active browser view.
+    }
+  },
+
   isNativeAuthCallbackUrl(url: string) {
     try {
       const callbackUrl = new URL(url);
@@ -234,12 +274,17 @@ export const AuthService = {
     return supabase.auth.getUserIdentities();
   },
 
-  linkOAuthIdentity(provider: "google" | "kakao") {
+  async linkOAuthIdentity(provider: "google" | "kakao") {
     localStorage.setItem(ACCOUNT_LINK_RETURN_STORAGE_KEY, provider);
-    return supabase.auth.linkIdentity({
+    const result = await supabase.auth.linkIdentity({
       provider,
       options: getOAuthOptions(provider)
     });
+
+    if (result.error || !Capacitor.isNativePlatform()) return result;
+
+    const browserError = await openNativeAuthBrowser(result.data.url);
+    return browserError ? { data: result.data, error: browserError } : result;
   },
 
   unlinkIdentity(identity: UserIdentity) {
