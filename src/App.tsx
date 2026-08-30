@@ -811,11 +811,11 @@ export default function App() {
       <OfflineBanner />
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-2">
-          <div className="flex min-w-0 flex-1 items-center gap-0">
-            <TopMenu open={menuOpen} role={profileRole} staffPermissions={staffPermissions} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
-            <img src="/stockly-logo.png" alt="Stockly" className="ml-2 h-10 w-auto min-w-0 shrink-0 object-contain sm:h-12" />
+          <div className="flex min-w-0 items-center gap-0">
+            <img src="/stockly-logo.png" alt="Stockly" className="h-10 w-auto min-w-0 shrink-0 object-contain sm:h-12" />
             <RoleBadge role={profileRole} />
           </div>
+          <TopMenu open={menuOpen} role={profileRole} staffPermissions={staffPermissions} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
         </div>
       </header>
 
