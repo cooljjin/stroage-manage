@@ -28,6 +28,7 @@ test("iOS Apple login uses native AuthenticationServices and exchanges its ident
   assert.match(nativeApple, /authorize\(\{ nonce: hashedNonce \}\)/);
   assert.match(authService, /const existingMetadata = result\.data\.user\.user_metadata \?\? \{\}/);
   assert.match(authService, /if \(!existingMetadata\.full_name && fullName\)/);
+  assert.match(authService, /async closeNativeAuthBrowser\(\) \{[\s\S]*await Browser\.close\(\)/);
   assert.match(nativePlugin, /DispatchQueue\.main\.async/);
   assert.match(nativePlugin, /ASAuthorizationAppleIDProvider/);
   assert.match(nativePlugin, /request\.nonce/);

@@ -270,6 +270,15 @@ export const AuthService = {
 
   },
 
+  async closeNativeAuthBrowser() {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      await Browser.close();
+    } catch {
+      // The callback can cold-launch the app without an active browser view.
+    }
+  },
+
   isNativeAuthCallbackUrl(url: string) {
     try {
       const callbackUrl = new URL(url);
