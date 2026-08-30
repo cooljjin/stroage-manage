@@ -1,4 +1,5 @@
 import type { AuthChangeEvent, Provider, Session, SignInWithPasswordCredentials, SignUpWithPasswordCredentials, UserIdentity } from "@supabase/supabase-js";
+import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "../../lib/supabase";
 
@@ -69,14 +70,45 @@ function getPasswordResetRedirectUrl() {
   return `${window.location.origin}/password-reset`;
 }
 
-function signInWithOAuthProvider(provider: Provider, scopes?: string) {
-  return supabase.auth.signInWithOAuth({
+async function signInWithOAuthProvider(provider: Provider, scopes?: string) {
+  const result = await supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: getAuthRedirectUrl(),
-      scopes
+      scopes,
+      queryParams: getOAuthQueryParams(provider),
+      skipBrowserRedirect: Capacitor.isNativePlatform()
     }
   });
+
+  if (result.error || !Capacitor.isNativePlatform()) {
+    return result;
+  }
+
+  if (!result.data.url) {
+    return {
+      ...result,
+      error: new Error("OAuth 인증 URL을 생성하지 못했습니다.")
+    };
+  }
+
+  try {
+    await Browser.open({ url: result.data.url });
+    return result;
+  } catch (error) {
+    return {
+      ...result,
+      error: error instanceof Error ? error : new Error("인증 브라우저를 열지 못했습니다.")
+    };
+  }
+}
+
+function getOAuthQueryParams(provider: Provider) {
+  if (provider === "google" || provider === "kakao") {
+    return { prompt: "select_account" };
+  }
+
+  return undefined;
 }
 
 function getOAuthScopes(provider: Provider) {
@@ -89,7 +121,8 @@ function getOAuthScopes(provider: Provider) {
 function getOAuthOptions(provider: Provider) {
   return {
     redirectTo: getAuthRedirectUrl("account-link"),
-    scopes: getOAuthScopes(provider)
+    scopes: getOAuthScopes(provider),
+    queryParams: getOAuthQueryParams(provider)
   };
 }
 
@@ -183,6 +216,10 @@ export const AuthService = {
         data: { session: null, user: null },
         error: new Error("PKCE 인증 코드가 없거나 허용되지 않은 토큰 정보가 포함되어 있습니다.")
       };
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      await Browser.close().catch(() => undefined);
     }
 
     localStorage.removeItem(NATIVE_AUTH_STATE_STORAGE_KEY);
