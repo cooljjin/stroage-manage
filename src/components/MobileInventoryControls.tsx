@@ -39,6 +39,7 @@ type Props = {
   onRebaseAutoBaseline: (location: Location) => void;
   onInventoryCheck: (location: Location) => void;
   onOpenKeypad: (target: "warehouse" | "store") => void;
+  onSave: () => void;
   onUndo: () => void;
   onRedo: () => void;
 };
@@ -80,6 +81,7 @@ export function MobileInventoryControls({
   onRebaseAutoBaseline,
   onInventoryCheck,
   onOpenKeypad,
+  onSave,
   onUndo,
   onRedo
 }: Props) {
@@ -330,6 +332,14 @@ export function MobileInventoryControls({
           {saveState === "error" ? <span className="block w-full truncate font-semibold text-rose-700 dark:text-rose-300" title={saveError ?? "저장하지 못했습니다."}>{saveError ?? "저장하지 못했습니다."}</span> : null}
           {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{savedAtLabel ? `편집 시점 ${savedAtLabel}` : mode === "auto" ? "위로 밀면 입고, 아래로 밀면 출고" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요."}</span> : null}
         </div>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={disabled || saveState === "dragging" || saveState === "pending"}
+          className="primary-button inline-flex min-h-10 items-center justify-center px-3 py-1 text-sm font-extrabold sm:min-h-11"
+        >
+          {saveState === "pending" ? "저장 중..." : "저장"}
+        </button>
         <button type="button" onClick={onUndo} disabled={disabled || !canUndo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="뒤로가기" title="뒤로가기">
           <Undo2 size={18} />
         </button>
