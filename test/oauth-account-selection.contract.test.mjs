@@ -9,11 +9,11 @@ test("iOS Kakao login requires reauthentication while account linking keeps acco
 
   assert.match(
     authService,
-    /function getOAuthAccountSelectionQueryParams\(provider: Provider\) \{[\s\S]*provider === "google" \|\| provider === "kakao"[\s\S]*prompt: "select_account"/
+    /function getOAuthQueryParams\(provider: Provider\) \{[\s\S]*provider === "google" \|\| provider === "kakao"[\s\S]*prompt: "select_account"/
   );
   assert.match(
     authService,
-    /function getOAuthLoginQueryParams\(provider: Provider\) \{[\s\S]*provider === "kakao" && Capacitor\.getPlatform\(\) === "ios"[\s\S]*prompt: "login"[\s\S]*getOAuthAccountSelectionQueryParams\(provider\)/
+    /function getOAuthLoginQueryParams\(provider: Provider\) \{[\s\S]*provider === "kakao" && Capacitor\.getPlatform\(\) === "ios"[\s\S]*prompt: "login"[\s\S]*getOAuthQueryParams\(provider\)/
   );
   assert.match(
     authService,
@@ -21,6 +21,6 @@ test("iOS Kakao login requires reauthentication while account linking keeps acco
   );
   assert.match(
     authService,
-    /function getOAuthOptions\(provider: Provider\) \{[\s\S]*queryParams: getOAuthAccountSelectionQueryParams\(provider\)/
+    /function getOAuthOptions\(provider: Provider\) \{[\s\S]*queryParams: getOAuthQueryParams\(provider\)/
   );
 });
