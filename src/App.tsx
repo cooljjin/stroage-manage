@@ -6,6 +6,7 @@ import { ArrowLeft, KeyRound, Plus } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RoleBadge, TopMenu } from "./components/TopMenu";
+import { StocklyCharacterMenuButton } from "./components/StocklyMenuButton";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PasswordResetPage } from "./pages/PasswordResetPage";
@@ -812,6 +813,7 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 items-center gap-0">
+            <StocklyCharacterMenuButton open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
             <img src="/stockly-logo.png" alt="Stockly" className="h-10 w-auto min-w-0 shrink-0 object-contain sm:h-12" />
             <RoleBadge role={profileRole} />
           </div>
