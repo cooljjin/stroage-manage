@@ -71,47 +71,40 @@ function getPasswordResetRedirectUrl() {
   return `${window.location.origin}/password-reset`;
 }
 
-async function openNativeAuthBrowser(url: string | null) {
-  if (!url) {
-    return new Error("소셜 로그인 인증 주소를 확인하지 못했습니다.");
-  }
-
-  try {
-    const authUrl = new URL(url);
-    if (authUrl.protocol !== "https:") {
-      return new Error("안전하지 않은 소셜 로그인 인증 주소가 차단되었습니다.");
-    }
-  } catch {
-    return new Error("올바르지 않은 소셜 로그인 인증 주소입니다.");
-  }
-
-  try {
-    await Browser.open({ url, presentationStyle: "fullscreen" });
-    return null;
-  } catch {
-    return new Error("인앱 인증 화면을 열지 못했습니다. 잠시 후 다시 시도해 주세요.");
-  }
-}
-
 async function signInWithOAuthProvider(provider: Provider, scopes?: string) {
-  const isNative = Capacitor.isNativePlatform();
   const result = await supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: getAuthRedirectUrl(),
       scopes,
       queryParams: getOAuthLoginQueryParams(provider),
-      skipBrowserRedirect: isNative
+      skipBrowserRedirect: Capacitor.isNativePlatform()
     }
   });
 
-  if (result.error || !isNative) return result;
+  if (result.error || !Capacitor.isNativePlatform()) {
+    return result;
+  }
 
-  const browserError = await openNativeAuthBrowser(result.data.url);
-  return browserError ? { data: result.data, error: browserError } : result;
+  if (!result.data.url) {
+    return {
+      ...result,
+      error: new Error("OAuth 인증 URL을 생성하지 못했습니다.")
+    };
+  }
+
+  try {
+    await Browser.open({ url: result.data.url });
+    return result;
+  } catch (error) {
+    return {
+      ...result,
+      error: error instanceof Error ? error : new Error("인증 브라우저를 열지 못했습니다.")
+    };
+  }
 }
 
-function getOAuthAccountSelectionQueryParams(provider: Provider) {
+function getOAuthQueryParams(provider: Provider) {
   if (provider === "google" || provider === "kakao") {
     return { prompt: "select_account" };
   }
@@ -124,7 +117,7 @@ function getOAuthLoginQueryParams(provider: Provider) {
     return { prompt: "login" };
   }
 
-  return getOAuthAccountSelectionQueryParams(provider);
+  return getOAuthQueryParams(provider);
 }
 
 async function signInWithNativeApple() {
@@ -167,7 +160,7 @@ function getOAuthOptions(provider: Provider) {
   return {
     redirectTo: getAuthRedirectUrl("account-link"),
     scopes: getOAuthScopes(provider),
-    queryParams: getOAuthAccountSelectionQueryParams(provider),
+    queryParams: getOAuthQueryParams(provider),
     skipBrowserRedirect: Capacitor.isNativePlatform()
   };
 }
@@ -264,6 +257,10 @@ export const AuthService = {
       };
     }
 
+    if (Capacitor.isNativePlatform()) {
+      await Browser.close().catch(() => undefined);
+    }
+
     localStorage.removeItem(NATIVE_AUTH_STATE_STORAGE_KEY);
     const result = await supabase.auth.exchangeCodeForSession(code);
     if (result.error) {
@@ -271,15 +268,6 @@ export const AuthService = {
     }
     return result;
 
-  },
-
-  async closeNativeAuthBrowser() {
-    if (!Capacitor.isNativePlatform()) return;
-    try {
-      await Browser.close();
-    } catch {
-      // The callback can cold-launch the app without an active browser view.
-    }
   },
 
   isNativeAuthCallbackUrl(url: string) {
@@ -333,9 +321,22 @@ export const AuthService = {
     });
 
     if (result.error || !Capacitor.isNativePlatform()) return result;
+    if (!result.data.url) {
+      return {
+        ...result,
+        error: new Error("OAuth 인증 URL을 생성하지 못했습니다.")
+      };
+    }
 
-    const browserError = await openNativeAuthBrowser(result.data.url);
-    return browserError ? { data: result.data, error: browserError } : result;
+    try {
+      await Browser.open({ url: result.data.url });
+      return result;
+    } catch (error) {
+      return {
+        ...result,
+        error: error instanceof Error ? error : new Error("인증 브라우저를 열지 못했습니다.")
+      };
+    }
   },
 
   unlinkIdentity(identity: UserIdentity) {
