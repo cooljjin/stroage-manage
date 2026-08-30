@@ -1730,6 +1730,7 @@ export function InventoryOperationPage({
             onRebaseAutoBaseline={handleMobileAutoBaselineRebase}
             onInventoryCheck={(targetLocation) => void recordMobileInventoryCheck(targetLocation)}
             onOpenKeypad={setMobileKeypadTarget}
+            onSave={() => void finalizeMobileSession()}
             onUndo={() => handleMobileHistoryNavigation("undo")}
             onRedo={() => handleMobileHistoryNavigation("redo")}
           />
