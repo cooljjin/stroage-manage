@@ -1,6 +1,7 @@
 import type { AuthChangeEvent, Provider, Session, SignInWithPasswordCredentials, SignUpWithPasswordCredentials, UserIdentity } from "@supabase/supabase-js";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
+import { requestNativeAppleCredential } from "../../lib/nativeAppleSignIn";
 import { supabase } from "../../lib/supabase";
 
 export type { AuthChangeEvent, Session, User, UserIdentity } from "@supabase/supabase-js";
@@ -99,6 +100,7 @@ async function signInWithOAuthProvider(provider: Provider, scopes?: string) {
     options: {
       redirectTo: getAuthRedirectUrl(),
       scopes,
+      queryParams: getOAuthLoginQueryParams(provider),
       skipBrowserRedirect: isNative
     }
   });
@@ -107,6 +109,51 @@ async function signInWithOAuthProvider(provider: Provider, scopes?: string) {
 
   const browserError = await openNativeAuthBrowser(result.data.url);
   return browserError ? { data: result.data, error: browserError } : result;
+}
+
+function getOAuthAccountSelectionQueryParams(provider: Provider) {
+  if (provider === "google" || provider === "kakao") {
+    return { prompt: "select_account" };
+  }
+
+  return undefined;
+}
+
+function getOAuthLoginQueryParams(provider: Provider) {
+  if (provider === "kakao" && Capacitor.getPlatform() === "ios") {
+    return { prompt: "login" };
+  }
+
+  return getOAuthAccountSelectionQueryParams(provider);
+}
+
+async function signInWithNativeApple() {
+  const credential = await requestNativeAppleCredential();
+  if ("cancelled" in credential) {
+    return {
+      data: { session: null, user: null },
+      error: null
+    };
+  }
+
+  const result = await supabase.auth.signInWithIdToken({
+    provider: "apple",
+    token: credential.identityToken,
+    nonce: credential.nonce
+  });
+  if (result.error || !result.data.user) return result;
+
+  const existingMetadata = result.data.user.user_metadata ?? {};
+  const fullName = [credential.givenName, credential.familyName].filter(Boolean).join(" ");
+  const profileData: Record<string, string> = {};
+  if (!existingMetadata.full_name && fullName) profileData.full_name = fullName;
+  if (!existingMetadata.given_name && credential.givenName) profileData.given_name = credential.givenName;
+  if (!existingMetadata.family_name && credential.familyName) profileData.family_name = credential.familyName;
+  if (Object.keys(profileData).length > 0) {
+    await supabase.auth.updateUser({ data: profileData });
+  }
+
+  return result;
 }
 
 function getOAuthScopes(provider: Provider) {
@@ -120,6 +167,7 @@ function getOAuthOptions(provider: Provider) {
   return {
     redirectTo: getAuthRedirectUrl("account-link"),
     scopes: getOAuthScopes(provider),
+    queryParams: getOAuthAccountSelectionQueryParams(provider),
     skipBrowserRedirect: Capacitor.isNativePlatform()
   };
 }
@@ -263,6 +311,9 @@ export const AuthService = {
   },
 
   loginWithApple() {
+    if (Capacitor.getPlatform() === "ios") {
+      return signInWithNativeApple();
+    }
     return signInWithOAuthProvider("apple");
   },
 
