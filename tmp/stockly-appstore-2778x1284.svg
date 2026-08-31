@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2778" height="1284" viewBox="0 0 2778 1284">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7f8ff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d1d0ff" stop-opacity="0.68"/>
+      <stop offset="1" stop-color="#d1d0ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#171750" flood-opacity="0.16"/>
+    </filter>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#5757ff" flood-opacity="0.16"/>
+    </filter>
+    <clipPath id="screenClip">
+      <rect x="1920" y="104" width="520" height="1126" rx="42"/>
+    </clipPath>
+  </defs>
+
+  <rect width="2778" height="1284" fill="url(#bg)"/>
+  <ellipse cx="2225" cy="610" rx="760" ry="660" fill="url(#glow)"/>
+  <circle cx="2760" cy="-40" r="390" fill="#e5e5ff" opacity="0.48"/>
+  <circle cx="1460" cy="1210" r="330" fill="#f1f1ff" opacity="0.85"/>
+  <path d="M1450 110C1720 40 1990 85 2170 220" fill="none" stroke="#e5e5ff" stroke-width="3" opacity="0.8"/>
+
+  <image x="188" y="112" width="370" height="152" preserveAspectRatio="xMidYMid meet" href="file:///Users/jinkim/Documents/storage manage/public/stockly-login-logo.png" xlink:href="file:///Users/jinkim/Documents/storage manage/public/stockly-login-logo.png"/>
+
+  <text x="190" y="382" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="36" font-weight="700" fill="#5757ff">통합 매장 재고관리 솔루션</text>
+  <text x="190" y="535" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="108" font-weight="800" letter-spacing="-3" fill="#081238">재고 확인부터</text>
+  <text x="190" y="665" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="108" font-weight="800" letter-spacing="-3" fill="#081238">발주까지,</text>
+  <text x="190" y="795" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="108" font-weight="800" letter-spacing="-3" fill="#5757ff">한곳에서</text>
+  <text x="194" y="884" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="40" font-weight="500" fill="#475569">매장 재고 업무를 한 화면에서 빠르게 관리하세요.</text>
+
+  <g font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="28" font-weight="700">
+    <rect x="190" y="995" width="190" height="62" rx="31" fill="#e5e5ff"/>
+    <text x="285" y="1036" text-anchor="middle" fill="#4948f7">재고 현황</text>
+    <rect x="402" y="995" width="210" height="62" rx="31" fill="#e5e5ff"/>
+    <text x="507" y="1036" text-anchor="middle" fill="#4948f7">바코드 스캔</text>
+    <rect x="634" y="995" width="190" height="62" rx="31" fill="#e5e5ff"/>
+    <text x="729" y="1036" text-anchor="middle" fill="#4948f7">발주 관리</text>
+  </g>
+  <text x="194" y="1155" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="28" font-weight="600" fill="#64748b">발주부터 입고, 운영 기록까지 한 번에.</text>
+
+  <rect x="1762" y="70" width="850" height="1170" rx="58" fill="#ffffff" stroke="#e5e5ff" stroke-width="4" filter="url(#cardShadow)"/>
+  <rect x="1888" y="72" width="585" height="1180" rx="68" fill="#081238" opacity="0.09" filter="url(#softShadow)"/>
+  <rect x="1920" y="104" width="520" height="1126" rx="42" fill="#ffffff"/>
+  <image x="1920" y="104" width="520" height="1126" preserveAspectRatio="xMidYMid meet" clip-path="url(#screenClip)" href="file:///Users/jinkim/Downloads/IMG_6534.PNG" xlink:href="file:///Users/jinkim/Downloads/IMG_6534.PNG"/>
+  <rect x="1920" y="104" width="520" height="1126" rx="42" fill="none" stroke="#d1d0ff" stroke-width="3"/>
+
+  <g font-family="Apple SD Gothic Neo, Inter, sans-serif">
+    <rect x="1550" y="285" width="208" height="70" rx="35" fill="#ffffff" stroke="#d1d0ff" stroke-width="3" filter="url(#softShadow)"/>
+    <circle cx="1590" cy="320" r="12" fill="#5757ff"/>
+    <text x="1620" y="330" font-size="28" font-weight="700" fill="#29288f">재고 현황</text>
+    <rect x="2488" y="440" width="220" height="70" rx="35" fill="#ffffff" stroke="#d1d0ff" stroke-width="3" filter="url(#softShadow)"/>
+    <circle cx="2528" cy="475" r="12" fill="#7c7bff"/>
+    <text x="2558" y="485" font-size="28" font-weight="700" fill="#29288f">바코드 스캔</text>
+    <rect x="1496" y="895" width="206" height="70" rx="35" fill="#ffffff" stroke="#d1d0ff" stroke-width="3" filter="url(#softShadow)"/>
+    <circle cx="1536" cy="930" r="12" fill="#4948f7"/>
+    <text x="1566" y="940" font-size="28" font-weight="700" fill="#29288f">발주 관리</text>
+  </g>
+</svg>

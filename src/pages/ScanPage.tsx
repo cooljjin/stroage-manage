@@ -1,11 +1,12 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Camera, Search, ScanLine, ZoomIn } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { useMobileViewport } from "../hooks/useMobileViewport";
-import { isNativeBarcodeScannerAvailable, scanNativeBarcode } from "../lib/nativeBarcodeScanner";
+import { normalizeMobileScanMode, type MobileScanMode } from "../lib/mobileInventory";
+import { isNativeBarcodeScannerAvailable, scanNativeBarcode, stopNativeBarcode } from "../lib/nativeBarcodeScanner";
+import { resolveProductByBarcode, searchResolvedProducts } from "../lib/resolvedProducts";
 import { createWebBarcodeScanner, preloadWebBarcodeScanner, webBarcodeCameraErrorMessage, type WebBarcodeScanner } from "../lib/webBarcodeScanner";
-import * as Services from "../services";
 import type { AppRoute, MobileInventoryEntryMode, Product } from "../types/domain";
 
 type Props = {
@@ -18,6 +19,8 @@ const SCANNER_ID = "barcode-scanner";
 const PENDING_SCAN_STORAGE_KEY = "store-inventory-pending-scan";
 const PENDING_SCAN_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_CAMERA_ZOOM = 2.5;
+const NATIVE_SCANNER_PENDING_CLASS = "native-scanner-pending";
+const SCAN_MODE_STORAGE_KEY = "store-inventory-scan-mode";
 
 type FocusMediaTrackConstraints = MediaTrackConstraints & {
   advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
@@ -39,6 +42,15 @@ function savePendingScanBarcode(barcode: string, storeId: string, initialInvento
 
 function clearPendingScanBarcode() {
   localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+}
+
+function readStoredScanMode(): MobileScanMode {
+  if (typeof window === "undefined") return "auto";
+  try {
+    return normalizeMobileScanMode(window.localStorage.getItem(SCAN_MODE_STORAGE_KEY));
+  } catch {
+    return "auto";
+  }
 }
 
 function consumePendingScanBarcode(storeId: string): PendingScanEntry | null {
@@ -67,18 +79,7 @@ function getBarcodeCandidates(barcode: string): string[] {
 }
 
 async function findProductByBarcode(barcode: string, currentStoreId: string): Promise<{ product: Product | null; errorMessage: string }> {
-  const barcodeCandidates = getBarcodeCandidates(barcode);
-  const { data, error } = await Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).eq("is_active", true).limit(1).maybeSingle();
-  if (error) return { product: null, errorMessage: error.message };
-  if (data) return { product: data as Product, errorMessage: "" };
-
-  const { data: barcodeData, error: barcodeError } = await Services.DatabaseService.select("product_barcodes", "product_id").eq("store_id", currentStoreId).in("barcode", barcodeCandidates).limit(1).maybeSingle();
-  if (barcodeError) return { product: null, errorMessage: barcodeError.message };
-  if (!barcodeData) return { product: null, errorMessage: "" };
-
-  const { data: aliasProduct, error: aliasError } = await Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).eq("id", barcodeData.product_id).eq("is_active", true).maybeSingle();
-  if (aliasError) return { product: null, errorMessage: aliasError.message };
-  return { product: (aliasProduct as Product | null) ?? null, errorMessage: "" };
+  return resolveProductByBarcode(currentStoreId, getBarcodeCandidates(barcode));
 }
 
 export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
@@ -91,7 +92,8 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const [zoom, setZoom] = useState(DEFAULT_CAMERA_ZOOM);
   const [nativeScanBusy, setNativeScanBusy] = useState(false);
   const [webScannerLoading, setWebScannerLoading] = useState(false);
-  const [auditModeEnabled, setAuditModeEnabled] = useState(false);
+  const [nativeScanActive, setNativeScanActive] = useState(false);
+  const [scanMode, setScanMode] = useState<MobileScanMode>(() => readStoredScanMode());
   const isMobileViewport = useMobileViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
   const nativeScannerAvailable = useMemo(() => isNativeBarcodeScannerAvailable(), []);
@@ -104,17 +106,24 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   const scanAttemptRef = useRef(0);
   const webScannerLoadingAttemptRef = useRef<number | null>(null);
   const completedNavigationRef = useRef(false);
+  const scanModeRef = useRef<MobileScanMode>(scanMode);
   const canWebScan = useMemo(() => "mediaDevices" in navigator, []);
   const canScan = canWebScan || nativeScannerAvailable;
 
+  useLayoutEffect(() => {
+    if (!nativeScannerAvailable || showFallbackUi) return;
+    document.body.classList.add(NATIVE_SCANNER_PENDING_CLASS);
+    return () => document.body.classList.remove(NATIVE_SCANNER_PENDING_CLASS);
+  }, [nativeScannerAvailable, showFallbackUi]);
+
   useEffect(() => {
-    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       scanAttemptRef.current += 1;
       if (scannerRef.current?.isScanning) {
         scannerRef.current.stop().catch(() => undefined);
       }
+      void stopNativeBarcode();
     };
   }, []);
 
@@ -123,7 +132,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     void preloadWebBarcodeScanner().catch(() => undefined);
   }, [nativeScannerAvailable]);
 
-  const handleBarcode = useCallback(async (barcode: string, initialInventoryMode: MobileInventoryEntryMode = auditModeEnabled && mobileTouchEnabled && isMobileViewport ? "audit" : "auto") => {
+  const handleBarcode = useCallback(async (barcode: string, initialInventoryMode: MobileInventoryEntryMode = scanModeRef.current === "audit" && mobileTouchEnabled && isMobileViewport ? "audit" : "auto") => {
     if (barcodeHandlingRef.current) return;
     barcodeHandlingRef.current = true;
     savePendingScanBarcode(barcode, currentStoreId, initialInventoryMode);
@@ -151,10 +160,12 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       completedNavigationRef.current = true;
       navigate({ name: "register", barcode });
     }
-  }, [auditModeEnabled, currentStoreId, isMobileViewport, mobileTouchEnabled, navigate]);
+  }, [currentStoreId, isMobileViewport, mobileTouchEnabled, navigate]);
 
   const startWebScanner = useCallback(async (initialMessage = "", scanAttempt = scanAttemptRef.current) => {
     if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
+    document.body.classList.remove(NATIVE_SCANNER_PENDING_CLASS);
+    setNativeScanActive(false);
     setShowFallbackUi(true);
     setMessage(initialMessage);
     if (!canWebScan) {
@@ -252,35 +263,43 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     }
 
     if (nativeScannerAvailable) {
+      setShowFallbackUi(false);
+      document.body.classList.add(NATIVE_SCANNER_PENDING_CLASS);
+      setNativeScanActive(true);
       setNativeScanBusy(true);
-      const result = await scanNativeBarcode();
-      if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
-      setNativeScanBusy(false);
+      try {
+        const result = await scanNativeBarcode();
+        if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
 
-      if (result.status === "success") {
-        await handleBarcode(result.barcode);
-        return;
+        if (result.status === "success") {
+          await handleBarcode(result.barcode, scanModeRef.current === "audit" ? "audit" : "auto");
+          return;
+        }
+
+        if (result.status === "register") {
+          completedNavigationRef.current = true;
+          navigate({ name: "register", barcode: "" });
+          return;
+        }
+
+        if (result.status === "cancelled") {
+          completedNavigationRef.current = true;
+          navigate({ name: "home" });
+          return;
+        }
+
+        if (!result.fallbackToWeb) {
+          setShowFallbackUi(true);
+          setMessage(result.message);
+          return;
+        }
+
+        await startWebScanner(result.message, scanAttempt);
+      } finally {
+        document.body.classList.remove(NATIVE_SCANNER_PENDING_CLASS);
+        setNativeScanActive(false);
+        setNativeScanBusy(false);
       }
-
-      if (result.status === "register") {
-        completedNavigationRef.current = true;
-        navigate({ name: "register", barcode: "" });
-        return;
-      }
-
-      if (result.status === "cancelled") {
-        completedNavigationRef.current = true;
-        navigate({ name: "home" });
-        return;
-      }
-
-      if (!result.fallbackToWeb) {
-        setShowFallbackUi(true);
-        setMessage(result.message);
-        return;
-      }
-
-      await startWebScanner(result.message, scanAttempt);
       return;
     }
 
@@ -298,15 +317,14 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       return () => window.clearTimeout(timer);
     }
 
-    if (!nativeScannerAvailable) return;
-
-    const autoStartKey = scanLaunchId ?? "native-initial";
+    const autoStartKey = nativeScannerAvailable ? (scanLaunchId ?? "native-initial") : "web-initial";
     if (lastAutoStartKeyRef.current === autoStartKey) return;
     lastAutoStartKeyRef.current = autoStartKey;
+    const launchDelay = nativeScannerAvailable ? 0 : 250;
     const timer = window.setTimeout(() => {
       if (!mountedRef.current || completedNavigationRef.current) return;
       void startScanner();
-    }, 250);
+    }, launchDelay);
 
     return () => window.clearTimeout(timer);
   }, [currentStoreId, handleBarcode, nativeScannerAvailable, scanLaunchId, startScanner]);
@@ -315,8 +333,12 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     scanAttemptRef.current += 1;
     webScannerLoadingAttemptRef.current = null;
     setWebScannerLoading(false);
+    if (nativeScanActive) await stopNativeBarcode();
     if (scannerRef.current?.isScanning) await scannerRef.current.stop().catch(() => undefined);
     barcodeHandlingRef.current = false;
+    document.body.classList.remove(NATIVE_SCANNER_PENDING_CLASS);
+    setNativeScanActive(false);
+    setNativeScanBusy(false);
     setScannerActive(false);
     setZoomRange(null);
   }
@@ -389,64 +411,104 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (!keyword) return;
 
     setLoadingSearch(true);
-    const { data, error } = await Services.DatabaseService.select("products", "*")
-      .eq("store_id", currentStoreId)
-      .or(`name.ilike.%${keyword}%,barcode.ilike.%${keyword}%`)
-      .eq("is_active", true)
-      .order("name", { ascending: true })
-      .limit(20);
+    const { products, errorMessage } = await searchResolvedProducts(currentStoreId, keyword, 20);
 
-    if (error) {
-      setMessage(error.message);
+    if (errorMessage) {
+      setMessage(errorMessage);
       setResults([]);
     } else {
-      const productsById = new Map<string, Product>();
-      ((data ?? []) as Product[]).forEach((product) => productsById.set(product.id, product));
-
-      const { data: barcodeRows, error: barcodeError } = await Services.DatabaseService.select("product_barcodes", "product_id").eq("store_id", currentStoreId).ilike("barcode", `%${keyword}%`).limit(20);
-      if (barcodeError) {
-        setMessage(barcodeError.message);
-      } else {
-        const missingProductIds = [...new Set(((barcodeRows ?? []) as Array<{ product_id: string }>).map((row) => row.product_id).filter((id) => !productsById.has(id)))];
-        if (missingProductIds.length > 0) {
-          const { data: aliasProducts, error: aliasProductsError } = await Services.DatabaseService.select("products", "*").eq("store_id", currentStoreId).in("id", missingProductIds).eq("is_active", true);
-          if (aliasProductsError) {
-            setMessage(aliasProductsError.message);
-          } else {
-            ((aliasProducts ?? []) as Product[]).forEach((product) => productsById.set(product.id, product));
-          }
-        }
-      }
-
-      setResults([...productsById.values()].sort((left, right) => left.name.localeCompare(right.name, "ko")).slice(0, 20));
+      setResults(products);
     }
     setLoadingSearch(false);
   }
 
+  function updateScanMode(mode: MobileScanMode) {
+    scanModeRef.current = mode;
+    setScanMode(mode);
+    try {
+      window.localStorage.setItem(SCAN_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Keep the current session selection even when storage is unavailable.
+    }
+  }
+
   return (
-    <section>
-      {!showFallbackUi ? (
-        <div className="grid min-h-[55dvh] place-items-center">
-          <StatusMessage>{nativeScanBusy ? "카메라를 여는 중..." : "스캔 화면으로 이동하는 중..."}</StatusMessage>
+    <>
+      {nativeScanActive ? (
+        <div className="native-scanner-overlay" role="dialog" aria-modal="true" aria-label="네이티브 바코드 스캔">
+          <div className="native-scanner-mode-panel">
+            <p className="text-sm font-extrabold text-white">스캔 모드</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={scanMode === "auto"}
+                aria-label="입고모드"
+                onClick={() => updateScanMode("auto")}
+                className={`native-scanner-mode-switch ${scanMode === "auto" ? "native-scanner-mode-switch-active" : ""}`}
+              >
+                입고모드
+              </button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={scanMode === "audit"}
+                aria-label="실사모드"
+                onClick={() => updateScanMode("audit")}
+                className={`native-scanner-mode-switch ${scanMode === "audit" ? "native-scanner-mode-switch-active" : ""}`}
+              >
+                실사모드
+              </button>
+            </div>
+          </div>
+          <div className="native-scanner-bottom-panel">
+            <p className="rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
+              바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
+            </p>
+            <button type="button" onClick={() => void stopScanner()} className="secondary-button w-full bg-white/95">
+              스캔 중지
+            </button>
+          </div>
         </div>
-      ) : (
-        <>
-          <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
+      ) : null}
+      <section className={showFallbackUi ? undefined : "native-scanner-fallback-hidden"} aria-hidden={!showFallbackUi}>
+      <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
 
           {isMobileViewport && mobileTouchEnabled ? (
-            <label className="mb-4 flex items-center justify-between gap-3 rounded-md border border-brand-200 bg-brand-50 px-3 py-3 text-sm font-bold text-brand-900 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-100">
-              <span>
-                실사모드
-                <span className="mt-0.5 block text-xs font-semibold text-brand-700/80 dark:text-brand-200/80">등록 상품을 열 때 실사 화면으로 시작합니다.</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={auditModeEnabled}
-                onChange={(event) => setAuditModeEnabled(event.target.checked)}
-                className="h-6 w-6 accent-brand-600"
-                aria-label="스캔 실사모드"
-              />
-            </label>
+            <div className="mb-4 grid gap-2 rounded-md border border-brand-200 bg-brand-50 px-3 py-3 text-sm font-bold text-brand-900 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-100">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  실사모드
+                  <span className="mt-0.5 block text-xs font-semibold text-brand-700/80 dark:text-brand-200/80">등록 상품을 열 때 실사 화면으로 시작합니다.</span>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={scanMode === "audit"}
+                  aria-label="실사모드"
+                  onClick={() => updateScanMode("audit")}
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${scanMode === "audit" ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}
+                >
+                  <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${scanMode === "audit" ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-brand-200/70 pt-2 dark:border-brand-800">
+                <span>
+                  입고모드
+                  <span className="mt-0.5 block text-xs font-semibold text-brand-700/80 dark:text-brand-200/80">등록 상품을 입고,사용 화면으로 시작합니다.</span>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={scanMode === "auto"}
+                  aria-label="입고모드"
+                  onClick={() => updateScanMode("auto")}
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${scanMode === "auto" ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}
+                >
+                  <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${scanMode === "auto" ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+              </div>
+            </div>
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
@@ -521,7 +583,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
                   <button
                     key={product.id}
                     type="button"
-                    onClick={() => navigate({ name: "operation", productId: product.id, initialInventoryMode: auditModeEnabled ? "audit" : "auto" })}
+                    onClick={() => navigate({ name: "operation", productId: product.id, initialInventoryMode: scanMode === "audit" ? "audit" : "auto" })}
                     className="w-full rounded-md border border-slate-200 bg-white p-3 text-left dark:border-slate-800 dark:bg-slate-900"
                   >
                     <span className="block font-semibold">{product.name}</span>
@@ -534,8 +596,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
               </div>
             </div>
           </div>
-        </>
-      )}
-    </section>
+      </section>
+    </>
   );
 }

@@ -1,0 +1,9 @@
+{
+	"appId": "com.jinkim.stockly",
+	"appName": "Stockly",
+	"webDir": "dist",
+	"packageClassList": [
+		"BarcodeScannerPlugin",
+		"AppPlugin"
+	]
+}

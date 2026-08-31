@@ -1,0 +1,163 @@
+const fs = require('fs');
+
+const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="778" height="1453" viewBox="0 0 778 1453">
+  <defs>
+    <linearGradient id="scene-bg" x1="0" y1="0" x2="0.95" y2="1">
+      <stop offset="0" stop-color="#171843"/>
+      <stop offset="0.52" stop-color="#29276E"/>
+      <stop offset="1" stop-color="#11132F"/>
+    </linearGradient>
+    <radialGradient id="character-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8E8BFF" stop-opacity="0.34"/>
+      <stop offset="0.65" stop-color="#6C6AFF" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#6C6AFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="stack-top" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B9B4FF"/>
+      <stop offset="0.45" stop-color="#7773FF"/>
+      <stop offset="1" stop-color="#4D48F5"/>
+    </linearGradient>
+    <linearGradient id="stack-middle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#BBB7FF"/>
+      <stop offset="0.45" stop-color="#7471FF"/>
+      <stop offset="1" stop-color="#4D49E9"/>
+    </linearGradient>
+    <linearGradient id="stack-bottom" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B2AEFF"/>
+      <stop offset="0.55" stop-color="#726EFF"/>
+      <stop offset="1" stop-color="#4F4BE2"/>
+    </linearGradient>
+    <linearGradient id="scan-line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#40E7D0" stop-opacity="0"/>
+      <stop offset="0.18" stop-color="#40E7D0"/>
+      <stop offset="0.5" stop-color="#FFFFFF"/>
+      <stop offset="0.82" stop-color="#AFAAFF"/>
+      <stop offset="1" stop-color="#AFAAFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="register-button" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#19CBD0"/>
+      <stop offset="1" stop-color="#06AFC1"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#090A25" flood-opacity="0.40"/>
+    </filter>
+    <filter id="line-glow" x="-20%" y="-600%" width="140%" height="1300%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <filter id="button-shadow" x="-20%" y="-40%" width="140%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#06071C" flood-opacity="0.28"/>
+    </filter>
+    <clipPath id="screen-clip">
+      <rect width="778" height="1453" rx="96"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#screen-clip)">
+  <rect width="778" height="1453" fill="url(#scene-bg)"/>
+  <circle cx="388" cy="584" r="308" fill="url(#character-halo)"/>
+  <path d="M-100 1040C125 860 285 1105 470 990S820 790 900 1110V1500H-100Z" fill="#090B27" opacity="0.18"/>
+
+  <!-- iPhone-style status bar, aligned to the reference screenshot's safe areas -->
+  <text x="89" y="72" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="34" font-weight="700" fill="#FFFFFF">4:50</text>
+  <path d="M165 51l13 13-7 16" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g id="status-signal" fill="#FFFFFF">
+    <rect x="558" y="60" width="7" height="12" rx="3.5"/>
+    <rect x="570" y="54" width="7" height="18" rx="3.5"/>
+    <rect x="582" y="48" width="7" height="24" rx="3.5"/>
+    <rect x="594" y="42" width="7" height="30" rx="3.5"/>
+  </g>
+  <g id="status-wifi" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round">
+    <path d="M612 52Q628 37 644 52"/>
+    <path d="M618 59Q628 49 638 59"/>
+    <circle cx="628" cy="68" r="2.5" fill="#FFFFFF" stroke="none"/>
+  </g>
+  <g id="status-battery">
+    <rect x="659" y="47" width="43" height="26" rx="7" fill="#FFFFFF"/>
+    <rect x="702" y="55" width="5" height="10" rx="2.5" fill="#FFFFFF"/>
+    <text x="680.5" y="67" text-anchor="middle" font-family="Inter, sans-serif" font-size="16" font-weight="800" fill="#29276E">82</text>
+  </g>
+
+  <!-- Scanner heading -->
+  <text x="389" y="151" text-anchor="middle" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="29" font-weight="800" fill="#FFFFFF">바코드를 스캔하고 있어요</text>
+  <text x="389" y="184" text-anchor="middle" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="17" font-weight="500" fill="#C7C8F7">상품의 바코드가 가이드 안에 오도록 맞춰주세요</text>
+
+  <!-- Scan guide -->
+  <rect x="72" y="242" width="634" height="760" rx="42" fill="#0D1032" fill-opacity="0.18" stroke="#A8A8FF" stroke-opacity="0.24" stroke-width="2"/>
+  <path d="M121 341v-31h31M657 341v-31h-31M121 858v31h31M657 858v31h-31" fill="none" stroke="#E7E7FF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Stockly character -->
+  <g transform="translate(259 346)" filter="url(#soft-shadow)">
+    <!-- bottom rounded diamond -->
+    <path d="M130 185L250 255L130 325L10 255Z" fill="url(#stack-bottom)" stroke="#5A55E9" stroke-width="2"/>
+    <path d="M10 255v28c0 12 9 22 20 29l100 58 100-58c11-7 20-17 20-29v-28L130 325Z" fill="#5B56E8" opacity="0.90"/>
+    <!-- middle ring -->
+    <path d="M130 122L250 192L130 262L10 192Z" fill="none" stroke="url(#stack-middle)" stroke-width="30" stroke-linejoin="round"/>
+    <path d="M10 192v26c0 10 7 19 16 25l104 60 104-60c9-6 16-15 16-25v-26L130 262Z" fill="#6863F1" opacity="0.94"/>
+    <!-- top character tile -->
+    <path d="M130 0L254 72c10 6 10 20 0 26l-104 61c-12 7-28 7-40 0L6 98c-10-6-10-20 0-26L130 0Z" fill="url(#stack-top)" stroke="#8B87FF" stroke-width="2"/>
+    <path d="M6 98v26c0 11 6 21 16 27l88 51c12 7 28 7 40 0l88-51c10-6 16-16 16-27V98l-104 61c-12 7-28 7-40 0L6 98Z" fill="#504BEA" opacity="0.98"/>
+    <rect x="96" y="61" width="18" height="43" rx="9" fill="#FFFFFF"/>
+    <rect x="146" y="61" width="18" height="43" rx="9" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Barcode card below the character -->
+  <g filter="url(#soft-shadow)">
+    <rect x="151" y="700" width="476" height="176" rx="24" fill="#FFFFFF"/>
+    <text x="389" y="739" text-anchor="middle" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="15" font-weight="700" fill="#6B6D99">상품 바코드</text>
+    <g transform="translate(213 761)" fill="#151737">
+      <rect x="0" y="0" width="6" height="64" rx="2"/>
+      <rect x="13" y="0" width="3" height="64" rx="1.5"/>
+      <rect x="22" y="0" width="10" height="64" rx="2"/>
+      <rect x="39" y="0" width="4" height="64" rx="2"/>
+      <rect x="50" y="0" width="7" height="64" rx="2"/>
+      <rect x="64" y="0" width="3" height="64" rx="1.5"/>
+      <rect x="73" y="0" width="12" height="64" rx="2"/>
+      <rect x="93" y="0" width="4" height="64" rx="2"/>
+      <rect x="104" y="0" width="6" height="64" rx="2"/>
+      <rect x="119" y="0" width="3" height="64" rx="1.5"/>
+      <rect x="129" y="0" width="10" height="64" rx="2"/>
+      <rect x="147" y="0" width="5" height="64" rx="2"/>
+      <rect x="160" y="0" width="3" height="64" rx="1.5"/>
+      <rect x="170" y="0" width="11" height="64" rx="2"/>
+      <rect x="190" y="0" width="5" height="64" rx="2"/>
+      <rect x="204" y="0" width="8" height="64" rx="2"/>
+      <rect x="220" y="0" width="3" height="64" rx="1.5"/>
+      <rect x="229" y="0" width="10" height="64" rx="2"/>
+      <rect x="247" y="0" width="4" height="64" rx="2"/>
+      <rect x="258" y="0" width="7" height="64" rx="2"/>
+      <rect x="273" y="0" width="3" height="64" rx="1.5"/>
+      <rect x="283" y="0" width="11" height="64" rx="2"/>
+      <rect x="303" y="0" width="5" height="64" rx="2"/>
+      <rect x="316" y="0" width="3" height="64" rx="1.5"/>
+      <rect x="326" y="0" width="10" height="64" rx="2"/>
+    </g>
+    <text x="389" y="851" text-anchor="middle" font-family="Inter, Apple SD Gothic Neo, sans-serif" font-size="15" font-weight="700" letter-spacing="2" fill="#202248">880 1234 567890</text>
+  </g>
+
+  <!-- Scanning laser across the barcode -->
+  <rect x="166" y="790" width="446" height="20" rx="10" fill="url(#scan-line)" opacity="0.52" filter="url(#line-glow)"/>
+  <rect x="167" y="797" width="444" height="4" rx="2" fill="url(#scan-line)"/>
+  <circle cx="167" cy="799" r="5" fill="#42E3D1"/>
+  <circle cx="611" cy="799" r="5" fill="#A9A4FF"/>
+
+  <!-- Status hint -->
+  <g transform="translate(276 930)">
+    <rect width="226" height="46" rx="23" fill="#FFFFFF" fill-opacity="0.13" stroke="#D8D8FF" stroke-opacity="0.24"/>
+    <circle cx="28" cy="23" r="6" fill="#43E4D4"/>
+    <text x="47" y="29" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">스캔 준비 완료</text>
+  </g>
+  <text x="389" y="1037" text-anchor="middle" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="16" font-weight="600" fill="#C7C8F7">바코드를 비추면 재고 작업으로 바로 이동해요</text>
+
+  <!-- Only the two native bottom controls remain -->
+  <g filter="url(#button-shadow)">
+    <circle cx="207" cy="1340" r="55" fill="#050611" fill-opacity="0.76"/>
+    <path d="M185 1318l44 44M229 1318l-44 44" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
+    <rect x="262" y="1284" width="350" height="112" rx="56" fill="url(#register-button)"/>
+    <text x="437" y="1354" text-anchor="middle" font-family="Apple SD Gothic Neo, Inter, sans-serif" font-size="28" font-weight="800" fill="#FFFFFF">상품등록</text>
+  </g>
+  </g>
+</svg>
+`;
+
+fs.writeFileSync('tmp/appstore/stockly-scan-stage-screen-778x1453.svg', svg.trim());

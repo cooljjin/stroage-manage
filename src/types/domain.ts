@@ -4,7 +4,7 @@ export const DEFAULT_PRODUCT_UNITS = ["박스", "낱개", "줄", "팩"] as const
 export type Category = string;
 export type CategoryFilter = "전체" | string;
 export type Location = "창고" | "매장";
-export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "메모" | "프랩 제조" | "프랩 소진" | "프랩 폐기";
+export type InventoryAction = "입고" | "출고" | "이동" | "조정" | "메모" | "프랩 제조" | "프랩 소진" | "프랩 폐기" | "상품 병합" | "상품 병합 해제";
 export type MobileInventoryMode = "auto" | "move" | "audit";
 export type MobileInventoryEntryMode = "auto" | "audit";
 export type MobileInventorySessionStatus = "open" | "finalized" | "recovered";
@@ -415,6 +415,7 @@ export type HandoverNote = {
   id: string;
   store_id: string;
   handover_date: string;
+  visible_until: string | null;
   content: string;
   created_by: string;
   created_at: string;
@@ -485,6 +486,13 @@ export type RecipeImportJob = {
   completed_segments: number;
   error_message: string | null;
   source_expires_at: string | null;
+  source_uploaded_at: string | null;
+  source_manifest: unknown;
+  processing_started_at: string | null;
+  processing_claimed_by: string | null;
+  gemini_started_at: string | null;
+  verified_file_size: number | null;
+  verified_mime_type: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

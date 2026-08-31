@@ -207,6 +207,8 @@ npm run cap:android
 - `docs/animation-implementation.md`: 애니메이션 적용 현황
 - `docs/ios-staff-install.md`: Xcode 직접 설치 절차
 - `docs/testflight-staff-deployment.md`: TestFlight 배포 절차
+- `docs/security-hardening-deployment.md`: 보안 강화 단계별 배포·중단 게이트
+- `docs/privacy-policy-ko.md`: 개인정보 처리 안내 초안
 - `docs/windows-ai-agent-start-prompt.md`: Windows 개발 환경을 시작할 때 AI 에이전트에게 전달할 프롬프트
 
 ## 배포 원칙

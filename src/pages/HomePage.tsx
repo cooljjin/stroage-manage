@@ -8,7 +8,7 @@ import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
 import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import * as Services from "../services";
-import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryLog, Product, StaffProfile, TodoRoutine } from "../types/domain";
+import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryLog, Product, TodoRoutine } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -267,11 +267,18 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [editingScheduledTodoId, setEditingScheduledTodoId] = useState<string | null>(null);
   const [editingScheduledTodoDraft, setEditingScheduledTodoDraft] = useState("");
   const [handoverDraft, setHandoverDraft] = useState("");
+  const [handoverVisibilityUntil, setHandoverVisibilityUntil] = useState<string | null>(null);
+  const [handoverIndefinite, setHandoverIndefinite] = useState(false);
+  const [handoverCalendarMonth, setHandoverCalendarMonth] = useState(() => getMonthStart(todayValue));
+  const [historyCalendarMonth, setHistoryCalendarMonth] = useState(() => getMonthStart(todayValue));
+  const [historySelectedDate, setHistorySelectedDate] = useState(todayValue);
   const [showTodoForm, setShowTodoForm] = useState(false);
   const [showScheduledTodoDialog, setShowScheduledTodoDialog] = useState(false);
   const [showTodoCalendarDialog, setShowTodoCalendarDialog] = useState(false);
   const [showHandoverForm, setShowHandoverForm] = useState(false);
+  const [showHandoverSchedule, setShowHandoverSchedule] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [todoCalendarLoading, setTodoCalendarLoading] = useState(false);
   const [scheduledTodosLoading, setScheduledTodosLoading] = useState(false);
@@ -286,14 +293,31 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const todayReceiptRequestRef = useRef(new Map<string, string>());
   const expectedReceiptRequestRef = useRef(new Map<string, string>());
   const restoreReceiptRequestRef = useRef<string | null>(null);
+  const handoverCalendarDraggingRef = useRef(false);
+  const handoverCalendarDragStartRef = useRef<string | null>(null);
   const selectedDate = dashboardView === "today" ? todayValue : nextBusinessDate;
   const todoCalendarDates = useMemo(() => getCalendarDates(todoCalendarMonth), [todoCalendarMonth]);
   const receiptCalendarDates = useMemo(() => getCalendarDates(receiptCalendarMonth), [receiptCalendarMonth]);
+  const handoverCalendarDates = useMemo(() => getCalendarDates(handoverCalendarMonth), [handoverCalendarMonth]);
+  const historyCalendarDates = useMemo(() => getCalendarDates(historyCalendarMonth), [historyCalendarMonth]);
   const todoCountsByDate = useMemo(() => {
     const counts = new Map<string, number>();
     todoCalendarTodos.forEach((todo) => counts.set(todo.task_date, (counts.get(todo.task_date) ?? 0) + 1));
     return counts;
   }, [todoCalendarTodos]);
+  const historyCountsByDate = useMemo(() => {
+    const counts = new Map<string, number>();
+    history.forEach((note) => counts.set(note.handover_date, (counts.get(note.handover_date) ?? 0) + 1));
+    return counts;
+  }, [history]);
+  const selectedHistoryNotes = useMemo(
+    () => history.filter((note) => note.handover_date === historySelectedDate),
+    [history, historySelectedDate]
+  );
+
+  useEffect(() => {
+    void Services.AuthService.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
+  }, []);
 
   const loadTodoCalendar = useCallback(async () => {
     setTodoCalendarLoading(true);
@@ -640,8 +664,12 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         .eq("task_date", dashboardDate)
         .is("deleted_at", null)
         .order("created_at", { ascending: true }),
-      Services.DatabaseService.select("handover_notes", "*").eq("store_id", currentStoreId).eq("handover_date", dashboardDate).order("created_at", { ascending: false }),
-      Services.DatabaseService.select("profiles", "*"),
+      Services.DatabaseService.select("handover_notes", "*")
+        .eq("store_id", currentStoreId)
+        .lte("handover_date", dashboardDate)
+        .or(`visible_until.is.null,visible_until.gte.${dashboardDate}`)
+        .order("created_at", { ascending: false }),
+      Services.DatabaseService.rpc("list_store_staff_directory"),
       Services.DatabaseService.select("dashboard_receipt_deletions", "id, log_ids")
         .eq("store_id", currentStoreId)
         .is("restored_at", null)
@@ -732,7 +760,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     }
     if (!handoverResult.error) setHandovers((handoverResult.data ?? []) as HandoverNote[]);
     if (!profileResult.error) {
-      setProfiles(new Map(((profileResult.data ?? []) as StaffProfile[]).map((profile) => [profile.id, profile.display_name])));
+      setProfiles(new Map((profileResult.data ?? []).map((profile) => [profile.id, profile.display_name])));
     }
     if (!receiptDeletionResult.error) setHasReceiptDeletion(!isTodayStoreClosure && activeReceiptDeletions.length > 0);
     setLoading(false);
@@ -1017,10 +1045,63 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     });
   }
 
-  async function addHandover(event: FormEvent) {
+  function resetHandoverComposer() {
+    handoverCalendarDraggingRef.current = false;
+    handoverCalendarDragStartRef.current = null;
+    setHandoverDraft("");
+    setHandoverVisibilityUntil(null);
+    setHandoverIndefinite(false);
+    setShowHandoverForm(false);
+    setShowHandoverSchedule(false);
+  }
+
+  function openHandoverComposer() {
+    const defaultUntil = nextBusinessDate ?? todayValue;
+    setHandoverDraft("");
+    setHandoverVisibilityUntil(defaultUntil);
+    setHandoverIndefinite(false);
+    setHandoverCalendarMonth(getMonthStart(defaultUntil));
+    setShowHandoverSchedule(false);
+    setShowHandoverForm(true);
+  }
+
+  function openHandoverSchedule(event: FormEvent) {
     event.preventDefault();
+    if (!handoverDraft.trim()) return;
+    setHandoverCalendarMonth(getMonthStart(handoverVisibilityUntil ?? nextBusinessDate ?? todayValue));
+    setShowHandoverForm(false);
+    setShowHandoverSchedule(true);
+  }
+
+  function updateHandoverCalendarDate(date: string) {
+    if (handoverIndefinite || date < todayValue) return;
+    setHandoverVisibilityUntil(date);
+  }
+
+  function startHandoverCalendarDrag(date: string, event: React.PointerEvent<HTMLButtonElement>) {
+    if (handoverIndefinite || date < todayValue) return;
+    event.preventDefault();
+    handoverCalendarDraggingRef.current = true;
+    handoverCalendarDragStartRef.current = date;
+    updateHandoverCalendarDate(date);
+  }
+
+  function updateHandoverCalendarDragAtPoint(clientX: number, clientY: number) {
+    if (!handoverCalendarDraggingRef.current || handoverIndefinite) return;
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-handover-calendar-date]");
+    const date = target?.dataset.handoverCalendarDate;
+    if (date) updateHandoverCalendarDate(date);
+  }
+
+  function finishHandoverCalendarDrag() {
+    handoverCalendarDraggingRef.current = false;
+    handoverCalendarDragStartRef.current = null;
+  }
+
+  async function saveHandover() {
     const content = handoverDraft.trim();
-    if (!content || !selectedDate) return;
+    const visibleUntil = handoverIndefinite ? null : handoverVisibilityUntil ?? nextBusinessDate ?? todayValue;
+    if (!content || (visibleUntil !== null && visibleUntil < todayValue)) return;
 
     setSaving(true);
     setError("");
@@ -1030,25 +1111,26 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       setSaving(false);
       return;
     }
+    setCurrentUserId(userData.user.id);
 
     const { error: insertError } = await Services.DatabaseService.insert("handover_notes", {
       store_id: currentStoreId,
-      handover_date: selectedDate,
+      handover_date: todayValue,
+      visible_until: visibleUntil,
       content,
       created_by: userData.user.id
     });
     if (insertError) {
       setError(insertError.message);
     } else {
-      setHandoverDraft("");
-      setShowHandoverForm(false);
+      resetHandoverComposer();
       await loadDashboard();
     }
     setSaving(false);
   }
 
   async function deleteHandover(note: HandoverNote) {
-    if (dashboardView !== "tomorrow" || !nextBusinessDate) return;
+    if (!currentUserId || note.created_by !== currentUserId) return;
     if (!window.confirm("이 인수인계 내용을 삭제할까요?")) return;
 
     setDeletingHandoverIds((current) => new Set(current).add(note.id));
@@ -1056,12 +1138,13 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     const { error: deleteError } = await Services.DatabaseService.delete("handover_notes")
       .eq("id", note.id)
       .eq("store_id", currentStoreId)
-      .eq("handover_date", nextBusinessDate);
+      .eq("created_by", currentUserId);
 
     if (deleteError) {
       setError(deleteError.message);
     } else {
       setHandovers((current) => current.filter((item) => item.id !== note.id));
+      setHistory((current) => current.filter((item) => item.id !== note.id));
     }
     setDeletingHandoverIds((current) => {
       const next = new Set(current);
@@ -1072,20 +1155,25 @@ export function HomePage({ navigate, currentStoreId }: Props) {
 
   async function openHistory() {
     setShowHistory(true);
+    setHistoryCalendarMonth(getMonthStart(todayValue));
     const { data, error: historyError } = await Services.DatabaseService.select("handover_notes", "*")
       .eq("store_id", currentStoreId)
       .order("handover_date", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(300);
     if (historyError) {
       setError(historyError.message);
     } else {
-      setHistory(
-        ((data ?? []) as HandoverNote[]).map((note) => ({
-          ...note,
-          author_name: profiles.get(note.created_by) ?? "직원"
-        }))
-      );
+      const notes = ((data ?? []) as HandoverNote[]).map((note) => ({
+        ...note,
+        author_name: profiles.get(note.created_by) ?? "직원"
+      }));
+      const initialDate = notes.some((note) => note.handover_date === todayValue)
+        ? todayValue
+        : notes[0]?.handover_date ?? todayValue;
+      setHistory(notes);
+      setHistorySelectedDate(initialDate);
+      setHistoryCalendarMonth(getMonthStart(initialDate));
     }
   }
 
@@ -1186,6 +1274,7 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setShowTodoCalendarDialog(false);
     setReceiptCalendarOpen(false);
     setShowHandoverForm(false);
+    setShowHandoverSchedule(false);
     setTodoDraft("");
     setScheduledTodoDraft("");
     setHandoverDraft("");
@@ -1443,38 +1532,36 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             badge={`${handovers.length}건`}
             action={
               <div className="flex items-center">
+                <PressableButton
+                  type="button"
+                  onClick={() => (showHandoverForm || showHandoverSchedule) ? resetHandoverComposer() : openHandoverComposer()}
+                  className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100"
+                  aria-label="인수인계 추가"
+                  title="인수인계 추가"
+                >
+                  {showHandoverForm || showHandoverSchedule ? <X size={19} /> : <Plus size={19} />}
+                </PressableButton>
                 <PressableButton type="button" onClick={() => void openHistory()} className="touch-button grid place-items-center rounded-md text-slate-500 dark:text-slate-300" aria-label="인수인계 히스토리">
                   <History size={18} />
                 </PressableButton>
-                {!isToday ? (
-                  <PressableButton type="button" onClick={() => setShowHandoverForm((value) => !value)} className="touch-button grid place-items-center rounded-md text-brand-700 dark:text-brand-100" aria-label="인수인계 추가">
-                    {showHandoverForm ? <X size={19} /> : <Plus size={19} />}
-                  </PressableButton>
-                ) : null}
               </div>
             }
           />
-          {showHandoverForm ? (
-            <form onSubmit={addHandover} className="border-b border-slate-100 p-2 dark:border-slate-800">
-              <textarea className="field min-h-16 resize-none px-2 py-2 text-xs" value={handoverDraft} onChange={(event) => setHandoverDraft(event.target.value)} placeholder="내일 근무자에게 전달할 내용을 입력하세요." autoFocus />
-              <PressableButton className="mt-1.5 min-h-10 w-full rounded-md bg-brand-600 px-3 text-xs font-bold text-white" type="submit" disabled={saving || !handoverDraft.trim()} surfaceFeedback={false}>
-                내일 인수인계 저장
-              </PressableButton>
-            </form>
-          ) : null}
           <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
             {!loading && handovers.length === 0 ? (
               <div className="grid h-full place-items-center p-3 text-xs text-slate-400">
-                {isToday ? "오늘 인지할 인수인계가 없습니다." : "내일 근무자를 위한 인수인계가 없습니다."}
+                인수인계 내용이 없습니다.
               </div>
             ) : null}
             {handovers.map((note) => (
               <AnimatedListItem key={note.id} className="flex gap-2 border-b border-slate-100 px-3 py-2.5 last:border-0 dark:border-slate-800">
                 <div className="min-w-0 flex-1">
                   <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-snug">{note.content}</p>
-                  <p className="mt-1 text-[10px] text-slate-400">{profiles.get(note.created_by) ?? "직원"} · {formatDateTime(note.created_at)}</p>
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    {profiles.get(note.created_by) ?? "직원"} · {formatDateTime(note.created_at)} · {note.visible_until ? `노출 종료 ${shortDateLabel(note.visible_until)}` : "작성자 삭제 시까지 노출"}
+                  </p>
                 </div>
-                {!isToday ? (
+                {currentUserId === note.created_by ? (
                   <PressableButton
                     type="button"
                     disabled={deletingHandoverIds.has(note.id)}
@@ -1492,6 +1579,111 @@ export function HomePage({ navigate, currentStoreId }: Props) {
         </article>
       </div>
 
+      {showHandoverForm ? (
+        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="인수인계 내용 작성">
+          <button type="button" onClick={resetHandoverComposer} className="absolute inset-0 cursor-default" aria-label="인수인계 작성 닫기" />
+          <section className="relative z-10 w-full rounded-t-2xl bg-white p-4 shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-extrabold">인수인계 작성</h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">오늘부터 홈 화면에 표시할 내용을 입력하세요.</p>
+              </div>
+              <PressableButton type="button" onClick={resetHandoverComposer} className="touch-button icon-button" aria-label="인수인계 작성 닫기"><X size={20} /></PressableButton>
+            </div>
+            <form onSubmit={openHandoverSchedule}>
+              <textarea
+                className="field min-h-32 resize-y"
+                value={handoverDraft}
+                onChange={(event) => setHandoverDraft(event.target.value)}
+                placeholder="다음 근무자에게 전달할 내용을 입력하세요."
+                autoFocus
+                maxLength={2000}
+                aria-label="인수인계 내용"
+              />
+              <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <span>{handoverDraft.length}/2000</span>
+                <span>다음 단계에서 노출 기간을 정합니다.</span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <PressableButton type="button" onClick={resetHandoverComposer} className="secondary-button">취소</PressableButton>
+                <PressableButton type="submit" disabled={!handoverDraft.trim()} className="primary-button" surfaceFeedback={false}>다음: 노출 기간</PressableButton>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {showHandoverSchedule ? (
+        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="인수인계 노출 기간">
+          <button type="button" onClick={resetHandoverComposer} className="absolute inset-0 cursor-default" aria-label="인수인계 노출 기간 닫기" />
+          <section className="relative z-10 w-full rounded-t-2xl bg-white p-3 shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="font-extrabold">노출 기간</h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">오늘부터 언제까지 홈 화면에 표시할지 드래그하세요.</p>
+              </div>
+              <PressableButton type="button" onClick={resetHandoverComposer} className="touch-button icon-button" aria-label="인수인계 노출 기간 닫기"><X size={20} /></PressableButton>
+            </div>
+            <div className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-bold text-brand-800 dark:bg-brand-950 dark:text-brand-100">
+              {handoverIndefinite ? "작성자가 삭제할 때까지 계속 노출" : `오늘부터 ${handoverVisibilityUntil ? shortDateLabel(handoverVisibilityUntil) : "날짜를 선택하세요"}까지 노출`}
+            </div>
+            <div className={`rounded-lg border border-slate-200 p-3 dark:border-slate-800 ${handoverIndefinite ? "opacity-50" : ""}`}>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <button type="button" onClick={() => setHandoverCalendarMonth((current) => addMonths(current, -1))} className="touch-button icon-button" aria-label="인수인계 이전 달" title="이전 달"><ChevronLeft size={19} /></button>
+                <h3 className="text-base font-extrabold">{formatMonthLabel(handoverCalendarMonth)}</h3>
+                <button type="button" onClick={() => setHandoverCalendarMonth((current) => addMonths(current, 1))} className="touch-button icon-button" aria-label="인수인계 다음 달" title="다음 달"><ChevronRight size={19} /></button>
+              </div>
+              <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-[11px] font-extrabold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                {["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}
+              </div>
+              <div
+                className="mt-2 grid touch-none select-none grid-cols-7 gap-1"
+                onPointerMove={(event) => updateHandoverCalendarDragAtPoint(event.clientX, event.clientY)}
+                onPointerUp={finishHandoverCalendarDrag}
+                onPointerCancel={finishHandoverCalendarDrag}
+              >
+                {handoverCalendarDates.map((date) => {
+                  const isCurrentMonth = date.slice(0, 7) === handoverCalendarMonth.slice(0, 7);
+                  const isSelectable = date >= todayValue;
+                  const inRange = !handoverIndefinite && isSelectable && (handoverVisibilityUntil === null || date <= handoverVisibilityUntil);
+                  const isEnd = !handoverIndefinite && date === handoverVisibilityUntil;
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      data-handover-calendar-date={date}
+                      disabled={!isSelectable || handoverIndefinite}
+                      onPointerDown={(event) => startHandoverCalendarDrag(date, event)}
+                      onPointerEnter={() => {
+                        if (handoverCalendarDraggingRef.current) updateHandoverCalendarDate(date);
+                      }}
+                      onPointerMove={(event) => updateHandoverCalendarDragAtPoint(event.clientX, event.clientY)}
+                      onClick={() => updateHandoverCalendarDate(date)}
+                      className={`min-h-11 rounded-md border p-1 text-center text-xs font-bold transition-colors ${
+                        !isCurrentMonth ? "opacity-35" : ""
+                      } ${
+                        !isSelectable || handoverIndefinite ? "cursor-not-allowed text-slate-300 dark:text-slate-700" : "hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950"
+                      } ${inRange ? "border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-900 dark:bg-brand-950 dark:text-brand-100" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"} ${isEnd ? "ring-2 ring-brand-600" : ""}`}
+                      aria-label={`${shortDateLabel(date)}${isEnd ? " 노출 종료일" : ""}`}
+                    >
+                      <span className={`mx-auto grid h-6 w-6 place-items-center rounded-full ${date === todayValue ? "bg-brand-600 text-white" : ""}`}>{Number(date.slice(-2))}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <label className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold dark:border-slate-800">
+              <input type="checkbox" checked={handoverIndefinite} onChange={(event) => setHandoverIndefinite(event.target.checked)} className="h-5 w-5 accent-brand-600" />
+              <span>작성자가 삭제할 때까지 계속 노출</span>
+            </label>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <PressableButton type="button" onClick={() => { setShowHandoverSchedule(false); setShowHandoverForm(true); }} className="secondary-button">이전</PressableButton>
+              <PressableButton type="button" onClick={() => void saveHandover()} disabled={saving || (!handoverIndefinite && !handoverVisibilityUntil)} className="primary-button" surfaceFeedback={false}>{saving ? "저장 중..." : "인수인계 저장"}</PressableButton>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {showHistory ? (
         <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="인수인계 히스토리">
           <div className="flex max-h-[82dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950 sm:max-w-lg sm:rounded-2xl">
@@ -1503,18 +1695,70 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               <PressableButton type="button" onClick={() => setShowHistory(false)} className="touch-button icon-button" aria-label="닫기"><X size={20} /></PressableButton>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
-              {history.length === 0 ? <StatusMessage>저장된 인수인계가 없습니다.</StatusMessage> : null}
-              <AnimatedList className="space-y-2">
-                {history.map((note) => (
-                  <AnimatedListItem key={note.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-xs font-extrabold text-brand-700 dark:text-brand-100">{shortDateLabel(note.handover_date)}</span>
-                      <span className="text-[10px] text-slate-400">{note.author_name}</span>
+              {history.length === 0 ? <StatusMessage>저장된 인수인계가 없습니다.</StatusMessage> : (
+                <>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <button type="button" onClick={() => setHistoryCalendarMonth((current) => addMonths(current, -1))} className="touch-button icon-button" aria-label="인수인계 히스토리 이전 달"><ChevronLeft size={19} /></button>
+                    <h3 className="text-base font-extrabold">{formatMonthLabel(historyCalendarMonth)}</h3>
+                    <button type="button" onClick={() => setHistoryCalendarMonth((current) => addMonths(current, 1))} className="touch-button icon-button" aria-label="인수인계 히스토리 다음 달"><ChevronRight size={19} /></button>
+                  </div>
+                  <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-[11px] font-extrabold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    {["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}
+                  </div>
+                  <div className="mt-2 grid grid-cols-7 gap-1" aria-label="인수인계 히스토리 캘린더">
+                    {historyCalendarDates.map((date) => {
+                      const count = historyCountsByDate.get(date) ?? 0;
+                      const isCurrentMonth = date.slice(0, 7) === historyCalendarMonth.slice(0, 7);
+                      const isSelected = date === historySelectedDate;
+                      return (
+                        <button
+                          key={date}
+                          type="button"
+                          onClick={() => setHistorySelectedDate(date)}
+                          className={`min-h-14 rounded-md border p-1 text-left transition-colors ${
+                            count > 0 ? "border-brand-200 bg-brand-50 dark:border-brand-900 dark:bg-brand-950" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+                          } ${isCurrentMonth ? "" : "opacity-40"} ${isSelected ? "ring-2 ring-brand-600" : ""}`}
+                          aria-label={`${shortDateLabel(date)}${count ? `, 인수인계 ${count}건` : ""}`}
+                        >
+                          <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-extrabold ${date === todayValue ? "bg-brand-600 text-white" : ""}`}>{Number(date.slice(-2))}</span>
+                          {count ? <span className="mt-1 block text-[10px] font-extrabold text-brand-700 dark:text-brand-100">{count}건</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-extrabold">{shortDateLabel(historySelectedDate)} 인수인계</h3>
+                      <span className="text-xs font-bold text-slate-400">{selectedHistoryNotes.length}건</span>
                     </div>
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{note.content}</p>
-                  </AnimatedListItem>
-                ))}
-              </AnimatedList>
+                    {selectedHistoryNotes.length === 0 ? <StatusMessage>선택한 날짜에 작성된 인수인계가 없습니다.</StatusMessage> : null}
+                    <AnimatedList className="space-y-2">
+                      {selectedHistoryNotes.map((note) => (
+                        <AnimatedListItem key={note.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{note.content}</p>
+                              <p className="mt-2 text-[10px] text-slate-400">{note.author_name} · {formatDateTime(note.created_at)} · {note.visible_until ? `노출 종료 ${shortDateLabel(note.visible_until)}` : "작성자 삭제 시까지 노출"}</p>
+                            </div>
+                            {currentUserId === note.created_by ? (
+                              <PressableButton
+                                type="button"
+                                disabled={deletingHandoverIds.has(note.id)}
+                                onClick={() => void deleteHandover(note)}
+                                className="touch-button grid shrink-0 place-items-center text-slate-400 hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+                                aria-label="인수인계 삭제"
+                                title="삭제"
+                              >
+                                <Trash2 size={17} />
+                              </PressableButton>
+                            ) : null}
+                          </div>
+                        </AnimatedListItem>
+                      ))}
+                    </AnimatedList>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

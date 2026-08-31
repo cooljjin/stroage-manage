@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search, Star, TriangleAlert } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton } from "../components/Skeleton";
 import { StatusMessage } from "../components/StatusMessage";
 import { fallbackCategories, loadCategories } from "../lib/categories";
 import { getSeoulDateValue } from "../lib/businessCalendar";
-import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryQuantity } from "../lib/inventory";
 import { DEFAULT_ABUNDANT_MULTIPLIER, getAutomaticStockState } from "../lib/inventoryStock";
+import { loadResolvedInventoryItems, searchResolvedProducts } from "../lib/resolvedProducts";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, CategoryFilter, InventoryItem, InventoryOverviewDisplay, InventoryOverviewMode, ProductSupplier } from "../types/domain";
@@ -77,14 +77,15 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
   const [category, setCategory] = useState<CategoryFilter>(() => initialState?.category ?? "전체");
   const [categoryExpanded, setCategoryExpanded] = useState(() => initialState?.categoryExpanded ?? false);
   const [search, setSearch] = useState(() => initialState?.search ?? "");
-  const [overviewMode, setOverviewMode] = useState<InventoryOverviewMode>(() => initialState?.overviewMode ?? "list");
+  const [overviewMode, setOverviewMode] = useState<InventoryOverviewMode>(() => initialState?.overviewMode ?? "overview");
   const [overviewDisplay, setOverviewDisplay] = useState<InventoryOverviewDisplay>(() => initialState?.overviewDisplay ?? "activity");
-  const [overviewCompact, setOverviewCompact] = useState(() => initialState?.overviewCompact ?? false);
+  const [overviewCompact, setOverviewCompact] = useState(() => initialState?.overviewCompact ?? true);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(() => initialState?.activityCounts ?? {});
   const [abundantMultiplier, setAbundantMultiplier] = useState(() => initialState?.abundantMultiplier ?? DEFAULT_ABUNDANT_MULTIPLIER);
   const [loading, setLoading] = useState(() => (initialState?.items.length ?? 0) === 0);
   const [error, setError] = useState("");
   const [importantSavingId, setImportantSavingId] = useState<string | null>(null);
+  const [resolvedSearchProductIds, setResolvedSearchProductIds] = useState<Set<string> | null>(null);
 
   const loadItems = useCallback(async () => {
     setLoading(items.length === 0);
@@ -93,7 +94,7 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
     const [categoryResult, supplierResult, productResult, activityResult, overviewSettingsResult] = await Promise.all([
       loadCategories({ activeOnly: true }).catch(() => fallbackCategories()),
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true }),
+      loadResolvedInventoryItems(currentStoreId),
       Services.DatabaseService.select("inventory_logs", "product_id, created_at, warehouse_qty_before, store_qty_before, warehouse_qty_after, store_qty_after")
         .eq("store_id", currentStoreId)
         .neq("action", "메모")
@@ -105,13 +106,13 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
         .eq("store_id", currentStoreId)
         .maybeSingle()
     ]);
-    const { data, error: loadError } = productResult;
+    const loadError = productResult.errorMessage;
     setCategories(categoryResult.map((item) => item.name));
     setSuppliers(supplierResult);
     if (loadError) {
-      setError(loadError.message);
+      setError(loadError);
     } else {
-      setItems(((data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
+      setItems(productResult.items);
       const dailyChanges = new Map<string, { productId: string; firstTotal: number; lastTotal: number }>();
       ((activityResult.data ?? []) as InventoryActivityLog[]).forEach((log) => {
         const beforeTotal = totalStockAtLog(log, "before");
@@ -146,11 +147,40 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
     onStateChange?.({ items, suppliers, orderQuantities, categories, category, categoryExpanded, search, overviewMode, overviewDisplay, overviewCompact, activityCounts, abundantMultiplier });
   }, [abundantMultiplier, activityCounts, categories, category, categoryExpanded, items, onStateChange, orderQuantities, overviewCompact, overviewDisplay, overviewMode, search, suppliers]);
 
+  useEffect(() => {
+    const keyword = search.trim();
+    if (!keyword) {
+      setResolvedSearchProductIds(null);
+      return;
+    }
+
+    setResolvedSearchProductIds(null);
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      void searchResolvedProducts(currentStoreId, keyword, 500).then((result) => {
+        if (cancelled) return;
+        if (result.errorMessage) {
+          setError(result.errorMessage);
+          return;
+        }
+        setResolvedSearchProductIds(new Set(result.products.map((product) => product.id)));
+      });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentStoreId, search]);
+
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     const filtered = items.filter((item) => {
       const categoryMatch = category === "전체" || item.category === category;
-      const keywordMatch = !keyword || item.name.toLowerCase().includes(keyword) || (item.barcode ?? "").toLowerCase().includes(keyword);
+      const keywordMatch = !keyword
+        || resolvedSearchProductIds?.has(item.id)
+        || (resolvedSearchProductIds === null
+          && (item.name.toLowerCase().includes(keyword) || (item.barcode ?? "").toLowerCase().includes(keyword)));
       return categoryMatch && keywordMatch;
     });
 
@@ -164,7 +194,7 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
       });
     }
     return filtered.sort((left, right) => left.name.localeCompare(right.name, "ko"));
-  }, [activityCounts, category, items, overviewDisplay, search]);
+  }, [activityCounts, category, items, overviewDisplay, resolvedSearchProductIds, search]);
 
   const suppliersByName = useMemo(() => {
     return new Map(suppliers.map((supplier) => [supplier.name, supplier]));
@@ -190,10 +220,8 @@ export function InventoryListPage({ navigate, currentStoreId, canManageImportant
 
   return (
     <section>
-      <PageTitle title="재고 현황" description={overviewMode === "overview" ? "전체 품목의 재고 상태를 한눈에 확인합니다." : "카테고리와 검색으로 빠르게 확인합니다."} />
-
       <div className="mb-4 grid grid-cols-2 rounded-lg bg-slate-100 p-1 dark:bg-slate-900">
-        {(["list", "overview"] as const).map((mode) => (
+        {(["overview", "list"] as const).map((mode) => (
           <button
             key={mode}
             type="button"

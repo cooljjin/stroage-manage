@@ -10,11 +10,11 @@
 
 - 체크박스는 코드, 브라우저/기기, 필요한 DB 상태까지 확인한 뒤 완료 처리한다.
 - 이미 구현 흔적이 있는 항목은 다시 만들기 전에 현재 동작부터 검증한다.
-- 검증은 기본적으로 별도 매장인 `Stockly 테스트 매장`(store_id `222646b3-9b7c-4683-a7df-d2d74caab399`)에서 진행한다.
+- 검증은 기본적으로 별도 매장인 `Stockly 테스트 매장`(store_id `<PRIMARY_TEST_STORE_ID>`)에서 진행한다.
 - 테스트용 Supabase 계정은 다음 세 계정을 사용한다.
-  - `stockly-test-20260817@example.com`
-  - `stockly-staff-20260817@example.com`
-  - `stockly-staff-unpermissioned-20260817@example.com`
+  - `stockly-test-admin@example.invalid`
+  - `stockly-test-staff@example.invalid`
+  - `stockly-test-staff-limited@example.invalid`
 - `기본 매장`을 포함한 다른 매장에서 검증해야 할 경우에는 대상, 변경 내용, 복구 계획을 먼저 설명하고 사용자의 명시적 승인을 받은 뒤에만 진행한다.
 - 승인받지 않은 운영 매장 데이터는 검증 대상으로 임의 변경하지 않는다.
 - DB 변경은 새 migration으로 작성하고 적용 여부를 별도로 확인한다.
@@ -23,13 +23,13 @@
 
 ### 테스트용 계정
 
-- 기존 기본 검증 매장 `Stockly 테스트 매장`(`store_id`: `222646b3-9b7c-4683-a7df-d2d74caab399`)
-  - 관리자: `stockly-test-20260816@example.com` (`user_id`: `8cf9940c-a573-47fe-8731-2b2adf9b2135`, `role`: `store_admin`)
-  - 직원: `stockly-staff-check-20260816@example.com` (`user_id`: `a7253827-8e15-42c0-b5c7-11472e4b4bf5`, `role`: `staff`)
-- 2026-08-17 생성한 접근용 테스트 매장 `Stockly 테스트 매장 20260817`(`store_id`: `99e2ddfe-4d7c-414e-934f-15002ccbc353`)
-  - 관리자: `stockly-test-20260817@example.com` (`user_id`: `30768ea8-4563-4788-8edb-cfa2866037b2`, `role`: `store_admin`)
-  - 권한 직원: `stockly-staff-20260817@example.com` (`user_id`: `a2a503ea-c3b2-437f-85f1-91399fa82ff7`, `role`: `staff`)
-  - 무권한 직원: `stockly-staff-unpermissioned-20260817@example.com` (`user_id`: `a3acdf52-ea53-4255-b794-79a56a3c848a`, `role`: `staff`)
+- 기존 기본 검증 매장 `Stockly 테스트 매장`(`store_id`: `<PRIMARY_TEST_STORE_ID>`)
+  - 관리자: `stockly-test-admin@example.invalid` (`user_id`: `<PRIMARY_TEST_ADMIN_USER_ID>`, `role`: `store_admin`)
+  - 직원: `stockly-test-staff@example.invalid` (`user_id`: `<PRIMARY_TEST_STAFF_USER_ID>`, `role`: `staff`)
+- 역할 검증용 테스트 매장 `Stockly 권한 테스트 매장`(`store_id`: `<ROLE_TEST_STORE_ID>`)
+  - 관리자: `stockly-role-admin@example.invalid` (`user_id`: `<ROLE_TEST_ADMIN_USER_ID>`, `role`: `store_admin`)
+  - 권한 직원: `stockly-role-staff@example.invalid` (`user_id`: `<ROLE_TEST_STAFF_USER_ID>`, `role`: `staff`)
+  - 무권한 직원: `stockly-role-limited@example.invalid` (`user_id`: `<ROLE_TEST_LIMITED_USER_ID>`, `role`: `staff`)
 - 테스트 계정은 위에 연결된 테스트 매장에서만 사용한다. 비밀번호는 저장소 문서에 평문으로 기록하지 않는다.
 
 ## P0. 보안과 데이터 보호
@@ -92,6 +92,8 @@
 - [ ] `INV-003` 재고 작업의 `마지막 확인일자` 의미 수정
   - 프랩 또는 주문으로 자동 차감된 경우에는 실제 재고 확인일을 갱신하지 않는다.
   - 사용자가 수기로 입고·출고·이동·조정한 경우 어떤 작업이 확인일을 갱신하는지 정의한다.
+  - **현재 문제**: 업데이트된 모바일 `재고 작업`의 `실사` 모드에는 별도 완료·저장 동작이 없고, 현재 수량과 입력 수량이 같으면 변경 없음으로 처리되어 실사 로그와 `마지막 실사`가 남지 않는다.
+  - 수량 변동이 없어도 사용자가 마지막에 `실사 완료` 또는 `수량 확인`을 명시적으로 실행할 수 있어야 한다. 확인한 창고·매장 위치에는 기존 재고 작업 로그 계약(`action = '조정'`)을 유지하면서 `before = after`, `quantity = 0`, `note = '수량 확인'`인 로그를 남긴다.
 - [ ] `INV-004` NFC 태그로 상품을 찾아 재고 작업 화면을 여는 기능 기획 및 구현
   - 지원 기기, Web NFC와 네이티브 NFC 차이, 태그 쓰기 권한을 조사한다.
   - NFC 값에는 내부 UUID 또는 안전한 앱 링크만 저장한다.
@@ -410,11 +412,16 @@
   1. `operation → product-edit` 진입 시 기존 navigation stack을 유지하고 저장·취소는 `getExitRoute()`로 같은 operation 상품에 `replace` 복귀하는지 확인한다.
   2. 저장 후 브라우저 뒤로가기, 앱 뒤로가기, iOS/Android 하드웨어 뒤로가기를 각각 확인한다.
   3. `returnTo`가 프랩·단체주문인 경로는 draft 복원 동작을 유지한다.
-- `INV-003` — **신규 의미 분리**
+- `INV-003` — **보완 구현 및 의미 분리**
   1. `inventory.verified_at`, `verified_by`, `verification_log_id`를 추가하고 화면의 `마지막 확인일자`는 이 값만 표시한다.
   2. 권장 기준은 수량을 실제로 센 `조정`과 새 `수량 그대로 확인`만 확인일을 갱신하는 것이다. 입고·출고·이동은 이동 기록이며 확인일을 갱신하지 않는다.
   3. `record_prep_operation`, 단체주문 계산·저장, 자동 플래그 정리는 `verified_at`을 절대 변경하지 않는다.
   4. 기존 데이터는 확실한 조정 로그만 backfill하고 애매한 품목은 `미확인`으로 둔다.
+  5. 모바일 `실사` 모드에는 수량을 움직이지 않아도 실행할 수 있는 명시적 `실사 완료` 동작을 추가한다. 자동 저장이나 화면 이탈을 실사 완료로 간주하지 않으며, 데스크톱 실사도 현재 수량 그대로 확인할 수 있는 경로를 제공한다.
+  6. `InventoryOperationPage.tsx`, `MobileInventoryControls.tsx`, `mobileInventory.ts`의 변경 없음 분기를 확인한다. 현재 `hasMobileInventoryChange`가 false이면 저장 요청을 건너뛰므로, 명시적 실사 완료일 때만 예외적으로 확인 이벤트를 생성한다.
+  7. DB/API 경계는 기존 `apply_mobile_inventory_change`·`finalize_mobile_inventory_session`을 확장하거나 별도 확인 RPC를 추가하되, 위치별 확인을 한 트랜잭션으로 처리한다. 확인 이벤트와 최종 `inventory_logs` 모두 매장·사용자·`expected_inventory_updated_at`을 검증하고, 모바일 세션 종료 시 0수량 변화의 `audit` 구간도 버리지 않는다.
+  8. 위치별 확인 로그는 `action = '조정'`, 대상 위치, 동일한 before/after 수량, `quantity = 0`, `note = '수량 확인'`을 보존한다. `loadLatestInventoryCheck`는 수량 차이가 아니라 대상 위치와 확인 로그를 기준으로 `마지막 실사`를 표시한다.
+  9. 검증 기준은 수량 동일 실사, 한 위치만 변동된 실사, 창고·매장 모두 변동 없는 실사, 자동 입·출고 후 실사, 동시 수정 충돌, 뒤로가기·세션 복구 후 중복 로그 방지다.
 - `INV-004` — **PoC 후 신규 구현**
   1. 먼저 지원 기기 행렬과 Capacitor NFC 플러그인 유지 상태를 확인하고 테스트용 태그 한 종류로 읽기 전용 PoC를 만든다.
   2. 태그 payload는 `https://<공식도메인>/p/<product-id>` 같은 안전한 앱 링크와 버전만 저장하고 재고·매장 정보는 넣지 않는다.

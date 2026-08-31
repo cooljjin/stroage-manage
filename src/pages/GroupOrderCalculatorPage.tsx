@@ -5,7 +5,8 @@ import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { PageTitle } from "../components/PageTitle";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { StatusMessage } from "../components/StatusMessage";
-import { formatInventoryQuantity, normalizeInventoryItem } from "../lib/inventory";
+import { formatInventoryQuantity } from "../lib/inventory";
+import { loadResolvedInventoryItems } from "../lib/resolvedProducts";
 import { loadSuppliers } from "../lib/suppliers";
 import * as Services from "../services";
 import type { AppRoute, GroupOrderEvent, GroupOrderEventItem, GroupOrderMenu, GroupOrderRecipeIngredient, GroupOrderRouteDraft, InventoryItem, Product, ProductSupplier, RecipeUsageUnit, UnitWeightUnit } from "../types/domain";
@@ -261,6 +262,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
   const isCalculatorMode = mode === "calculator";
   const [menus, setMenus] = useState<GroupOrderMenuWithIngredients[]>([]);
   const [products, setProducts] = useState<InventoryItem[]>([]);
+  const [resolvedProductIds, setResolvedProductIds] = useState<Map<string, string>>(new Map());
   const [suppliers, setSuppliers] = useState<ProductSupplier[]>([]);
   const [events, setEvents] = useState<GroupOrderEvent[]>([]);
   const [eventItems, setEventItems] = useState<GroupOrderEventItem[]>([]);
@@ -298,7 +300,14 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
   const pendingTouchRangeRef = useRef<PendingTouchRange | null>(null);
   const calendarScrollLockRef = useRef<ScrollLockSnapshot | null>(null);
 
-  const productsById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const productsById = useMemo(() => {
+    const next = new Map(products.map((product) => [product.id, product]));
+    resolvedProductIds.forEach((canonicalId, requestedId) => {
+      const canonicalProduct = next.get(canonicalId);
+      if (canonicalProduct) next.set(requestedId, canonicalProduct);
+    });
+    return next;
+  }, [products, resolvedProductIds]);
   const menusById = useMemo(() => new Map(menus.map((menu) => [menu.id, menu])), [menus]);
   const suppliersByName = useMemo(() => new Map(suppliers.map((supplier) => [supplier.name, supplier])), [suppliers]);
   const editingMenu = useMemo(() => menus.find((menu) => menu.id === editingId) ?? null, [editingId, menus]);
@@ -337,14 +346,14 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
 
     const [supplierResult, productResult, menuResult, eventResult, eventItemResult] = await Promise.all([
       loadSuppliers({ activeOnly: true }).catch(() => []),
-      Services.DatabaseService.select("products", "*, inventory(*)").eq("store_id", currentStoreId).eq("is_active", true).order("name", { ascending: true }),
+      loadResolvedInventoryItems(currentStoreId),
       Services.DatabaseService.select("group_order_menus", "*").eq("store_id", currentStoreId).order("sort_order", { ascending: true }).order("name", { ascending: true }),
       Services.DatabaseService.select("group_order_events", "*").eq("store_id", currentStoreId).order("order_date", { ascending: true }).order("requested_time", { ascending: true }),
       Services.DatabaseService.select("group_order_event_items", "*").eq("store_id", currentStoreId)
     ]);
 
-    if (productResult.error || menuResult.error || eventResult.error || eventItemResult.error) {
-      setError(buildSchemaError(productResult.error?.message ?? menuResult.error?.message ?? eventResult.error?.message ?? eventItemResult.error?.message ?? "단체주문 정보를 불러오지 못했습니다."));
+    if (productResult.errorMessage || menuResult.error || eventResult.error || eventItemResult.error) {
+      setError(buildSchemaError(productResult.errorMessage || menuResult.error?.message || eventResult.error?.message || eventItemResult.error?.message || "단체주문 정보를 불러오지 못했습니다."));
       setLoading(false);
       return;
     }
@@ -366,8 +375,19 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
     }
 
     const ingredients = (ingredientResult.data ?? []) as GroupOrderRecipeIngredient[];
+    const referencedProductIds = [...new Set(ingredients.map((ingredient) => ingredient.product_id).filter(Boolean) as string[])];
+    const referenceResult = referencedProductIds.length > 0
+      ? await Services.DatabaseService.rpc("resolve_product_references", { target_product_ids: referencedProductIds })
+      : { data: [], error: null };
+    if (referenceResult.error) {
+      setError(buildSchemaError(referenceResult.error.message));
+      setLoading(false);
+      return;
+    }
+
     setSuppliers(supplierResult);
-    setProducts(((productResult.data ?? []) as Parameters<typeof normalizeInventoryItem>[0][]).map((row) => normalizeInventoryItem(row)));
+    setProducts(productResult.items);
+    setResolvedProductIds(new Map((referenceResult.data ?? []).map((item) => [item.requested_product_id, item.canonical_product_id])));
     setEvents((eventResult.data ?? []) as GroupOrderEvent[]);
     setEventItems((eventItemResult.data ?? []) as GroupOrderEventItem[]);
     setMenus(
@@ -420,7 +440,7 @@ export function GroupOrderCalculatorPage({ mode, navigate, currentStoreId, canMa
           ? menu.ingredients.map((ingredient) => {
             const product = ingredient.product_id ? productsById.get(ingredient.product_id) : undefined;
             return {
-              productId: ingredient.product_id ?? "",
+              productId: product?.id ?? ingredient.product_id ?? "",
               customName: ingredient.ingredient_name ?? "",
               quantity: formatAmountInput(Number(ingredient.quantity_per_item)),
               quantityUnit: normalizeRecipeUnit(ingredient.quantity_unit),

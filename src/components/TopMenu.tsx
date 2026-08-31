@@ -38,11 +38,11 @@ export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate
   }
 
   return (
-    <div className="relative flex items-center">
+    <div className="relative flex shrink-0 items-center">
       <StocklyMenuButton open={open} onClick={() => onOpenChange(!open)} />
 
       {open ? (
-        <div className="absolute left-0 top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950">
+        <div className="absolute right-0 top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950">
           <button
             type="button"
             onClick={() => go("prep-mode")}

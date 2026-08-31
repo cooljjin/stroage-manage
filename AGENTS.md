@@ -93,6 +93,53 @@ npm run cap:ios
 - 불필요한 포맷팅, 대규모 정렬 변경, 파일 전체 재작성은 피합니다.
 - 수정 후 `npm run build`, `npm run lint`를 실행하고 결과를 보고합니다.
 
+## 병렬 작업과 브랜치 운영
+
+여러 에이전트나 작업을 동시에 진행할 때는 오케스트레이션만으로 파일 충돌과 동작 충돌을 막을 수 없습니다. 오케스트레이터는 작업 배분·의존성·통합 순서를 관리하고, Git 브랜치와 worktree는 작업 파일과 변경 이력을 분리합니다. 둘을 함께 사용합니다.
+
+기본 운영:
+
+- `main`은 통합·출시 기준 브랜치로 유지합니다. 작업 중인 기능을 `main`에서 직접 수정하지 않습니다.
+- 작업 하나당 브랜치 하나를 사용합니다. 이름은 `codex/<scope>-<short-name>` 형식을 우선합니다. 기존 `agent/windows-handoff` 같은 인수인계 브랜치는 목적이 끝날 때까지 별도로 유지할 수 있습니다.
+- 새 브랜치 또는 새 worktree가 필요하다고 판단해도 생성 명령을 실행하기 전에 반드시 사용자에게 생성 여부를 묻고 명시적 승인을 받습니다. 승인 전에는 생성하지 말고, 기존 브랜치·worktree에서 작업 가능한지 먼저 검토합니다.
+- 동시에 작업할 때는 에이전트마다 별도 worktree를 사용합니다. 같은 브랜치나 같은 작업 디렉터리에 여러 에이전트를 동시에 연결하지 않습니다.
+
+```bash
+git worktree add "../<task-directory>" -b codex/<scope>-<short-name> main
+```
+
+- 작업을 시작하기 전에 `git status --short --branch`로 기존 변경을 확인합니다. 기존 변경을 reset, checkout, clean, 강제 stash, 대규모 덮어쓰기로 없애지 않습니다.
+- 각 작업 설명에는 목표, 수정 허용 경로, 수정 금지 경로, 의존 작업, 검증 명령, 브랜치와 worktree 경로를 기록합니다. 같은 파일을 수정해야 하는 작업은 동시에 시작하지 말고 담당자를 한 명으로 정합니다.
+- 에이전트는 자신의 작업 브랜치에만 commit·push합니다. `main` push와 배포는 통합 검증과 사용자의 명시적 승인 이후에만 진행합니다.
+
+병렬로 진행하기 좋은 작업:
+
+- 서로 다른 페이지·컴포넌트처럼 파일 경계가 분명한 독립 작업
+- 문서, 테스트, 조사, 정적 분석처럼 소스 계약을 바꾸지 않는 작업
+- 한 에이전트가 구현하고 다른 에이전트가 별도 worktree에서 검증·문서화하는 작업
+
+동시에 수정하지 말아야 하는 공유·고위험 영역:
+
+- `src/App.tsx`, `src/pages/ScanPage.tsx`, `src/pages/InventoryOperationPage.tsx`, `src/pages/LowStockPage.tsx`, `src/pages/GroupOrderCalculatorPage.tsx`
+- `src/services/**`, `src/types/**`, `src/lib/**`의 공용 계약과 인증·라우팅·재고 계산 helper
+- `supabase/migrations/**`, `supabase/functions/**`, RLS·policy·RPC와 관련된 타입·클라이언트 호출
+- `package.json`, `package-lock.json`, `eslint.config.js`, Capacitor·iOS·Android 설정과 네이티브 프로젝트 파일
+- `AGENTS.md`, `README.md`, `docs/stockly-todo-list.md`처럼 여러 작업이 동시에 갱신하기 쉬운 기준 문서
+
+공유 영역을 바꿔야 하는 경우 한 작업이 계약·migration·타입을 먼저 정하고, 다른 작업은 그 변경을 기준으로 이어서 작업합니다. 새 RPC를 사용하는 클라이언트 브랜치는 migration이 실제 대상 DB에 적용되고 schema cache가 확인되기 전까지 통합·배포하지 않습니다. 이미 적용된 migration을 여러 브랜치에서 수정하거나 재정렬하지 않습니다.
+
+브랜치 통합 순서:
+
+1. 작업 브랜치에서 변경 범위와 `git diff --check`를 확인합니다.
+2. 최신 `main`을 작업 브랜치에 반영하고, 브랜치 자체의 `npm run build`와 `npm run lint`를 실행합니다. 생성물 때문에 전체 lint가 오염되면 정리된 source lint 결과를 별도로 확인합니다.
+3. 완료된 브랜치를 한 번에 하나씩 `main`에 merge합니다. merge 충돌이 없다는 것은 텍스트가 합쳐졌다는 뜻일 뿐, 동작이 호환된다는 뜻이 아닙니다.
+4. 각 merge 뒤에 통합 build·lint와 변경 영역의 브라우저·DB·실제 기기 검증을 실행합니다. 검증이 실패하면 다음 브랜치를 merge하거나 배포하지 않고 해당 변경을 먼저 수정합니다.
+5. 병렬 작업이 많아 통합 결과를 먼저 확인해야 하면 임시 `integration` 브랜치에 모아 검증한 뒤 `main`에 merge합니다. `integration`도 출시 브랜치가 아니며 배포 대상처럼 취급하지 않습니다.
+
+충돌이나 통합 오류가 발생하면 작업 브랜치 또는 임시 integration 브랜치에서 수정합니다. 코드 merge는 필요하면 merge commit을 되돌릴 수 있지만, 이미 적용된 Supabase migration을 임의로 되돌리지 말고 새 corrective migration과 데이터 영향·복구 계획을 검토합니다.
+
+`dist/`, `dist-admin/`, `tmp/`, `node_modules/`, `.env`, signing key, keystore, archive 같은 생성물·비밀·대형 빌드 산출물은 병렬 작업 결과에 포함하지 않으며 `git add .`로 무심코 추가하지 않습니다.
+
 ## 파일 탐색 원칙
 
 - 텍스트 검색은 `rg`를 우선 사용합니다.
