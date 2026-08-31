@@ -1,5 +1,5 @@
 import { CircleCheck } from "lucide-react";
-import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 import { reducedStatusMessageMotion, statusMessageMotion, successIconMotion } from "../lib/animations";
 
 type Props = {
@@ -24,26 +24,24 @@ export function StatusMessage({ type = "info", children }: Props) {
       };
 
   return (
-    <LazyMotion features={domAnimation}>
-      <m.div
-        initial={motionProps.initial}
-        animate={motionProps.animate}
-        transition={motionProps.transition}
-        className={`flex items-start gap-2 whitespace-pre-wrap rounded-md border px-3 py-2 text-sm font-medium ${classes[type]}`}
-      >
-        {type === "success" ? (
-          <m.span
-            initial={successIconProps.initial}
-            animate={successIconProps.animate}
-            transition={successIconProps.transition}
-            className="mt-0.5 shrink-0"
-            aria-hidden="true"
-          >
-            <CircleCheck size={16} />
-          </m.span>
-        ) : null}
-        <span className="min-w-0 flex-1">{children}</span>
-      </m.div>
-    </LazyMotion>
+    <m.div
+      initial={motionProps.initial}
+      animate={motionProps.animate}
+      transition={motionProps.transition}
+      className={`flex items-start gap-2 whitespace-pre-wrap rounded-md border px-3 py-2 text-sm font-medium ${classes[type]}`}
+    >
+      {type === "success" ? (
+        <m.span
+          initial={successIconProps.initial}
+          animate={successIconProps.animate}
+          transition={successIconProps.transition}
+          className="mt-0.5 shrink-0"
+          aria-hidden="true"
+        >
+          <CircleCheck size={16} />
+        </m.span>
+      ) : null}
+      <span className="min-w-0 flex-1">{children}</span>
+    </m.div>
   );
 }

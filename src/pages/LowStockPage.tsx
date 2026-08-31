@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
 import { ProductOrderAction } from "../components/ProductOrderAction";
 import { InventoryTableSkeleton, LowStockCardSkeleton } from "../components/Skeleton";
@@ -10,6 +9,7 @@ import { finishMappedMutationRequest, finishMutationRequest, formatMutationError
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import { loadResolvedInventoryItems, resolveProductByBarcode, searchResolvedProducts } from "../lib/resolvedProducts";
 import { loadSuppliers } from "../lib/suppliers";
+import { createWebBarcodeScanner, preloadWebBarcodeScanner, webBarcodeCameraErrorMessage, type WebBarcodeScanner } from "../lib/webBarcodeScanner";
 import * as Services from "../services";
 import type { AppRoute, InventoryItem, ProductSupplier } from "../types/domain";
 import type { Database } from "../types/supabase";
@@ -25,17 +25,6 @@ type Props = {
 type ConfirmedOrderItem = Database["public"]["Tables"]["confirmed_order_items"]["Row"];
 
 const FRESH_SCANNER_ID = "fresh-product-scanner";
-const PRODUCT_BARCODE_FORMATS = [
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.CODABAR
-];
 const DEFAULT_CAMERA_ZOOM = 2.5;
 
 type FocusMediaTrackConstraints = MediaTrackConstraints & {
@@ -93,6 +82,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
   const [expandedFreshCategory, setExpandedFreshCategory] = useState<string | null>(null);
   const [savingFresh, setSavingFresh] = useState(false);
   const [freshScannerActive, setFreshScannerActive] = useState(false);
+  const [freshScannerLoading, setFreshScannerLoading] = useState(false);
   const [freshScanMessage, setFreshScanMessage] = useState("");
   const [pendingFreshBarcode, setPendingFreshBarcode] = useState("");
   const [confirmedItems, setConfirmedItems] = useState<ConfirmedOrderItem[]>([]);
@@ -116,8 +106,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const freshScannerRef = useRef<Html5Qrcode | null>(null);
+  const freshScannerRef = useRef<WebBarcodeScanner | null>(null);
   const freshBarcodeHandlingRef = useRef(false);
+  const freshScannerMountedRef = useRef(true);
+  const freshScannerAttemptRef = useRef(0);
+  const freshScannerLoadingAttemptRef = useRef<number | null>(null);
   const replaceConfirmationRequestRef = useRef<string | null>(null);
   const addConfirmedRequestRef = useRef<string | null>(null);
   const removeConfirmedRequestRef = useRef<string | null>(null);
@@ -126,7 +119,11 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
   const placedOrderRequestRefs = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
+    freshScannerMountedRef.current = true;
     return () => {
+      freshScannerMountedRef.current = false;
+      freshScannerAttemptRef.current += 1;
+      freshScannerLoadingAttemptRef.current = null;
       if (freshScannerRef.current?.isScanning) {
         freshScannerRef.current.stop().catch(() => undefined);
       }
@@ -274,11 +271,14 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
   const canEditConfirmationMemo = canManageConfirmationMemo && confirmedOrderDate === todayOrderDate;
 
   const stopFreshScanner = useCallback(async () => {
+    freshScannerAttemptRef.current += 1;
+    freshScannerLoadingAttemptRef.current = null;
+    if (freshScannerMountedRef.current) setFreshScannerLoading(false);
     if (freshScannerRef.current?.isScanning) {
       await freshScannerRef.current.stop().catch(() => undefined);
     }
     freshBarcodeHandlingRef.current = false;
-    setFreshScannerActive(false);
+    if (freshScannerMountedRef.current) setFreshScannerActive(false);
   }, []);
 
   function openFreshModal() {
@@ -302,6 +302,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
       )
     );
     setFreshModalOpen(true);
+    void preloadWebBarcodeScanner().catch(() => undefined);
   }
 
   async function closeFreshModal() {
@@ -353,8 +354,10 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
     freshBarcodeHandlingRef.current = true;
     setFreshScanMessage(`스캔됨: ${barcode}`);
     await stopFreshScanner();
+    const handlingAttempt = freshScannerAttemptRef.current;
 
     const { product, errorMessage } = await findProductByFreshBarcode(barcode);
+    if (!freshScannerMountedRef.current || handlingAttempt !== freshScannerAttemptRef.current) return;
     if (errorMessage) {
       setFreshScanMessage(errorMessage);
       freshBarcodeHandlingRef.current = false;
@@ -383,19 +386,42 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
       setFreshScanMessage("이 기기에서는 카메라를 사용할 수 없습니다.");
       return;
     }
-    if (freshScannerRef.current?.isScanning) return;
+    if (freshScannerRef.current?.isScanning || freshScannerLoadingAttemptRef.current !== null) return;
 
-    const scanner = new Html5Qrcode(FRESH_SCANNER_ID, {
-      formatsToSupport: PRODUCT_BARCODE_FORMATS,
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true
-      },
-      verbose: false
-    });
+    const scanAttempt = freshScannerAttemptRef.current + 1;
+    freshScannerAttemptRef.current = scanAttempt;
+    freshScannerLoadingAttemptRef.current = scanAttempt;
+    setFreshScannerLoading(true);
+    setFreshScanMessage("스캐너 준비 중...");
+
+    let scanner: WebBarcodeScanner;
+    try {
+      await preloadWebBarcodeScanner();
+      if (!freshScannerMountedRef.current || scanAttempt !== freshScannerAttemptRef.current) return;
+      scanner = await createWebBarcodeScanner(FRESH_SCANNER_ID);
+      if (!freshScannerMountedRef.current || scanAttempt !== freshScannerAttemptRef.current) return;
+    } catch {
+      if (freshScannerMountedRef.current && scanAttempt === freshScannerAttemptRef.current) {
+        setFreshScanMessage("스캐너 기능을 불러오지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.");
+      }
+      return;
+    } finally {
+      if (freshScannerLoadingAttemptRef.current === scanAttempt) {
+        freshScannerLoadingAttemptRef.current = null;
+        if (freshScannerMountedRef.current) setFreshScannerLoading(false);
+      }
+    }
+
     freshScannerRef.current = scanner;
     freshBarcodeHandlingRef.current = false;
+    setFreshScanMessage("");
     setFreshScannerActive(true);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+    if (!freshScannerMountedRef.current || scanAttempt !== freshScannerAttemptRef.current) {
+      if (freshScannerMountedRef.current) setFreshScannerActive(false);
+      return;
+    }
 
     try {
       await scanner.start(
@@ -418,6 +444,12 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
         () => undefined
       );
 
+      if (!freshScannerMountedRef.current || scanAttempt !== freshScannerAttemptRef.current) {
+        await scanner.stop().catch(() => undefined);
+        if (freshScannerMountedRef.current) setFreshScannerActive(false);
+        return;
+      }
+
       const focusConstraints: FocusMediaTrackConstraints = {
         advanced: [{ focusMode: "continuous" }]
       };
@@ -429,8 +461,9 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
         await zoomFeature.apply(initialZoom).catch(() => undefined);
       }
     } catch (scanError) {
+      if (!freshScannerMountedRef.current || scanAttempt !== freshScannerAttemptRef.current) return;
       setFreshScannerActive(false);
-      setFreshScanMessage(scanError instanceof Error ? scanError.message : "카메라 실행에 실패했습니다.");
+      setFreshScanMessage(webBarcodeCameraErrorMessage(scanError));
     }
   }, [handleFreshBarcode]);
 
@@ -1140,12 +1173,12 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
                     </label>
                     <button
                       type="button"
-                      onClick={() => (freshScannerActive ? void stopFreshScanner() : void startFreshScanner())}
-                      className={`touch-button icon-button ${freshScannerActive ? "border-brand-600 bg-brand-600 text-white dark:bg-brand-600 dark:text-white" : ""}`}
-                      aria-label={freshScannerActive ? "바코드 스캔 중지" : "바코드 스캔"}
-                      title={freshScannerActive ? "스캔 중지" : "바코드 스캔"}
+                      onClick={() => (freshScannerActive || freshScannerLoading ? void stopFreshScanner() : void startFreshScanner())}
+                      className={`touch-button icon-button ${freshScannerActive || freshScannerLoading ? "border-brand-600 bg-brand-600 text-white dark:bg-brand-600 dark:text-white" : ""}`}
+                      aria-label={freshScannerLoading ? "스캐너 준비 취소" : freshScannerActive ? "바코드 스캔 중지" : "바코드 스캔"}
+                      title={freshScannerLoading ? "준비 취소" : freshScannerActive ? "스캔 중지" : "바코드 스캔"}
                     >
-                      {freshScannerActive ? <X size={20} /> : <ScanLine size={20} />}
+                      {freshScannerActive || freshScannerLoading ? <X size={20} /> : <ScanLine size={20} />}
                     </button>
                   </div>
                   <div className={`mt-3 overflow-hidden rounded-md bg-slate-900 ${freshScannerActive ? "block" : "hidden"}`}>
@@ -1158,7 +1191,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
                   ) : null}
                   {freshScanMessage ? (
                     <div className="mt-2">
-                      <StatusMessage type={freshScanMessage.includes("아닙니다") || freshScanMessage.includes("실패") ? "error" : "info"}>{freshScanMessage}</StatusMessage>
+                      <StatusMessage type={freshScanMessage.includes("아닙니다") || freshScanMessage.includes("실패") || freshScanMessage.includes("못했습니다") || freshScanMessage.includes("권한") ? "error" : "info"}>{freshScanMessage}</StatusMessage>
                     </div>
                   ) : null}
                   <p className="mt-2 text-right text-xs font-bold text-brand-700 dark:text-brand-100">

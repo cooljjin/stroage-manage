@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 
 type Props = {
   open: boolean;
@@ -20,7 +20,7 @@ export function StocklyStackIcon({ open, className }: Props) {
 
   return (
     <span aria-hidden="true" className={`relative inline-block overflow-visible ${className ?? ""}`}>
-      <motion.img
+      <m.img
         src="/stockly-stack-bottom.png"
         alt=""
         className={layerClassName}
@@ -30,7 +30,7 @@ export function StocklyStackIcon({ open, className }: Props) {
         style={{ transformOrigin: "50% 68%" }}
         transition={transition}
       />
-      <motion.img
+      <m.img
         src="/stockly-stack-middle.png"
         alt=""
         className={layerClassName}
@@ -40,7 +40,7 @@ export function StocklyStackIcon({ open, className }: Props) {
         style={{ transformOrigin: "50% 58%" }}
         transition={transition}
       />
-      <motion.img
+      <m.img
         src="/stockly-stack-top.png"
         alt=""
         className={layerClassName}
