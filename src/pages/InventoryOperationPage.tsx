@@ -383,7 +383,7 @@ export function InventoryOperationPage({
   const mobileHistoryNavigationRef = useRef<number | null>(null);
   const mobileEditHistoryLoadedRef = useRef(false);
   const mobileEditHistoryLoadingRef = useRef(false);
-  const mobileInventoryCheckRequestRef = useRef<string | null>(null);
+  const mobileInventoryCheckRequestRef = useRef(new Map<string, string>());
   const [mobileInventoryCheckSaving, setMobileInventoryCheckSaving] = useState(false);
   const memoRequestRef = useRef<string | null>(null);
 
@@ -826,7 +826,7 @@ export function InventoryOperationPage({
     queueMobileTarget(target);
   }
 
-  async function recordMobileInventoryCheck(targetLocation: Location) {
+  async function recordMobileInventoryCheck(targetLocation: Location | Location[]) {
     if (!item?.inventory || mobileInventoryCheckSaving) return;
 
     setMobileInventoryCheckSaving(true);
@@ -846,30 +846,36 @@ export function InventoryOperationPage({
       const snapshot = mobileConfirmedRef.current;
       setMobileSaveState("pending");
       setMobileSaveError("");
+      const locations = Array.isArray(targetLocation) ? targetLocation : [targetLocation];
+      let checkedAt = "";
 
-      const requestId = getMutationRequestId(mobileInventoryCheckRequestRef);
-      const { data, error: checkError } = await Services.DatabaseService.rpc("record_inventory_check", {
-        target_product_id: item.id,
-        target_location: targetLocation,
-        expected_warehouse_version: snapshot.warehouseVersion,
-        expected_store_version: snapshot.storeVersion,
-        request_id: requestId
-      });
+      for (const locationToCheck of locations) {
+        const requestId = getMappedMutationRequestId(mobileInventoryCheckRequestRef, locationToCheck);
+        const { data, error: checkError } = await Services.DatabaseService.rpc("record_inventory_check", {
+          target_product_id: item.id,
+          target_location: locationToCheck,
+          expected_warehouse_version: snapshot.warehouseVersion,
+          expected_store_version: snapshot.storeVersion,
+          request_id: requestId
+        });
 
-      if (checkError) {
-        finishMutationRequest(mobileInventoryCheckRequestRef, checkError);
-        if (checkError.message.includes("다른 직원이")) await loadProduct();
-        setMobileSaveState("error");
-        setMobileSaveError(formatMutationError(checkError));
-      } else {
-        mobileInventoryCheckRequestRef.current = null;
+        if (checkError) {
+          finishMappedMutationRequest(mobileInventoryCheckRequestRef, locationToCheck, checkError);
+          if (checkError.message.includes("다른 직원이")) await loadProduct();
+          setMobileSaveState("error");
+          setMobileSaveError(formatMutationError(checkError));
+          return;
+        }
+
+        mobileInventoryCheckRequestRef.current.delete(locationToCheck);
         const result = (Array.isArray(data) ? data[0] : data) as { checked_at?: string } | null;
-        setMobileEditPointAt(result?.checked_at ?? "");
-        setMobileSaveState("saved");
-        setMobileSaveStatusLabel("수량 확인 완료");
-        await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
-        await loadLatestInventoryCheck();
+        checkedAt = result?.checked_at ?? checkedAt;
       }
+      setMobileEditPointAt(checkedAt);
+      setMobileSaveState("saved");
+      setMobileSaveStatusLabel("수량 확인 완료");
+      await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
+      await loadLatestInventoryCheck();
     } finally {
       setMobileInventoryCheckSaving(false);
     }
@@ -1729,6 +1735,7 @@ export function InventoryOperationPage({
             onCommit={handleMobileCommit}
             onRebaseAutoBaseline={handleMobileAutoBaselineRebase}
             onInventoryCheck={(targetLocation) => void recordMobileInventoryCheck(targetLocation)}
+            onAuditSave={() => void recordMobileInventoryCheck(["창고", "매장"])}
             onOpenKeypad={setMobileKeypadTarget}
             onUndo={() => handleMobileHistoryNavigation("undo")}
             onRedo={() => handleMobileHistoryNavigation("redo")}
