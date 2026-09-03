@@ -21,6 +21,11 @@ target 'App' do
   # Add your Pods here
 end
 
+target 'Stockly Staff' do
+  capacitor_pods
+  # Keep the staff channel on the same Capacitor plugin set.
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

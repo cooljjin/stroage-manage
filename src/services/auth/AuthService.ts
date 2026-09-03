@@ -1,12 +1,16 @@
 import type { AuthChangeEvent, Provider, Session, SignInWithPasswordCredentials, SignUpWithPasswordCredentials, UserIdentity } from "@supabase/supabase-js";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
+import { getNativeAuthCallbackUrl } from "../../lib/nativeAppConfiguration";
 import { requestNativeAppleCredential } from "../../lib/nativeAppleSignIn";
 import { supabase } from "../../lib/supabase";
 
 export type { AuthChangeEvent, Session, User, UserIdentity } from "@supabase/supabase-js";
 
-const NATIVE_AUTH_CALLBACK_URL = "com.jinkim.stockly://auth/callback";
+const NATIVE_AUTH_CALLBACK_PROTOCOLS = new Set([
+  "com.jinkim.stockly:",
+  "com.jinkim.storeinventory.poc:"
+]);
 const NATIVE_AUTH_STATE_STORAGE_KEY = "stockly-native-auth-state";
 const NATIVE_AUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000;
 export const ACCOUNT_LINK_RETURN_STORAGE_KEY = "store-inventory-account-link-return";
@@ -51,20 +55,20 @@ function getStoredNativeAuthState() {
   }
 }
 
-function nativeRedirectUrl(state: NativeAuthState) {
-  const callbackUrl = new URL(NATIVE_AUTH_CALLBACK_URL);
+async function nativeRedirectUrl(state: NativeAuthState) {
+  const callbackUrl = new URL(await getNativeAuthCallbackUrl());
   callbackUrl.searchParams.set("stockly_state", state.value);
   return callbackUrl.toString();
 }
 
-function getAuthRedirectUrl(purpose: NativeAuthPurpose = "oauth") {
+async function getAuthRedirectUrl(purpose: NativeAuthPurpose = "oauth") {
   if (Capacitor.isNativePlatform()) {
     return nativeRedirectUrl(createNativeAuthState(purpose));
   }
   return window.location.origin;
 }
 
-function getPasswordResetRedirectUrl() {
+async function getPasswordResetRedirectUrl() {
   if (Capacitor.isNativePlatform()) {
     return nativeRedirectUrl(createNativeAuthState("password-recovery"));
   }
@@ -75,7 +79,7 @@ async function signInWithOAuthProvider(provider: Provider, scopes?: string) {
   const result = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: getAuthRedirectUrl(),
+      redirectTo: await getAuthRedirectUrl(),
       scopes,
       queryParams: getOAuthLoginQueryParams(provider),
       skipBrowserRedirect: Capacitor.isNativePlatform()
@@ -156,9 +160,9 @@ function getOAuthScopes(provider: Provider) {
   return undefined;
 }
 
-function getOAuthOptions(provider: Provider) {
+async function getOAuthOptions(provider: Provider) {
   return {
-    redirectTo: getAuthRedirectUrl("account-link"),
+    redirectTo: await getAuthRedirectUrl("account-link"),
     scopes: getOAuthScopes(provider),
     queryParams: getOAuthQueryParams(provider),
     skipBrowserRedirect: Capacitor.isNativePlatform()
@@ -174,7 +178,7 @@ function parseNativeAuthCallback(url: string) {
   }
 
   if (
-    callbackUrl.protocol !== "com.jinkim.stockly:"
+    !NATIVE_AUTH_CALLBACK_PROTOCOLS.has(callbackUrl.protocol)
     || callbackUrl.hostname !== "auth"
     || callbackUrl.pathname !== "/callback"
     || callbackUrl.username
@@ -206,9 +210,9 @@ export const AuthService = {
     return supabase.auth.signUp(credentials);
   },
 
-  resetPasswordForEmail(email: string) {
+  async resetPasswordForEmail(email: string) {
     return supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: getPasswordResetRedirectUrl()
+      redirectTo: await getPasswordResetRedirectUrl()
     });
   },
 
@@ -282,7 +286,7 @@ export const AuthService = {
   isNativeAuthCallbackUrl(url: string) {
     try {
       const callbackUrl = new URL(url);
-      return callbackUrl.protocol === "com.jinkim.stockly:"
+      return NATIVE_AUTH_CALLBACK_PROTOCOLS.has(callbackUrl.protocol)
         && callbackUrl.hostname === "auth"
         && callbackUrl.pathname === "/callback"
         && !callbackUrl.username
@@ -326,7 +330,7 @@ export const AuthService = {
     localStorage.setItem(ACCOUNT_LINK_RETURN_STORAGE_KEY, provider);
     const result = await supabase.auth.linkIdentity({
       provider,
-      options: getOAuthOptions(provider)
+      options: await getOAuthOptions(provider)
     });
 
     if (result.error || !Capacitor.isNativePlatform()) return result;

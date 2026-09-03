@@ -7,7 +7,22 @@ class AppViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(FastBarcodeScannerPlugin())
+        bridge?.registerPluginInstance(NativeAppConfigurationPlugin())
         bridge?.registerPluginInstance(NativeAppleSignInPlugin())
+    }
+}
+
+@objc(NativeAppConfigurationPlugin)
+final class NativeAppConfigurationPlugin: CAPPlugin, CAPBridgedPlugin {
+    let identifier = "NativeAppConfigurationPlugin"
+    let jsName = "NativeAppConfiguration"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "getNativeAuthCallbackUrl", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func getNativeAuthCallbackUrl(_ call: CAPPluginCall) {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.jinkim.stockly"
+        call.resolve(["url": "\(bundleIdentifier)://auth/callback"])
     }
 }
 

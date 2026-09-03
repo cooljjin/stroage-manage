@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		008BDB2FBE867CC49457CD43 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		052647B077592258CD204FFC /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 70FB387FCE714FE429FB07CE /* Foundation.framework */; };
+		13F733CD1555C57BE7531DB5 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -14,13 +17,22 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		68033CB4547E364452389157 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		7E4108D89F33DB57B4368FDB /* AppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B1F00012E4A000000000001 /* AppViewController.swift */; };
 		8B1F00032E4A000000000003 /* AppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B1F00012E4A000000000001 /* AppViewController.swift */; };
 		8B1F00042E4A000000000004 /* FastBarcodeScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B1F00022E4A000000000002 /* FastBarcodeScannerPlugin.swift */; };
-		E95A52632EEB5B6B90B082A5 /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE0D001ACC63C943005BE031 /* Pods_App.framework */; };
+		90AEF5ECC99F1F2530537CB6 /* FastBarcodeScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B1F00022E4A000000000002 /* FastBarcodeScannerPlugin.swift */; };
+		A0E64BA2B688DBF0AAC86A27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		A762192CACE3E82FD7E8821B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		B98EA87F63FE417B341349B6 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		D61F028AE139F6189B453DA6 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		E95A52632EEB5B6B90B082A5 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
+		F0C211037AFBA6B081F2215E /* Pods_Stockly_Staff.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C8407750ED483EC77D3FAC4 /* Pods_Stockly_Staff.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		4C8407750ED483EC77D3FAC4 /* Pods_Stockly_Staff.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Stockly_Staff.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -29,20 +41,32 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		6E9F42D19A3B3C2B1F2DEE3E /* Pods-Stockly Staff.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Stockly Staff.debug.xcconfig"; path = "Target Support Files/Pods-Stockly Staff/Pods-Stockly Staff.debug.xcconfig"; sourceTree = "<group>"; };
+		70FB387FCE714FE429FB07CE /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		7CB0239B4D0674698BD5B118 /* Pods-Stockly Staff.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Stockly Staff.release.xcconfig"; path = "Target Support Files/Pods-Stockly Staff/Pods-Stockly Staff.release.xcconfig"; sourceTree = "<group>"; };
 		8B1F00012E4A000000000001 /* AppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewController.swift; sourceTree = "<group>"; };
 		8B1F00022E4A000000000002 /* FastBarcodeScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastBarcodeScannerPlugin.swift; sourceTree = "<group>"; };
 		956EEE73C760ECB378B6F4DE /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		A18CB6F7300F506D00FCA147 /* AppRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppRelease.entitlements; sourceTree = "<group>"; };
-		CE0D001ACC63C943005BE031 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0193FE6330CC695D69EC030 /* Stockly Staff.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Stockly Staff.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF898D16DFF959803E7252BC /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		25A25426434F4F9B6BF8CA6C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				052647B077592258CD204FFC /* Foundation.framework in Frameworks */,
+				F0C211037AFBA6B081F2215E /* Pods_Stockly_Staff.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3011FED79650016851F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E95A52632EEB5B6B90B082A5 /* Pods_App.framework in Frameworks */,
+				E95A52632EEB5B6B90B082A5 /* BuildFile in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -63,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				C0193FE6330CC695D69EC030 /* Stockly Staff.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -88,7 +113,8 @@
 		96F2FB12B0507E33ED67C8E6 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				CE0D001ACC63C943005BE031 /* Pods_App.framework */,
+				C3A82F0BFA485373D815DA5B /* iOS */,
+				4C8407750ED483EC77D3FAC4 /* Pods_Stockly_Staff.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -98,8 +124,18 @@
 			children = (
 				956EEE73C760ECB378B6F4DE /* Pods-App.debug.xcconfig */,
 				CF898D16DFF959803E7252BC /* Pods-App.release.xcconfig */,
+				7CB0239B4D0674698BD5B118 /* Pods-Stockly Staff.release.xcconfig */,
+				6E9F42D19A3B3C2B1F2DEE3E /* Pods-Stockly Staff.debug.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		C3A82F0BFA485373D815DA5B /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				70FB387FCE714FE429FB07CE /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -122,6 +158,25 @@
 			name = App;
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C8C611BE08FA5FE997B03F3A /* Stockly Staff */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D2D86B95FDCF754684AECC8 /* Build configuration list for PBXNativeTarget "Stockly Staff" */;
+			buildPhases = (
+				13519562BAD3FEE10B2F24C9 /* [CP] Check Pods Manifest.lock */,
+				F7555187285C12EA3D8A9C2E /* Sources */,
+				25A25426434F4F9B6BF8CA6C /* Frameworks */,
+				0FDE25BF437DDE9679F82388 /* Resources */,
+				A9AB11D81B8C23F04B861927 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Stockly Staff";
+			productName = "Stockly Staff";
+			productReference = C0193FE6330CC695D69EC030 /* Stockly Staff.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -154,11 +209,25 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				C8C611BE08FA5FE997B03F3A /* Stockly Staff */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0FDE25BF437DDE9679F82388 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A762192CACE3E82FD7E8821B /* LaunchScreen.storyboard in Resources */,
+				B98EA87F63FE417B341349B6 /* public in Resources */,
+				A0E64BA2B688DBF0AAC86A27 /* Assets.xcassets in Resources */,
+				13F733CD1555C57BE7531DB5 /* capacitor.config.json in Resources */,
+				D61F028AE139F6189B453DA6 /* Main.storyboard in Resources */,
+				68033CB4547E364452389157 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3021FED79650016851F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -197,6 +266,28 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		13519562BAD3FEE10B2F24C9 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Stockly Staff-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
 		1F546F8A826C774C31CF29D9 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -212,6 +303,21 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-App/Pods-App-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		A9AB11D81B8C23F04B861927 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Stockly Staff/Pods-Stockly Staff-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -222,6 +328,16 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				8B1F00032E4A000000000003 /* AppViewController.swift in Sources */,
 				8B1F00042E4A000000000004 /* FastBarcodeScannerPlugin.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F7555187285C12EA3D8A9C2E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				008BDB2FBE867CC49457CD43 /* AppDelegate.swift in Sources */,
+				7E4108D89F33DB57B4368FDB /* AppViewController.swift in Sources */,
+				90AEF5ECC99F1F2530537CB6 /* FastBarcodeScannerPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,6 +363,33 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		1B1EE3A5A96DA21404696309 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7CB0239B4D0674698BD5B118 /* Pods-Stockly Staff.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/AppRelease.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 40;
+				DEVELOPMENT_TEAM = RQMBNM7XVV;
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = RQMBNM7XVV;
+				INFOPLIST_FILE = "App/Info-Staff.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jinkim.storeinventory.poc;
+				PRODUCT_NAME = "Stockly Staff";
+				PROVISIONING_PROFILE_SPECIFIER = "Stockly Staff App Store";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Stockly Staff App Store";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		504EC3141FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -334,7 +477,6 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -362,7 +504,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 54;
 				DEVELOPMENT_TEAM = RQMBNM7XVV;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
@@ -386,7 +528,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/AppRelease.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 54;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = RQMBNM7XVV;
 				INFOPLIST_FILE = App/Info.plist;
@@ -403,6 +545,31 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
+		};
+		BEF630F0E7BDEEBFB9D456CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6E9F42D19A3B3C2B1F2DEE3E /* Pods-Stockly Staff.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/AppRelease.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 40;
+				DEVELOPMENT_TEAM = RQMBNM7XVV;
+				INFOPLIST_FILE = "App/Info-Staff.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = com.jinkim.storeinventory.poc;
+				PRODUCT_NAME = "Stockly Staff";
+				PROVISIONING_PROFILE_SPECIFIER = "Stockly Staff App Store";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
 		};
 /* End XCBuildConfiguration section */
 
@@ -421,6 +588,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5D2D86B95FDCF754684AECC8 /* Build configuration list for PBXNativeTarget "Stockly Staff" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1B1EE3A5A96DA21404696309 /* Release */,
+				BEF630F0E7BDEEBFB9D456CF /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
