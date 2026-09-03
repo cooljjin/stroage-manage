@@ -9,10 +9,6 @@ import type { Database } from "../../../src/types/supabase";
 type ExtraUseRequest = Database["public"]["Tables"]["recipe_import_extra_use_requests"]["Row"];
 type RecipeImportJob = Database["public"]["Tables"]["recipe_import_jobs"]["Row"];
 
-function formatCost(value: number) {
-  return `$${Number(value).toFixed(4)}`;
-}
-
 export function MasterRecipeApprovalsPage() {
   const [requests, setRequests] = useState<ExtraUseRequest[]>([]);
   const [jobs, setJobs] = useState<RecipeImportJob[]>([]);
@@ -158,7 +154,7 @@ export function MasterRecipeApprovalsPage() {
     const requiredCost = Math.max(Number(job.estimated_cost_usd), Number(job.actual_cost_usd));
     const reason = costReasons[job.id]?.trim();
     if (!Number.isFinite(approvedCost) || approvedCost <= 0.5 || approvedCost > 5 || approvedCost < requiredCost || !reason) {
-      setError("필요 금액 이상, $0.50 초과~$5.00 이하의 승인 금액과 사유를 입력해 주세요.");
+      setError("허용 범위 안의 확인값과 사유를 입력해 주세요.");
       return;
     }
 
@@ -192,14 +188,14 @@ export function MasterRecipeApprovalsPage() {
         body: { action: "process", jobId: job.id }
       });
       if (processResult.error) {
-        setError(`비용 승인은 저장했지만 분석 시작에 실패했습니다: ${processResult.error.message}`);
+        setError(`관리자 확인은 저장했지만 분석 시작에 실패했습니다: ${processResult.error.message}`);
         setBusyKey("");
         await loadApprovals();
         return;
       }
     }
 
-    setMessage(approvedJob.status === "queued" ? "비용을 승인하고 분석을 시작했습니다." : "비용 승인을 반영했습니다.");
+    setMessage(approvedJob.status === "queued" ? "관리자 확인 후 분석을 시작했습니다." : "관리자 확인을 반영했습니다.");
     await loadApprovals();
     setBusyKey("");
   }
@@ -208,7 +204,7 @@ export function MasterRecipeApprovalsPage() {
     <section>
       <PageTitle
         title="AI 분석 승인"
-        description="주간 추가 횟수와 $0.50 초과 작업을 master가 감사 사유와 함께 승인합니다. 건별 절대 상한은 $5입니다."
+        description="주간 추가 횟수와 추가 확인이 필요한 작업을 master가 사유와 함께 검토합니다."
         action={<button type="button" className="secondary-button inline-flex items-center gap-2" onClick={() => void loadApprovals()} disabled={loading}><RefreshCw size={17} className={loading ? "animate-spin" : undefined} />새로고침</button>}
       />
 
@@ -241,12 +237,12 @@ export function MasterRecipeApprovalsPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-lg font-black">건별 비용 승인 <span className="text-brand-600">{jobs.length}</span></h2>
-            {jobs.length === 0 ? <StatusMessage>$0.50를 초과해 대기 중인 작업이 없습니다.</StatusMessage> : (
+            <h2 className="mb-2 text-lg font-black">추가 확인 작업 <span className="text-brand-600">{jobs.length}</span></h2>
+            {jobs.length === 0 ? <StatusMessage>추가 확인이 필요한 대기 작업이 없습니다.</StatusMessage> : (
               <div className="space-y-3">{jobs.map((job) => {
                 const profile = job.created_by ? profileById.get(job.created_by) : null;
                 const isBusy = busyKey === `cost-${job.id}`;
-                return <article key={job.id} className="panel p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold">{job.file_name}</p><p className="text-xs text-slate-500">{profile?.display_name ?? job.created_by ?? "탈퇴 사용자"} · {storeById.get(job.store_id)?.name ?? job.store_id}</p><p className="mt-2 text-sm">예상 {formatCost(job.estimated_cost_usd)} · 실제 {formatCost(job.actual_cost_usd)} · 파일 {job.source_uploaded_at ? "업로드 완료" : "업로드 대기"}</p>{job.error_message ? <p className="mt-1 text-xs font-semibold text-rose-700">{job.error_message}</p> : null}</div><ShieldCheck className="text-brand-600" size={24} /></div><div className="mt-3 grid gap-2 sm:grid-cols-[150px_minmax(0,1fr)_auto] sm:items-end"><label><span className="mb-1 block text-xs font-semibold">승인 상한(USD)</span><input className="field" type="number" min={Math.max(Number(job.estimated_cost_usd), Number(job.actual_cost_usd), 0.5001)} max="5" step="0.0001" value={costAmounts[job.id] ?? ""} onChange={(event) => setCostAmounts((current) => ({ ...current, [job.id]: event.target.value }))} /></label><label><span className="mb-1 block text-xs font-semibold">승인 사유</span><input className="field" maxLength={500} value={costReasons[job.id] ?? ""} onChange={(event) => setCostReasons((current) => ({ ...current, [job.id]: event.target.value }))} /></label><button type="button" className="primary-button inline-flex items-center justify-center gap-2" onClick={() => void approveCost(job)} disabled={isBusy}>{isBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Check size={16} />}비용 승인</button></div></article>;
+                return <article key={job.id} className="panel p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold">{job.file_name}</p><p className="text-xs text-slate-500">{profile?.display_name ?? job.created_by ?? "탈퇴 사용자"} · {storeById.get(job.store_id)?.name ?? job.store_id}</p><p className="mt-2 text-sm">파일 {job.source_uploaded_at ? "업로드 완료" : "업로드 대기"}</p>{job.error_message ? <p className="mt-1 text-xs font-semibold text-rose-700">{job.error_message}</p> : null}</div><ShieldCheck className="text-brand-600" size={24} /></div><div className="mt-3 grid gap-2 sm:grid-cols-[150px_minmax(0,1fr)_auto] sm:items-end"><label><span className="mb-1 block text-xs font-semibold">확인값</span><input className="field" type="number" min={Math.max(Number(job.estimated_cost_usd), Number(job.actual_cost_usd), 0.5001)} max="5" step="0.0001" value={costAmounts[job.id] ?? ""} onChange={(event) => setCostAmounts((current) => ({ ...current, [job.id]: event.target.value }))} /></label><label><span className="mb-1 block text-xs font-semibold">확인 사유</span><input className="field" maxLength={500} value={costReasons[job.id] ?? ""} onChange={(event) => setCostReasons((current) => ({ ...current, [job.id]: event.target.value }))} /></label><button type="button" className="primary-button inline-flex items-center justify-center gap-2" onClick={() => void approveCost(job)} disabled={isBusy}>{isBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Check size={16} />}확인</button></div></article>;
               })}</div>
             )}
           </section>

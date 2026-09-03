@@ -1,7 +1,5 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App as CapacitorApp } from "@capacitor/app";
-import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import { ArrowLeft, ArrowLeftRight, Check, ChevronDown, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
+import { FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowLeftRight, Check, ChevronDown, ChevronLeft, ChevronRight, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { MobileInventoryControls } from "../components/MobileInventoryControls";
 import { QuantityKeypadSheet } from "../components/QuantityKeypadSheet";
@@ -13,7 +11,7 @@ import { formatInventoryActionLabel, formatInventoryQuantity, formatLogContent, 
 import { DEFAULT_ABUNDANT_MULTIPLIER } from "../lib/inventoryStock";
 import { createMutationRequestId, finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
-import { applyMobileInventoryChange, finalizeMobileInventorySession, recoverMobileInventorySessions, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
+import { applyMobileInventoryChange, finalizeMobileInventorySession, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
 import { buildAuditTarget, buildAutoAdjustmentTarget, buildMobileHistoryTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
 import { useMobileViewport } from "../hooks/useMobileViewport";
 import { useInventoryTouchViewport } from "../hooks/useInventoryTouchViewport";
@@ -28,7 +26,6 @@ type Props = {
   onBack?: () => void;
   currentStoreId: string;
   initialInventoryMode?: MobileInventoryEntryMode;
-  registerBeforeLeave?: (handler: () => Promise<void>) => () => void;
 };
 
 type ConfirmedInventorySnapshot = {
@@ -44,13 +41,24 @@ type MobileInventoryBaseline = Pick<ConfirmedInventorySnapshot, "warehouseQty" |
 const STOCK_STATUSES: StockStatus[] = ["충분", "절반 이하", "발주 필요"];
 const DEFAULT_LOCATION_LONG_PRESS_MS = 700;
 const MOBILE_INPUT_MODE_STORAGE_KEY = "store-inventory-input-mode";
+const QUANTITY_DRAG_STEP_PX = 24;
+const QUANTITY_DRAG_THRESHOLD_PX = 8;
 
-function readStoredMobileDialMode(): boolean {
-  if (typeof window === "undefined") return true;
+type QuantityDragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startQuantity: number;
+  dragged: boolean;
+};
+
+function readStoredMobileDialMode(defaultDialMode: boolean): boolean {
+  if (typeof window === "undefined") return defaultDialMode;
   try {
-    return window.localStorage.getItem(MOBILE_INPUT_MODE_STORAGE_KEY) !== "button";
+    const storedMode = window.localStorage.getItem(MOBILE_INPUT_MODE_STORAGE_KEY);
+    return storedMode === "dial" ? true : storedMode === "button" ? false : defaultDialMode;
   } catch {
-    return true;
+    return defaultDialMode;
   }
 }
 
@@ -303,8 +311,7 @@ export function InventoryOperationPage({
   canGoBack = false,
   onBack,
   currentStoreId,
-  initialInventoryMode = "auto",
-  registerBeforeLeave
+  initialInventoryMode = "auto"
 }: Props) {
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<InventoryHistoryPoint[]>([]);
@@ -345,13 +352,14 @@ export function InventoryOperationPage({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const defaultLocationPressTimerRef = useRef<number | null>(null);
+  const quantityDragRef = useRef<QuantityDragState | null>(null);
   const inventoryMutationRequestRef = useRef<string | null>(null);
   const receiptMutationRequestRef = useRef<string | null>(null);
   const restoreMutationRequestRef = useRef(new Map<string, string>());
   const isMobileViewport = useMobileViewport();
   const isInventoryTouchViewport = useInventoryTouchViewport();
   const mobileTouchEnabled = import.meta.env.VITE_MOBILE_INVENTORY_TOUCH_ENABLED !== "false";
-  const [mobileDialMode, setMobileDialMode] = useState(() => readStoredMobileDialMode());
+  const [mobileDialMode, setMobileDialMode] = useState(() => readStoredMobileDialMode(isInventoryTouchViewport));
   const [mobileInputModeSwitching, setMobileInputModeSwitching] = useState(false);
   const [mobileMode, setMobileMode] = useState<MobileInventoryMode>(initialInventoryMode === "audit" ? "audit" : "auto");
   const [mobileWarehouseQty, setMobileWarehouseQty] = useState(0);
@@ -371,8 +379,6 @@ export function InventoryOperationPage({
   const mobileQueuedTargetRef = useRef<MobileInventoryTarget | null>(null);
   const mobileDraftTargetRef = useRef<MobileInventoryTarget | null>(null);
   const mobileConflictTargetRef = useRef<MobileInventoryTarget | null>(null);
-  const mobileSavePromiseRef = useRef<Promise<void> | null>(null);
-  const mobileFinalizeRef = useRef<() => Promise<void>>(async () => undefined);
   const mobileConfirmedRef = useRef<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
   const mobileAutoBaselineRef = useRef<MobileInventoryBaseline>({ warehouseQty: 0, storeQty: 0 });
   const mobileAutoRebaseSequenceRef = useRef(0);
@@ -438,6 +444,11 @@ export function InventoryOperationPage({
   }, [currentStoreId]);
 
   const mobileTouchUI = mobileTouchEnabled && isInventoryTouchViewport && mobileDialMode;
+
+  useEffect(() => {
+    if (readStoredMobileDialMode(isInventoryTouchViewport) !== isInventoryTouchViewport) return;
+    setMobileDialMode(isInventoryTouchViewport);
+  }, [isInventoryTouchViewport]);
 
   function isMissingMobileSessionError(message: string | null | undefined): boolean {
     return message?.includes("모바일 재고 작업 세션을 찾을 수 없습니다.") ?? false;
@@ -624,13 +635,8 @@ export function InventoryOperationPage({
     void loadMobileEditHistory(nextSnapshot);
   }, [item, loadMobileEditHistory]);
 
-  useEffect(() => {
-    if (!mobileTouchEnabled) return;
-    void recoverMobileInventorySessions();
-  }, [mobileTouchEnabled]);
-
-  function resetMobileDraft(preserveQueuedTarget = false) {
-    if (!preserveQueuedTarget) mobileQueuedTargetRef.current = null;
+  function resetMobileDraft() {
+    mobileQueuedTargetRef.current = null;
     mobileDraftTargetRef.current = null;
     const snapshot = mobileConfirmedRef.current;
     setMobileWarehouseQty(snapshot.warehouseQty);
@@ -640,16 +646,6 @@ export function InventoryOperationPage({
     setMobileSaveStatusLabel("서버에 저장됨");
   }
 
-  function commitUnsettledMobileDraft() {
-    const target = mobileDraftTargetRef.current;
-    if (!target || !hasMobileInventoryChange(
-      target.warehouseQty,
-      target.storeQty,
-      mobileConfirmedRef.current.warehouseQty,
-      mobileConfirmedRef.current.storeQty
-    )) return;
-    queueMobileTarget(target);
-  }
 
   function applyMobileResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget) {
     mobileEditPointAtRef.current = null;
@@ -669,14 +665,14 @@ export function InventoryOperationPage({
     recordMobileEditResult(result, target);
   }
 
-  async function flushMobileTargets() {
-    if (mobileSaveInFlightRef.current) return;
+  async function flushMobileTargets(): Promise<boolean> {
+    if (mobileSaveInFlightRef.current) return false;
     mobileSaveInFlightRef.current = true;
     setMobileSaveState("pending");
     setMobileSaveError("");
+    let hadError = false;
 
     const savePromise = (async () => {
-      let hadError = false;
       try {
         while (mobileQueuedTargetRef.current) {
           const target = mobileQueuedTargetRef.current;
@@ -737,25 +733,23 @@ export function InventoryOperationPage({
         }
       } finally {
         mobileSaveInFlightRef.current = false;
-        mobileSavePromiseRef.current = null;
         if (!mobileQueuedTargetRef.current && !hadError) {
           setMobileSaveState("saved");
         }
       }
     })();
 
-    mobileSavePromiseRef.current = savePromise;
     await savePromise;
+    return !hadError;
   }
 
   function queueMobileTarget(target: MobileInventoryTarget) {
     mobileDraftTargetRef.current = target;
     mobileQueuedTargetRef.current = target;
-    setMobileSaveState("pending");
-    if (!mobileSaveInFlightRef.current) void flushMobileTargets();
+    setMobileSaveState("idle");
   }
 
-  async function finalizeMobileSession() {
+  async function saveMobileDraft() {
     const pendingDraft = mobileDraftTargetRef.current;
     if (pendingDraft && hasMobileInventoryChange(
       pendingDraft.warehouseQty,
@@ -764,11 +758,14 @@ export function InventoryOperationPage({
       mobileConfirmedRef.current.storeQty
     )) {
       mobileQueuedTargetRef.current = pendingDraft;
-      if (!mobileSaveInFlightRef.current) void flushMobileTargets();
+      const saved = await flushMobileTargets();
+      if (!saved) return;
     }
-    if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
     const sessionId = mobileSessionIdRef.current;
-    if (!sessionId) return;
+    if (!sessionId) {
+      setMobileSaveState("idle");
+      return;
+    }
     const { error: finalizeError } = await finalizeMobileInventorySession(sessionId);
     if (finalizeError) {
       if (isMissingMobileSessionError(finalizeError.message)) {
@@ -782,7 +779,7 @@ export function InventoryOperationPage({
       return;
     }
     mobileSessionIdRef.current = null;
-    setMobileSaveState("idle");
+    setMobileSaveState("saved");
   }
 
   async function changeMobileInputMode(nextDialMode: boolean) {
@@ -791,9 +788,7 @@ export function InventoryOperationPage({
     try {
       if (!nextDialMode) {
         setMobileKeypadTarget(null);
-        commitUnsettledMobileDraft();
-        if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
-        await finalizeMobileSession();
+        resetMobileDraft();
       }
       setMobileDialMode(nextDialMode);
       try {
@@ -806,7 +801,6 @@ export function InventoryOperationPage({
     }
   }
 
-  mobileFinalizeRef.current = finalizeMobileSession;
 
   function handleMobileDraft(target: MobileInventoryTarget) {
     mobileHistoryNavigationRef.current = null;
@@ -831,10 +825,7 @@ export function InventoryOperationPage({
 
     setMobileInventoryCheckSaving(true);
     try {
-      commitUnsettledMobileDraft();
-      if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
-      await finalizeMobileSession();
-      if (mobileSessionIdRef.current) return;
+      resetMobileDraft();
 
       const { data: userData, error: userError } = await Services.AuthService.getUser();
       if (userError || !userData.user) {
@@ -1048,52 +1039,8 @@ export function InventoryOperationPage({
       if (defaultLocationPressTimerRef.current !== null) {
         window.clearTimeout(defaultLocationPressTimerRef.current);
       }
-      void mobileFinalizeRef.current();
     };
   }, []);
-
-  useEffect(() => {
-    if (!registerBeforeLeave) return;
-    return registerBeforeLeave(() => mobileFinalizeRef.current());
-  }, [registerBeforeLeave]);
-
-  useEffect(() => {
-    function handleVisibilityChange() {
-      if (document.visibilityState === "hidden") void mobileFinalizeRef.current();
-    }
-    function handlePageHide() {
-      void mobileFinalizeRef.current();
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("pagehide", handlePageHide);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("pagehide", handlePageHide);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!mobileTouchEnabled || !Capacitor.isNativePlatform()) return;
-
-    let listenerHandle: PluginListenerHandle | null = null;
-    let cancelled = false;
-    CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-      if (!isActive) void mobileFinalizeRef.current();
-    })
-      .then((handle) => {
-        if (cancelled) {
-          void handle.remove();
-        } else {
-          listenerHandle = handle;
-        }
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-      if (listenerHandle) void listenerHandle.remove();
-    };
-  }, [mobileTouchEnabled]);
 
   useEffect(() => {
     void loadLatestMemo();
@@ -1152,6 +1099,41 @@ export function InventoryOperationPage({
     if (/^\d*\.?\d*$/.test(nextValue)) {
       setQuantity(nextValue);
     }
+  }
+
+  function startQuantityDrag(event: ReactPointerEvent<HTMLInputElement>) {
+    if (event.button !== 0) return;
+    quantityDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startQuantity: quantityNumberOrZero(quantity),
+      dragged: false
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleQuantityDrag(event: ReactPointerEvent<HTMLInputElement>) {
+    const drag = quantityDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.dragged && (Math.abs(deltaX) < QUANTITY_DRAG_THRESHOLD_PX || Math.abs(deltaX) < Math.abs(deltaY))) return;
+
+    drag.dragged = true;
+    event.currentTarget.blur();
+    event.preventDefault();
+    const stepCount = Math.trunc(deltaX / QUANTITY_DRAG_STEP_PX);
+    setQuantity(String(Math.max(0, drag.startQuantity + stepCount)));
+  }
+
+  function finishQuantityDrag(event: ReactPointerEvent<HTMLInputElement>) {
+    const drag = quantityDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (drag.dragged) event.preventDefault();
+    quantityDragRef.current = null;
   }
 
   function updateReceiptQuantityInput(value: string) {
@@ -1266,11 +1248,6 @@ export function InventoryOperationPage({
 
   async function openHistory() {
     if (!item) return;
-
-    if (mobileTouchUI) {
-      commitUnsettledMobileDraft();
-      if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
-    }
 
     setHistoryOpen(true);
     setHistoryLoading(true);
@@ -1719,18 +1696,17 @@ export function InventoryOperationPage({
             canRedo={mobileEditHistoryIndex >= 0 && mobileEditHistoryIndex < mobileEditHistory.length - 1}
             onModeChange={(nextMode) => {
               if (nextMode === mobileModeRef.current) return;
-              commitUnsettledMobileDraft();
+              resetMobileDraft();
               mobileModeRef.current = nextMode;
               setMobileMode(nextMode);
               resetMobileAutoBaseline();
-              resetMobileDraft(true);
             }}
             onDraftChange={handleMobileDraft}
             onCommit={handleMobileCommit}
             onRebaseAutoBaseline={handleMobileAutoBaselineRebase}
             onInventoryCheck={(targetLocation) => void recordMobileInventoryCheck(targetLocation)}
             onOpenKeypad={setMobileKeypadTarget}
-            onSave={() => void finalizeMobileSession()}
+            onSave={() => void saveMobileDraft()}
             onUndo={() => handleMobileHistoryNavigation("undo")}
             onRedo={() => handleMobileHistoryNavigation("redo")}
           />
@@ -1903,14 +1879,23 @@ export function InventoryOperationPage({
               <button type="button" onClick={decreaseQuantity} className="secondary-button inline-flex min-h-10 w-12 items-center justify-center px-2 py-1.5" aria-label="수량 감소">
                 <Minus size={18} />
               </button>
-              <input
-                className="field py-1.5 text-center text-lg font-bold"
-                type="text"
-                inputMode="decimal"
-                pattern="[0-9]*[.]?[0-9]*"
-                value={quantity}
-                onChange={(event) => updateQuantityInput(event.target.value)}
-              />
+              <div className="relative min-w-0 flex-1">
+                <ChevronLeft aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-2 z-10 my-auto text-slate-400 dark:text-slate-500" size={15} strokeWidth={2.5} />
+                <input
+                  className="field w-full touch-pan-y py-1.5 text-center text-lg font-bold"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]*[.]?[0-9]*"
+                  value={quantity}
+                  onChange={(event) => updateQuantityInput(event.target.value)}
+                  onPointerDown={startQuantityDrag}
+                  onPointerMove={handleQuantityDrag}
+                  onPointerUp={finishQuantityDrag}
+                  onPointerCancel={finishQuantityDrag}
+                  title="좌우로 밀어 수량 조정 · 탭하여 직접 입력"
+                />
+                <ChevronRight aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-2 z-10 my-auto text-slate-400 dark:text-slate-500" size={15} strokeWidth={2.5} />
+              </div>
               <button type="button" onClick={() => addQuickAmount(1)} className="secondary-button inline-flex min-h-10 w-12 items-center justify-center px-2 py-1.5" aria-label="수량 증가">
                 <Plus size={18} />
               </button>
@@ -1930,11 +1915,11 @@ export function InventoryOperationPage({
           {error ? <div className="mt-3"><StatusMessage type="error">{error}</StatusMessage></div> : null}
           {success ? <div className="mt-3"><StatusMessage type="success">{success}</StatusMessage></div> : null}
 
-          <button className="primary-button order-12 mt-4 min-h-11 w-full py-2 sm:order-none sm:mt-3" type="submit" disabled={saving || quantityValue < 0 || Boolean(quantityStepError) || Boolean(negativeError)}>
+          <button className="primary-button order-10 mt-4 min-h-11 w-full py-2 sm:order-none sm:mt-3" type="submit" disabled={saving || quantityValue < 0 || Boolean(quantityStepError) || Boolean(negativeError)}>
             {saving ? "저장 중..." : "저장"}
           </button>
 
-          <div className="order-10 mt-5 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:order-none">
+          <div className="order-12 mt-5 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:order-none">
             <label className="flex items-center justify-between gap-3 text-sm font-bold">
               <span>상태</span>
               <input

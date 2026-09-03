@@ -120,7 +120,3 @@ export function estimateRecipeImportCost(manifest: RecipeImportManifest): Recipe
   const estimatedCostUsd = Math.max(0.01, Number(((inputTokens * RECIPE_IMPORT_INPUT_PRICE_PER_MILLION + outputTokens * RECIPE_IMPORT_OUTPUT_PRICE_PER_MILLION) / 1_000_000).toFixed(4)));
   return { inputTokens, outputTokens, estimatedCostUsd, model: RECIPE_IMPORT_MODEL };
 }
-
-export function formatRecipeImportCost(cost: number) {
-  return `$${cost.toFixed(4)}`;
-}

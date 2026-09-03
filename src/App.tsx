@@ -83,7 +83,6 @@ type NavigationOptions = {
   scrollY?: number;
 };
 
-type RouteLeaveHandler = () => Promise<void>;
 
 type StoredRouteEntry = {
   route: AppRoute;
@@ -242,6 +241,7 @@ export default function App() {
   const [inventoryListState, setInventoryListState] = useState<InventoryListPageState>();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoMenuOpen, setLogoMenuOpen] = useState(false);
   const [storeName, setStoreName] = useState("");
   const [inviteCode, setInviteCode] = useState(() => savePendingInviteCode(readInviteCodeFromUrl()) || readPendingInviteCode());
   const [connectionLoading, setConnectionLoading] = useState(false);
@@ -254,8 +254,6 @@ export default function App() {
   const routeRef = useRef(route);
   const navigateRef = useRef<(next: AppRoute, options?: NavigationOptions) => void>(() => undefined);
   const goBackRef = useRef<() => boolean>(() => false);
-  const routeLeaveHandlerRef = useRef<RouteLeaveHandler | null>(null);
-  const routeLeaveInFlightRef = useRef<Promise<void> | null>(null);
   const shouldReduceMotion = useReducedMotion();
 
   routeRef.current = route;
@@ -449,11 +447,11 @@ export default function App() {
       const restoredEntry = restoredEntries?.[restoredEntries.length - 1];
       if (!restoredEntry) return;
 
-      await runRouteLeaveHandler();
       navigationStacksRef.current = event.state.stacks;
       activeTabRef.current = event.state.activeTab;
       pendingScrollYRef.current = restoredEntry.scrollY;
       setMenuOpen(false);
+      setLogoMenuOpen(false);
       setActiveTab(event.state.activeTab);
       setRoute(restoredEntry.route);
     }
@@ -494,28 +492,6 @@ export default function App() {
 
   const canGoBack = (navigationStacksRef.current[activeTab]?.length ?? 0) > 1;
 
-  function registerBeforeLeave(handler: RouteLeaveHandler) {
-    routeLeaveHandlerRef.current = handler;
-    return () => {
-      if (routeLeaveHandlerRef.current === handler) routeLeaveHandlerRef.current = null;
-    };
-  }
-
-  async function runRouteLeaveHandler() {
-    if (!routeLeaveHandlerRef.current) return;
-    if (routeLeaveInFlightRef.current) {
-      await routeLeaveInFlightRef.current;
-      return;
-    }
-
-    const pendingLeave = routeLeaveHandlerRef.current();
-    routeLeaveInFlightRef.current = pendingLeave;
-    try {
-      await pendingLeave;
-    } finally {
-      routeLeaveInFlightRef.current = null;
-    }
-  }
 
   function writeBrowserNavigationState(nextRoute: AppRoute, browserState: BrowserNavigationState, replace = false) {
     const method = replace ? "replaceState" : "pushState";
@@ -551,6 +527,7 @@ export default function App() {
 
   function commitRequestedNavigation(next: AppRoute, options: NavigationOptions = {}) {
     setMenuOpen(false);
+    setLogoMenuOpen(false);
     if (route.name === "scan") {
       savePostScanRoute(next);
     }
@@ -604,10 +581,6 @@ export default function App() {
   }
 
   function navigate(next: AppRoute, options: NavigationOptions = {}) {
-    if (routeRef.current.name === "operation" && routeKey(routeRef.current) !== routeKey(next)) {
-      void runRouteLeaveHandler().then(() => commitRequestedNavigation(next, options));
-      return;
-    }
     commitRequestedNavigation(next, options);
   }
 
@@ -630,17 +603,12 @@ export default function App() {
     if (!previous) return false;
 
     setMenuOpen(false);
+    setLogoMenuOpen(false);
     commitNavigation(previous.route, currentTab, nextStacks, previous.scrollY);
     return true;
   }
 
   function goBack() {
-    if (routeRef.current.name === "operation") {
-      void runRouteLeaveHandler().then(() => {
-        commitGoBack();
-      });
-      return true;
-    }
     return commitGoBack();
   }
 
@@ -648,7 +616,6 @@ export default function App() {
   goBackRef.current = goBack;
 
   async function handleLogout() {
-    await runRouteLeaveHandler();
     await Services.AuthService.signOut();
     setProfile(null);
     setStaffPermissions([]);
@@ -825,11 +792,31 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 items-center gap-0">
-            <StocklyCharacterMenuButton open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
+            <TopMenu
+              open={logoMenuOpen}
+              align="left"
+              role={profileRole}
+              staffPermissions={staffPermissions}
+              onOpenChange={(open) => {
+                setLogoMenuOpen(open);
+                if (open) setMenuOpen(false);
+              }}
+              onNavigate={(name) => navigate({ name }, { resetHistory: true })}
+              renderTrigger={({ open, onClick }) => <StocklyCharacterMenuButton open={open} onClick={onClick} />}
+            />
             <img src="/stockly-logo.png" alt="Stockly" className="h-10 w-auto min-w-0 shrink-0 object-contain sm:h-12" />
             <RoleBadge role={profileRole} />
           </div>
-          <TopMenu open={menuOpen} role={profileRole} staffPermissions={staffPermissions} onOpenChange={setMenuOpen} onNavigate={(name) => navigate({ name }, { resetHistory: true })} />
+          <TopMenu
+            open={menuOpen}
+            role={profileRole}
+            staffPermissions={staffPermissions}
+            onOpenChange={(open) => {
+              setMenuOpen(open);
+              if (open) setLogoMenuOpen(false);
+            }}
+            onNavigate={(name) => navigate({ name }, { resetHistory: true })}
+          />
         </div>
       </header>
 
@@ -895,7 +882,6 @@ export default function App() {
                   onBack={goBack}
                   currentStoreId={profile.store_id}
                   initialInventoryMode={permittedRoute.initialInventoryMode}
-                  registerBeforeLeave={registerBeforeLeave}
                 />
               )}
               {permittedRoute.name === "inventory" && (

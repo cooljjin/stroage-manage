@@ -5,7 +5,6 @@ import { StatusMessage } from "../components/StatusMessage";
 import { createMutationRequestId } from "../lib/mutationRequest";
 import {
   estimateRecipeImportCost,
-  formatRecipeImportCost,
   hashRecipeImportFile,
   normalizeRecipeImportName,
   preflightRecipeImport,
@@ -82,7 +81,7 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
   const [existingMenus, setExistingMenus] = useState<ExistingMenu[]>([]);
   const [busy, setBusy] = useState(false);
   const [preflightBusy, setPreflightBusy] = useState(false);
-  const [approvedCost, setApprovedCost] = useState("");
+
   const [quota, setQuota] = useState<RecipeImportQuota | null>(null);
   const [pendingExtraRequest, setPendingExtraRequest] = useState<ExtraUseRequest | null>(null);
   const [requestedExtraUses, setRequestedExtraUses] = useState("5");
@@ -234,13 +233,9 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
       if (manifestResult.error) throw manifestResult.error;
 
       if (estimate.estimatedCostUsd <= 0.5) {
-        const approved = Number(approvedCost || estimate.estimatedCostUsd);
-        if (!Number.isFinite(approved) || approved < estimate.estimatedCostUsd || approved > 0.5) {
-          throw new Error("예상 비용 이상, $0.50 이하로 승인 금액을 입력해 주세요.");
-        }
         const approvalResult = await Services.DatabaseService.rpc("approve_recipe_import_job", {
           target_job_id: createdJob.id,
-          target_approved_cost_usd: approved
+          target_approved_cost_usd: estimate.estimatedCostUsd
         });
         if (approvalResult.error) throw approvalResult.error;
       }
@@ -258,7 +253,7 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
         if (processResult.error) throw processResult.error;
         setMessage("파일을 업로드했습니다. AI가 레시피를 분석하는 중입니다.");
       } else {
-        setMessage("파일을 안전하게 업로드했습니다. master의 건별 비용 승인을 기다립니다.");
+        setMessage("파일을 업로드했습니다. 관리자 확인 후 분석을 시작합니다.");
       }
 
       await refreshQuota();
@@ -311,7 +306,7 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
       if (processResult.error) throw processResult.error;
       await refreshQuota();
       await refreshJob(job.id);
-      setMessage("승인된 작업의 분석을 시작했습니다.");
+      setMessage("확인된 작업의 분석을 시작했습니다.");
     } catch (processError) {
       setError(processError instanceof Error ? processError.message : "분석을 시작하지 못했습니다.");
     } finally {
@@ -391,16 +386,11 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
 
   const approveAdditionalCost = async () => {
     if (!job) return;
-    const approved = Number(approvedCost || Math.max(job.estimated_cost_usd, job.actual_cost_usd));
     const requiredCost = Math.max(job.estimated_cost_usd, job.actual_cost_usd);
-    if (!Number.isFinite(approved) || approved < requiredCost || approved > 0.5) {
-      setError("예상 또는 실제 비용 이상, $0.50 이하로 승인 금액을 입력해 주세요.");
-      return;
-    }
     setBusy(true);
     setError("");
     try {
-      const approvalResult = await Services.DatabaseService.rpc("approve_recipe_import_job", { target_job_id: job.id, target_approved_cost_usd: approved });
+      const approvalResult = await Services.DatabaseService.rpc("approve_recipe_import_job", { target_job_id: job.id, target_approved_cost_usd: requiredCost });
       if (approvalResult.error) throw approvalResult.error;
       const approvedJob = asJob(approvalResult.data);
       if (approvedJob.status === "queued") {
@@ -409,9 +399,9 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
       }
       await refreshQuota();
       await refreshJob(job.id);
-      setMessage(approvedJob.status === "queued" ? "추가 비용을 승인하고 분석을 재개했습니다." : "비용 승인을 반영했습니다.");
+      setMessage(approvedJob.status === "queued" ? "추가 확인 후 분석을 재개했습니다." : "추가 확인을 반영했습니다.");
     } catch (approvalError) {
-      setError(await getRecipeImportErrorMessage(approvalError, "추가 비용 승인에 실패했습니다."));
+      setError(await getRecipeImportErrorMessage(approvalError, "추가 확인에 실패했습니다."));
     } finally {
       setBusy(false);
     }
@@ -484,13 +474,13 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
           {manifest && estimate ? (
             <div className="mt-4 rounded-md border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
               <p className="font-semibold">사전 확인</p>
-              <p className="mt-1 text-slate-500 dark:text-slate-400">{manifest.sourceType === "pdf" ? `PDF ${manifest.pageCount ?? 1}페이지` : `${manifest.sheets?.length ?? 0}개 시트 · ${manifest.cellCount ?? 0}개 셀`} · 예상 비용 {formatRecipeImportCost(estimate.estimatedCostUsd)}</p>
+              <p className="mt-1 text-slate-500 dark:text-slate-400">{manifest.sourceType === "pdf" ? `PDF ${manifest.pageCount ?? 1}페이지` : `${manifest.sheets?.length ?? 0}개 시트 · ${manifest.cellCount ?? 0}개 셀`}</p>
               {estimate.estimatedCostUsd <= 0.5 ? (
-                <label className="mt-3 block"><span className="mb-1 block text-xs font-semibold">승인할 최대 비용(USD, 최대 $0.50)</span><input className="field max-w-xs" type="number" min={estimate.estimatedCostUsd} max="0.5" step="0.0001" value={approvedCost || estimate.estimatedCostUsd.toFixed(4)} onChange={(event) => setApprovedCost(event.target.value)} /></label>
+                <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">파일을 업로드하면 바로 분석을 시작합니다.</p>
               ) : (
-                <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">예상 비용이 $0.50을 넘어 파일 업로드 후 master의 건별 승인이 필요합니다. 승인 전에는 Gemini 요청을 시작하지 않습니다.</p>
+                <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">파일을 업로드한 뒤 관리자 확인 후 분석을 시작합니다.</p>
               )}
-              <button type="button" className="primary-button mt-3 inline-flex items-center gap-2" disabled={busy || Boolean(quota && quota.remaining_uses <= 0)} onClick={() => void startImport()}>{busy ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}{estimate.estimatedCostUsd <= 0.5 ? "비용 승인 후 분석 시작" : "업로드 후 master 승인 요청"}</button>
+              <button type="button" className="primary-button mt-3 inline-flex items-center gap-2" disabled={busy || Boolean(quota && quota.remaining_uses <= 0)} onClick={() => void startImport()}>{busy ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}{estimate.estimatedCostUsd <= 0.5 ? "분석 시작" : "분석 요청"}</button>
               <p className="mt-2 text-xs text-slate-500">분석 결과는 자동 저장되지 않으며, 아래 검토 화면에서 한 번 확인한 뒤 저장됩니다.</p>
             </div>
           ) : null}
@@ -502,25 +492,22 @@ export function RecipeImportPage({ navigate, currentStoreId, canManageRecipes, j
               <div className="flex items-center gap-2">{sourceIcon(job.source_type)}<span className="font-semibold">{job.file_name}</span></div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold dark:bg-slate-800">{statusLabel(job.status)}</span>
             </div>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">예상 {formatRecipeImportCost(job.estimated_cost_usd)} · 실제 {formatRecipeImportCost(job.actual_cost_usd)} · 원본 만료 {job.source_expires_at ? new Date(job.source_expires_at).toLocaleDateString("ko-KR") : "7일 후"}</p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">원본 만료 {job.source_expires_at ? new Date(job.source_expires_at).toLocaleDateString("ko-KR") : "7일 후"}</p>
             {job.error_message ? <div className="mt-3"><StatusMessage type="error">{job.error_message}</StatusMessage></div> : null}
             {job.status === "awaiting_cost_approval" ? (
               <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950">
                 {canSelfApproveJobCost ? (
                   <>
-                    <p className="font-semibold">예상 또는 실제 사용 비용이 기존 승인 상한을 넘었습니다.</p>
-                    <div className="mt-2 flex flex-wrap items-end gap-2">
-                      <label><span className="mb-1 block text-xs font-semibold">새 최대 비용(USD, 최대 $0.50)</span><input className="field w-36 py-2" type="number" min={requiredJobCost} max="0.5" step="0.0001" value={approvedCost || requiredJobCost.toFixed(4)} onChange={(event) => setApprovedCost(event.target.value)} /></label>
-                      <button type="button" className="primary-button min-h-10" onClick={() => void approveAdditionalCost()} disabled={busy}>추가 비용 승인</button>
-                    </div>
+                    <p className="font-semibold">분석을 계속하려면 추가 확인이 필요합니다.</p>
+                    <button type="button" className="primary-button mt-2 min-h-10" onClick={() => void approveAdditionalCost()} disabled={busy}>분석 재개</button>
                   </>
                 ) : (
-                  <div className="flex items-start gap-2"><Clock3 className="mt-0.5 shrink-0" size={17} /><div><p className="font-semibold">master의 건별 비용 승인을 기다리고 있습니다.</p><p className="mt-1 text-xs">필요 승인 금액 {formatRecipeImportCost(requiredJobCost)} · 절대 상한 $5.00</p></div></div>
+                  <div className="flex items-start gap-2"><Clock3 className="mt-0.5 shrink-0" size={17} /><div><p className="font-semibold">관리자 확인을 기다리고 있습니다.</p><p className="mt-1 text-xs">확인되면 분석이 자동으로 재개됩니다.</p></div></div>
                 )}
               </div>
             ) : null}
             {job.status === "processing" ? <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300"><LoaderCircle className="animate-spin" size={16} />AI가 문서 구조와 재료 단위를 분석하는 중입니다.</div> : null}
-            {job.status === "queued" ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-brand-50 p-3 text-sm font-semibold text-brand-800 dark:bg-brand-950 dark:text-brand-100"><span>비용 승인이 완료되어 분석을 시작할 수 있습니다.</span><button type="button" className="primary-button inline-flex min-h-10 items-center gap-2" onClick={() => void startQueuedJob()} disabled={busy}>{busy ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}분석 시작</button></div> : null}
+            {job.status === "queued" ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-brand-50 p-3 text-sm font-semibold text-brand-800 dark:bg-brand-950 dark:text-brand-100"><span>분석 요청이 확인되어 분석을 시작할 수 있습니다.</span><button type="button" className="primary-button inline-flex min-h-10 items-center gap-2" onClick={() => void startQueuedJob()} disabled={busy}>{busy ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}분석 시작</button></div> : null}
           </section>
           {menus.length === 0 && !["processing", "queued"].includes(job.status) ? <StatusMessage>분석 결과가 없습니다. 원본 양식이 이미지 PDF라면 텍스트 PDF 또는 더 선명한 파일로 다시 시도해 주세요.</StatusMessage> : null}
           <div className="space-y-4">
@@ -563,7 +550,7 @@ function IngredientReviewRow({ ingredient, products, onChange, onQuantityChange 
 }
 
 function statusLabel(status: RecipeImportJob["status"]) {
-  const labels: Record<RecipeImportJob["status"], string> = { awaiting_approval: "비용 승인 대기", uploading: "업로드 중", queued: "분석 대기", processing: "분석 중", needs_review: "검토 필요", ready: "저장 가능", awaiting_cost_approval: "비용 승인 필요", applying: "저장 중", completed: "저장 완료", failed: "실패", cancelled: "취소됨" };
+  const labels: Record<RecipeImportJob["status"], string> = { awaiting_approval: "관리자 확인 대기", uploading: "업로드 중", queued: "분석 대기", processing: "분석 중", needs_review: "검토 필요", ready: "저장 가능", awaiting_cost_approval: "추가 확인 필요", applying: "저장 중", completed: "저장 완료", failed: "실패", cancelled: "취소됨" };
   return labels[status];
 }
 

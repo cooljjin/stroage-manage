@@ -324,27 +324,29 @@ export function MobileInventoryControls({
         )}
       </div>
 
-      <div className="mt-1 flex min-h-10 items-center gap-1.5 sm:mt-3 sm:gap-2">
-        <div className="min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 px-2 py-1 text-[11px] dark:border-slate-800 sm:px-3 sm:py-2 sm:text-sm" role="status" aria-live="polite">
-          {saveState === "dragging" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">수량을 조정하는 중...</span> : null}
-          {saveState === "pending" ? <span className="block w-full truncate font-semibold text-brand-700 dark:text-brand-100">재고를 저장하는 중...</span> : null}
-          {saveState === "saved" ? <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300" title={savedAtLabel ? `${saveStatusLabel} · ${savedAtLabel}` : saveStatusLabel}><Check className="shrink-0" size={16} /><span className="truncate">{saveStatusLabel}{savedAtLabel ? ` · ${savedAtLabel}` : ""}</span></span> : null}
-          {saveState === "error" ? <span className="block w-full truncate font-semibold text-rose-700 dark:text-rose-300" title={saveError ?? "저장하지 못했습니다."}>{saveError ?? "저장하지 못했습니다."}</span> : null}
-          {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{savedAtLabel ? `편집 시점 ${savedAtLabel}` : mode === "auto" ? "위로 밀면 입고, 아래로 밀면 출고" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요."}</span> : null}
+      <div className="mt-1 space-y-1.5 sm:mt-3 sm:space-y-2">
+        <div className="flex min-h-10 items-center gap-1.5 sm:gap-2">
+          <div className="min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 px-2 py-1 text-[11px] dark:border-slate-800 sm:px-3 sm:py-2 sm:text-sm" role="status" aria-live="polite">
+            {saveState === "dragging" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">수량을 조정하는 중...</span> : null}
+            {saveState === "pending" ? <span className="block w-full truncate font-semibold text-brand-700 dark:text-brand-100">재고를 저장하는 중...</span> : null}
+            {saveState === "saved" ? <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300" title={savedAtLabel ? `${saveStatusLabel} · ${savedAtLabel}` : saveStatusLabel}><Check className="shrink-0" size={16} /><span className="truncate">{saveStatusLabel}{savedAtLabel ? ` · ${savedAtLabel}` : ""}</span></span> : null}
+            {saveState === "error" ? <span className="block w-full truncate font-semibold text-rose-700 dark:text-rose-300" title={saveError ?? "저장하지 못했습니다."}>{saveError ?? "저장하지 못했습니다."}</span> : null}
+            {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{savedAtLabel ? `편집 시점 ${savedAtLabel}` : mode === "auto" ? "위로 밀면 입고, 아래로 밀면 출고" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요."}</span> : null}
+          </div>
+          <button type="button" onClick={onUndo} disabled={disabled || !canUndo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="뒤로가기" title="뒤로가기">
+            <Undo2 size={18} />
+          </button>
+          <button type="button" onClick={onRedo} disabled={disabled || !canRedo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="되돌리기" title="되돌리기">
+            <Redo2 size={18} />
+          </button>
         </div>
         <button
           type="button"
           onClick={onSave}
           disabled={disabled || saveState === "dragging" || saveState === "pending"}
-          className="primary-button inline-flex min-h-10 items-center justify-center px-3 py-1 text-sm font-extrabold sm:min-h-11"
+          className="primary-button inline-flex min-h-12 w-full items-center justify-center px-3 py-2 text-base font-extrabold sm:min-h-11"
         >
           {saveState === "pending" ? "저장 중..." : "저장"}
-        </button>
-        <button type="button" onClick={onUndo} disabled={disabled || !canUndo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="뒤로가기" title="뒤로가기">
-          <Undo2 size={18} />
-        </button>
-        <button type="button" onClick={onRedo} disabled={disabled || !canRedo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="되돌리기" title="되돌리기">
-          <Redo2 size={18} />
         </button>
       </div>
     </section>
