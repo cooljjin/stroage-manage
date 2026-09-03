@@ -25,6 +25,7 @@
 		A0E64BA2B688DBF0AAC86A27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		A762192CACE3E82FD7E8821B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		B98EA87F63FE417B341349B6 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		C06DB7D3C20096733A072CB3 /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8A54A985268F11E29C50A465 /* Pods_App.framework */; };
 		D61F028AE139F6189B453DA6 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		E95A52632EEB5B6B90B082A5 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		F0C211037AFBA6B081F2215E /* Pods_Stockly_Staff.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C8407750ED483EC77D3FAC4 /* Pods_Stockly_Staff.framework */; };
@@ -44,6 +45,7 @@
 		6E9F42D19A3B3C2B1F2DEE3E /* Pods-Stockly Staff.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Stockly Staff.debug.xcconfig"; path = "Target Support Files/Pods-Stockly Staff/Pods-Stockly Staff.debug.xcconfig"; sourceTree = "<group>"; };
 		70FB387FCE714FE429FB07CE /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		7CB0239B4D0674698BD5B118 /* Pods-Stockly Staff.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Stockly Staff.release.xcconfig"; path = "Target Support Files/Pods-Stockly Staff/Pods-Stockly Staff.release.xcconfig"; sourceTree = "<group>"; };
+		8A54A985268F11E29C50A465 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B1F00012E4A000000000001 /* AppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewController.swift; sourceTree = "<group>"; };
 		8B1F00022E4A000000000002 /* FastBarcodeScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastBarcodeScannerPlugin.swift; sourceTree = "<group>"; };
 		956EEE73C760ECB378B6F4DE /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
@@ -67,6 +69,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E95A52632EEB5B6B90B082A5 /* BuildFile in Frameworks */,
+				C06DB7D3C20096733A072CB3 /* Pods_App.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -115,6 +118,7 @@
 			children = (
 				C3A82F0BFA485373D815DA5B /* iOS */,
 				4C8407750ED483EC77D3FAC4 /* Pods_Stockly_Staff.framework */,
+				8A54A985268F11E29C50A465 /* Pods_App.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
