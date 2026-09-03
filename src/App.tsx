@@ -713,7 +713,7 @@ export default function App() {
     return <div className="grid min-h-dvh place-items-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">매장 정보를 연결하는 중...</div>;
   }
 
-  if (!profile) {
+  if (!profile || !profile.store_id || profile.store_id === "null") {
     return (
       <div className="min-h-dvh bg-slate-50 px-4 py-6 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
         <div className="mx-auto max-w-2xl">

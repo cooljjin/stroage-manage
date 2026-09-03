@@ -52,7 +52,7 @@ export function AccountDeletionRecoveryPage({ onRecovered, onDeleted }: Props) {
           <Trash2 size={18} />
           {loading ? "처리 중..." : "바로 계정 삭제"}
         </button>
-        <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">바로 삭제하면 매장 데이터와 Supabase 계정이 영구 삭제되며 복구할 수 없습니다.</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">바로 삭제하면 매장 데이터와 계정이 영구 삭제되며 복구할 수 없습니다.</p>
       </section>
     </main>
   );

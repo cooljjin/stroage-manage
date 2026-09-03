@@ -114,7 +114,7 @@ export type ProductBarcode = {
 
 export type StaffProfile = {
   id: string;
-  store_id: string;
+  store_id: string | null;
   email: string | null;
   display_name: string;
   is_admin: boolean;

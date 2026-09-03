@@ -24,6 +24,8 @@ test("pending deletion recovery offers a verified immediate account deletion act
   ]);
 
   assert.match(recovery, /바로 계정 삭제/);
+  assert.match(recovery, /바로 삭제하면 매장 데이터와 계정이 영구 삭제되며 복구할 수 없습니다\./);
+  assert.doesNotMatch(recovery, /Supabase 계정/);
   assert.match(recovery, /action:\s*"delete_now"/);
   assert.match(functionSource, /body\.action === "delete_now"/);
   assert.match(functionSource, /auth\.admin\.deleteUser\(userId\)/);
