@@ -774,7 +774,7 @@ export default function App() {
   }
 
   if (profile.deletion_requested_at) {
-    return <AccountDeletionRecoveryPage onRecovered={(nextProfile) => setProfile(nextProfile)} />;
+    return <AccountDeletionRecoveryPage onRecovered={(nextProfile) => setProfile(nextProfile)} onDeleted={handleLogout} />;
   }
 
   if (getProfileRole(profile) === "master") {

@@ -19,7 +19,17 @@ type Store = {
   created_by: string | null
   deletion_requested_at: string | null
   purge_after: string | null
+  purge_owner_id: string | null
 }
+
+type Member = {
+  id: string
+  display_name: string
+  email: string | null
+  role: "master" | "store_admin" | "staff"
+}
+
+type DeletionKind = "personal" | "without_transfer" | "shared" | "staff"
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -34,7 +44,6 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({})) as { action?: string; transferToUserId?: string }
   const adminClient = createClient(supabaseUrl, serviceRoleKey)
-
   const authorization = req.headers.get("Authorization")
   if (!authorization) return jsonResponse({ error: "로그인이 필요합니다." }, 401)
   const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } })
@@ -50,7 +59,7 @@ Deno.serve(async (req) => {
 
   const { data: store, error: storeError } = await adminClient
     .from("stores")
-    .select("id, status, created_by, deletion_requested_at, purge_after")
+    .select("id, status, created_by, deletion_requested_at, purge_after, purge_owner_id")
     .eq("id", profile.store_id)
     .single<Store>()
   if (storeError || !store) return jsonResponse({ error: "매장을 찾을 수 없습니다." }, 404)
@@ -58,53 +67,44 @@ Deno.serve(async (req) => {
   if (body.action === "eligibility") return getEligibility(adminClient, profile, store)
   if (body.action === "restore") return restorePersonalStore(adminClient, profile, store)
   if (body.action === "request") return requestDeletion(adminClient, profile, store, body.transferToUserId)
+  if (body.action === "delete_now") return deleteNow(adminClient, profile, store)
   return jsonResponse({ error: "지원하지 않는 요청입니다." }, 400)
 })
 
 async function getEligibility(adminClient: ReturnType<typeof createClient>, profile: Profile, store: Store) {
-  if (profile.role === "master") {
-    return jsonResponse({ error: "운영자 계정은 이 화면에서 탈퇴할 수 없습니다." }, 403)
-  }
-
+  if (profile.role === "master") return jsonResponse({ error: "운영자 계정은 이 화면에서 탈퇴할 수 없습니다." }, 403)
   const { data: members, error } = await adminClient
     .from("profiles")
     .select("id, display_name, email, role")
     .eq("store_id", profile.store_id)
     .neq("id", profile.id)
     .order("created_at", { ascending: true })
-
   if (error) return jsonResponse({ error: error.message }, 400)
-  if (profile.role === "staff") {
-    return jsonResponse({ kind: "staff", members: [], purgeAfter: null })
-  }
-  const isPersonalStore = store.created_by === profile.id && (members ?? []).length === 0
+
+  const typedMembers = (members ?? []) as Member[]
+  const kind = getDeletionKind(profile, store, typedMembers)
   return jsonResponse({
-    kind: isPersonalStore ? "personal" : "shared",
-    members: isPersonalStore ? [] : (members ?? []).filter((member) => member.role === "staff"),
+    kind,
+    members: kind === "shared" ? typedMembers.filter((member) => member.role === "staff") : [],
     purgeAfter: store.purge_after
   })
 }
 
 async function requestDeletion(adminClient: ReturnType<typeof createClient>, profile: Profile, store: Store, transferToUserId?: string) {
-  if (profile.role === "master") {
-    return jsonResponse({ error: "운영자 계정은 이 화면에서 탈퇴할 수 없습니다." }, 403)
-  }
+  if (profile.role === "master") return jsonResponse({ error: "운영자 계정은 이 화면에서 탈퇴할 수 없습니다." }, 403)
 
   if (profile.role === "staff") {
     if (transferToUserId) return jsonResponse({ error: "일반 직원은 관리자 권한을 이관할 수 없습니다." }, 403)
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(profile.id)
-    if (deleteError) return jsonResponse({ error: deleteError.message }, 400)
-    return jsonResponse({ kind: "staff" })
+    const deleteError = await deleteAuthUserAndConfirm(adminClient, profile.id)
+    if (deleteError) return jsonResponse({ error: deleteError }, 400)
+    return jsonResponse({ kind: "staff", authUserDeleted: true })
   }
-
-  if (profile.role !== "store_admin") {
-    return jsonResponse({ error: "관리자 탈퇴 권한을 확인할 수 없습니다." }, 403)
-  }
+  if (profile.role !== "store_admin") return jsonResponse({ error: "관리자 탈퇴 권한을 확인할 수 없습니다." }, 403)
 
   const eligibility = await getEligibilityData(adminClient, profile, store)
   if (eligibility.error) return jsonResponse({ error: eligibility.error }, 400)
 
-  if (eligibility.kind === "personal") {
+  if (eligibility.kind === "personal" || eligibility.kind === "without_transfer") {
     if (store.status === "pending_deletion") return jsonResponse({ error: "이미 탈퇴가 요청되었습니다." }, 400)
     const purgeAfter = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     const now = new Date().toISOString()
@@ -124,13 +124,12 @@ async function requestDeletion(adminClient: ReturnType<typeof createClient>, pro
       .update({ deletion_requested_at: now })
       .eq("id", profile.id)
     if (profileUpdateError) return jsonResponse({ error: profileUpdateError.message }, 400)
-    return jsonResponse({ kind: "personal", purgeAfter })
+    return jsonResponse({ kind: eligibility.kind, purgeAfter })
   }
 
   if (!transferToUserId) return jsonResponse({ error: "탈퇴 전에 이관할 관리자를 선택해 주세요." }, 400)
   const target = eligibility.members.find((member) => member.id === transferToUserId)
-  if (!target) return jsonResponse({ error: "같은 매장의 구성원만 관리자로 이관할 수 있습니다." }, 400)
-  if (target.role !== "staff") return jsonResponse({ error: "일반 직원에게만 관리자 권한을 이관할 수 있습니다." }, 400)
+  if (!target || target.role !== "staff") return jsonResponse({ error: "같은 매장의 일반 직원에게만 관리자 권한을 이관할 수 있습니다." }, 400)
 
   const { data: verifiedTarget, error: targetError } = await adminClient
     .from("profiles")
@@ -147,31 +146,23 @@ async function requestDeletion(adminClient: ReturnType<typeof createClient>, pro
     .eq("id", target.id)
   if (transferError) return jsonResponse({ error: transferError.message }, 400)
 
-  const { error: deleteError } = await adminClient.auth.admin.deleteUser(profile.id)
+  const deleteError = await deleteAuthUserAndConfirm(adminClient, profile.id)
   if (deleteError) {
     await adminClient.from("profiles").update({ role: "staff", updated_at: new Date().toISOString() }).eq("id", target.id).eq("role", "store_admin")
-    return jsonResponse({ error: deleteError.message }, 400)
+    return jsonResponse({ error: deleteError }, 400)
   }
-  return jsonResponse({ kind: "shared" })
+  return jsonResponse({ kind: "shared", authUserDeleted: true })
 }
 
 async function restorePersonalStore(adminClient: ReturnType<typeof createClient>, profile: Profile, store: Store) {
-  if (store.created_by !== profile.id || store.status !== "pending_deletion" || !store.purge_after) {
-    return jsonResponse({ error: "복구할 수 있는 개인 매장 탈퇴 요청이 없습니다." }, 400)
+  if (store.status !== "pending_deletion" || !store.purge_after || !profile.deletion_requested_at || !isDeletionOwner(profile, store)) {
+    return jsonResponse({ error: "복구할 수 있는 매장 탈퇴 요청이 없습니다." }, 400)
   }
-  if (new Date(store.purge_after).getTime() <= Date.now()) {
-    return jsonResponse({ error: "복구 기간이 만료되었습니다." }, 400)
-  }
+  if (new Date(store.purge_after).getTime() <= Date.now()) return jsonResponse({ error: "복구 기간이 만료되었습니다." }, 400)
 
   const { error: storeError } = await adminClient
     .from("stores")
-    .update({
-      status: "active",
-      deletion_requested_at: null,
-      purge_after: null,
-      purge_started_at: null,
-      purge_owner_id: null
-    })
+    .update({ status: "active", deletion_requested_at: null, purge_after: null, purge_started_at: null, purge_owner_id: null })
     .eq("id", store.id)
   if (storeError) return jsonResponse({ error: storeError.message }, 400)
   const { data: restoredProfile, error: profileError } = await adminClient
@@ -184,18 +175,77 @@ async function restorePersonalStore(adminClient: ReturnType<typeof createClient>
   return jsonResponse({ profile: restoredProfile })
 }
 
+async function deleteNow(adminClient: ReturnType<typeof createClient>, profile: Profile, store: Store) {
+  if (profile.role !== "store_admin" || !profile.deletion_requested_at || store.status !== "pending_deletion" || !isDeletionOwner(profile, store)) {
+    return jsonResponse({ error: "탈퇴 요청 중인 본인 매장만 바로 삭제할 수 있습니다." }, 403)
+  }
+
+  const { data: members, error: memberError } = await adminClient
+    .from("profiles")
+    .select("id")
+    .eq("store_id", store.id)
+    .neq("id", profile.id)
+  if (memberError) return jsonResponse({ error: memberError.message }, 400)
+  if ((members ?? []).length > 0) return jsonResponse({ error: "다른 구성원이 있는 매장은 바로 삭제할 수 없습니다." }, 400)
+
+  const dependencyError = await deleteOwnerRestrictedDependencies(adminClient, store.id)
+  if (dependencyError) return jsonResponse({ error: dependencyError }, 400)
+  const authDeleteError = await deleteAuthUserAndConfirm(adminClient, profile.id)
+  if (authDeleteError) return jsonResponse({ error: authDeleteError }, 400)
+
+  const { data: deletedStore, error: storeDeleteError } = await adminClient
+    .from("stores")
+    .delete()
+    .eq("id", store.id)
+    .eq("status", "pending_deletion")
+    .select("id")
+    .maybeSingle()
+  if (storeDeleteError || !deletedStore) return jsonResponse({ error: "계정은 삭제되었지만 매장 정리를 완료하지 못했습니다. 지원팀에 문의해 주세요." }, 500)
+  return jsonResponse({ kind: "immediate", authUserDeleted: true, storeDeleted: true })
+}
+
 async function getEligibilityData(adminClient: ReturnType<typeof createClient>, profile: Profile, store: Store) {
   const { data: members, error } = await adminClient
     .from("profiles")
     .select("id, display_name, email, role")
     .eq("store_id", profile.store_id)
     .neq("id", profile.id)
-  if (error) return { error: error.message, kind: "shared" as const, members: [] }
-  return {
-    error: "",
-    kind: store.created_by === profile.id && (members ?? []).length === 0 ? "personal" as const : "shared" as const,
-    members: (members ?? []).filter((member) => member.role === "staff")
+  if (error) return { error: error.message, kind: "shared" as DeletionKind, members: [] as Member[] }
+  const typedMembers = (members ?? []) as Member[]
+  return { error: "", kind: getDeletionKind(profile, store, typedMembers), members: typedMembers.filter((member) => member.role === "staff") }
+}
+
+function getDeletionKind(profile: Profile, store: Store, members: Member[]): DeletionKind {
+  if (profile.role === "staff") return "staff"
+  if ((members ?? []).length === 0) return store.created_by === profile.id ? "personal" : "without_transfer"
+  return "shared"
+}
+
+function isDeletionOwner(profile: Profile, store: Store) {
+  return store.purge_owner_id === profile.id || store.created_by === profile.id
+}
+
+async function deleteAuthUserAndConfirm(adminClient: ReturnType<typeof createClient>, userId: string) {
+  const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId)
+  if (deleteError) return deleteError.message
+  const { data: verification, error: verificationError } = await adminClient.auth.admin.getUserById(userId)
+  if (verification?.user || (verificationError && !isMissingUserError(verificationError.message))) {
+    return "계정 삭제를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."
   }
+  return ""
+}
+
+async function deleteOwnerRestrictedDependencies(adminClient: ReturnType<typeof createClient>, storeId: string) {
+  for (const tableName of ["mobile_inventory_sessions", "recipe_import_usage_grants", "recipe_import_cost_approvals"]) {
+    const { error } = await adminClient.from(tableName).delete().eq("store_id", storeId)
+    if (error) return "계정 삭제를 위해 필요한 매장 데이터를 정리하지 못했습니다."
+  }
+  return ""
+}
+
+function isMissingUserError(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes("user not found") || normalized.includes("not_found")
 }
 
 function jsonResponse(body: unknown, status = 200) {

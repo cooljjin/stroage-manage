@@ -6,7 +6,7 @@ import { StatusMessage } from "./StatusMessage";
 
 type Member = Pick<StaffProfile, "id" | "display_name" | "email" | "role">;
 type Eligibility = {
-  kind: "personal" | "shared" | "staff";
+  kind: "personal" | "without_transfer" | "shared" | "staff";
   members: Member[];
   purgeAfter: string | null;
 };
@@ -38,8 +38,8 @@ export function AccountDeletionSection({ onLogout }: Props) {
 
   async function requestDeletion() {
     if (!eligibility) return;
-    const warning = eligibility.kind === "personal"
-      ? "탈퇴를 요청하면 매장과 계정이 30일 동안 비활성화됩니다. 이 기간 안에 로그인하여 복구할 수 있습니다. 계속할까요?"
+    const warning = eligibility.kind === "personal" || eligibility.kind === "without_transfer"
+      ? "탈퇴를 요청하면 매장과 계정이 30일 동안 비활성화됩니다. 이 기간 안에 로그인하여 복구하거나 바로 삭제할 수 있습니다. 계속할까요?"
       : eligibility.kind === "staff"
         ? "내 계정을 완전히 삭제할까요? 매장의 다른 직원 권한에는 영향을 주지 않으며, 이 작업은 되돌릴 수 없습니다."
         : "선택한 구성원을 관리자로 이관하고 내 계정을 완전히 삭제할까요? 이 작업은 되돌릴 수 없습니다.";
@@ -85,6 +85,14 @@ export function AccountDeletionSection({ onLogout }: Props) {
               {loading ? "처리 중..." : "30일 복구 기간으로 탈퇴 요청"}
             </button>
           </>
+        ) : eligibility.kind === "without_transfer" ? (
+          <>
+            <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">이관할 구성원이 없는 매장입니다. 매장 이관 없이 탈퇴를 요청하면 매장과 계정이 30일 동안 비활성화되며, 기간 안에 복구하거나 바로 삭제할 수 있습니다.</p>
+            <button type="button" onClick={() => void requestDeletion()} disabled={loading} className="touch-button inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
+              <Trash2 size={17} />
+              {loading ? "처리 중..." : "매장 이관 없이 탈퇴"}
+            </button>
+          </>
         ) : eligibility.kind === "staff" ? (
           <>
             <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">일반 직원 탈퇴는 내 계정만 삭제합니다. 다른 직원을 관리자로 바꾸거나 매장 데이터를 삭제하지 않습니다.</p>
@@ -96,14 +104,12 @@ export function AccountDeletionSection({ onLogout }: Props) {
         ) : (
           <>
             <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">공동 매장이므로 다른 구성원에게 관리자 권한을 이관한 뒤 계정을 완전히 삭제합니다.</p>
-            {eligibility.members.length > 0 ? (
-              <label className="block">
-                <span className="mb-1 block text-sm font-bold">새 관리자</span>
-                <select className="field" value={transferToUserId} onChange={(event) => setTransferToUserId(event.target.value)} disabled={loading}>
-                  {eligibility.members.map((member) => <option key={member.id} value={member.id}>{member.display_name} ({member.email ?? "이메일 없음"})</option>)}
-                </select>
-              </label>
-            ) : <StatusMessage type="error">이관할 구성원이 없습니다. 먼저 직원을 초대하거나 다른 관리자를 추가해 주세요.</StatusMessage>}
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold">새 관리자</span>
+              <select className="field" value={transferToUserId} onChange={(event) => setTransferToUserId(event.target.value)} disabled={loading}>
+                {eligibility.members.map((member) => <option key={member.id} value={member.id}>{member.display_name} ({member.email ?? "이메일 없음"})</option>)}
+              </select>
+            </label>
             <button type="button" onClick={() => void requestDeletion()} disabled={loading || !transferToUserId} className="touch-button inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
               <Trash2 size={17} />
               {loading ? "처리 중..." : "관리자 이관 후 탈퇴"}
