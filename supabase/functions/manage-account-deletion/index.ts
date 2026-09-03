@@ -222,7 +222,7 @@ function getDeletionKind(profile: Profile, store: Store, members: Member[]): Del
 }
 
 function isDeletionOwner(profile: Profile, store: Store) {
-  return store.purge_owner_id === profile.id || store.created_by === profile.id
+  return store.purge_owner_id ? store.purge_owner_id === profile.id : store.created_by === profile.id
 }
 
 async function deleteAuthUserAndConfirm(adminClient: ReturnType<typeof createClient>, userId: string) {
