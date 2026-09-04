@@ -57,9 +57,11 @@ export function getVerticalWheelSlotValue(
   offset: number,
   min = Number.NEGATIVE_INFINITY,
   max = Number.POSITIVE_INFINITY,
-  reverseDisplayOrder = false
+  reverseDisplayOrder = false,
+  snapFractionalValue = false
 ): number | null {
-  const nextValue = value + offset * (reverseDisplayOrder ? -1 : 1);
+  const baseValue = snapFractionalValue && offset !== 0 && !Number.isInteger(value) ? Math.trunc(value) : value;
+  const nextValue = baseValue + offset * (reverseDisplayOrder ? -1 : 1);
   return nextValue < min || nextValue > max ? null : nextValue;
 }
 

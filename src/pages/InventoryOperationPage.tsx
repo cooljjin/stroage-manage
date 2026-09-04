@@ -372,6 +372,7 @@ export function InventoryOperationPage({
   const mobileDraftTargetRef = useRef<MobileInventoryTarget | null>(null);
   const mobileConflictTargetRef = useRef<MobileInventoryTarget | null>(null);
   const mobileSavePromiseRef = useRef<Promise<void> | null>(null);
+  const mobileLastSaveFailedRef = useRef(false);
   const mobileFinalizeRef = useRef<() => Promise<void>>(async () => undefined);
   const mobileConfirmedRef = useRef<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
   const mobileAutoBaselineRef = useRef<MobileInventoryBaseline>({ warehouseQty: 0, storeQty: 0 });
@@ -640,17 +641,6 @@ export function InventoryOperationPage({
     setMobileSaveStatusLabel("서버에 저장됨");
   }
 
-  function commitUnsettledMobileDraft() {
-    const target = mobileDraftTargetRef.current;
-    if (!target || !hasMobileInventoryChange(
-      target.warehouseQty,
-      target.storeQty,
-      mobileConfirmedRef.current.warehouseQty,
-      mobileConfirmedRef.current.storeQty
-    )) return;
-    queueMobileTarget(target);
-  }
-
   function applyMobileResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget) {
     mobileEditPointAtRef.current = null;
     const nextSnapshot = {
@@ -671,6 +661,7 @@ export function InventoryOperationPage({
 
   async function flushMobileTargets() {
     if (mobileSaveInFlightRef.current) return;
+    mobileLastSaveFailedRef.current = false;
     mobileSaveInFlightRef.current = true;
     setMobileSaveState("pending");
     setMobileSaveError("");
@@ -726,6 +717,7 @@ export function InventoryOperationPage({
               resetMobileDraft();
             }
             setMobileSaveState("error");
+            mobileLastSaveFailedRef.current = true;
             setMobileSaveError(saveError?.message ?? "재고를 저장하지 못했습니다.");
             hadError = true;
             break;
@@ -751,22 +743,26 @@ export function InventoryOperationPage({
   function queueMobileTarget(target: MobileInventoryTarget) {
     mobileDraftTargetRef.current = target;
     mobileQueuedTargetRef.current = target;
-    setMobileSaveState("pending");
-    if (!mobileSaveInFlightRef.current) void flushMobileTargets();
   }
 
-  async function finalizeMobileSession() {
+  async function saveMobileDraft() {
     const pendingDraft = mobileDraftTargetRef.current;
-    if (pendingDraft && hasMobileInventoryChange(
+    if (!pendingDraft || !hasMobileInventoryChange(
       pendingDraft.warehouseQty,
       pendingDraft.storeQty,
       mobileConfirmedRef.current.warehouseQty,
       mobileConfirmedRef.current.storeQty
-    )) {
-      mobileQueuedTargetRef.current = pendingDraft;
-      if (!mobileSaveInFlightRef.current) void flushMobileTargets();
-    }
-    if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
+    )) return true;
+
+    queueMobileTarget(pendingDraft);
+    await flushMobileTargets();
+    return !mobileLastSaveFailedRef.current;
+  }
+
+  async function finalizeMobileSession() {
+    if (mobileDraftTargetRef.current) resetMobileDraft();
+    mobileQueuedTargetRef.current = null;
+    mobileDraftTargetRef.current = null;
     const sessionId = mobileSessionIdRef.current;
     if (!sessionId) return;
     const { error: finalizeError } = await finalizeMobileInventorySession(sessionId);
@@ -791,8 +787,7 @@ export function InventoryOperationPage({
     try {
       if (!nextDialMode) {
         setMobileKeypadTarget(null);
-        commitUnsettledMobileDraft();
-        if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
+        resetMobileDraft();
         await finalizeMobileSession();
       }
       setMobileDialMode(nextDialMode);
@@ -822,8 +817,24 @@ export function InventoryOperationPage({
     mobileDraftTargetRef.current = target;
     setMobileWarehouseQty(target.warehouseQty);
     setMobileStoreQty(target.storeQty);
+    setMobileSaveError("");
+    setMobileSaveState("idle");
     setMobileSaveStatusLabel(historyNavigationIndex === null ? "서버에 저장됨" : "수정 시점");
-    queueMobileTarget(target);
+  }
+
+  async function saveMobileInventory() {
+    if (mobileModeRef.current === "audit") {
+      await recordMobileInventoryCheck(["창고", "매장"]);
+      return;
+    }
+
+    const saved = await saveMobileDraft();
+    if (!saved) return;
+    await finalizeMobileSession();
+    if (!mobileLastSaveFailedRef.current) {
+      setMobileSaveState("saved");
+      setMobileSaveStatusLabel("서버에 저장됨");
+    }
   }
 
   async function recordMobileInventoryCheck(targetLocation: Location | Location[]) {
@@ -831,8 +842,8 @@ export function InventoryOperationPage({
 
     setMobileInventoryCheckSaving(true);
     try {
-      commitUnsettledMobileDraft();
-      if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
+      const saved = await saveMobileDraft();
+      if (!saved) return;
       await finalizeMobileSession();
       if (mobileSessionIdRef.current) return;
 
@@ -1272,11 +1283,6 @@ export function InventoryOperationPage({
 
   async function openHistory() {
     if (!item) return;
-
-    if (mobileTouchUI) {
-      commitUnsettledMobileDraft();
-      if (mobileSavePromiseRef.current) await mobileSavePromiseRef.current;
-    }
 
     setHistoryOpen(true);
     setHistoryLoading(true);
@@ -1725,17 +1731,16 @@ export function InventoryOperationPage({
             canRedo={mobileEditHistoryIndex >= 0 && mobileEditHistoryIndex < mobileEditHistory.length - 1}
             onModeChange={(nextMode) => {
               if (nextMode === mobileModeRef.current) return;
-              commitUnsettledMobileDraft();
               mobileModeRef.current = nextMode;
               setMobileMode(nextMode);
               resetMobileAutoBaseline();
-              resetMobileDraft(true);
+              resetMobileDraft();
             }}
             onDraftChange={handleMobileDraft}
             onCommit={handleMobileCommit}
             onRebaseAutoBaseline={handleMobileAutoBaselineRebase}
             onInventoryCheck={(targetLocation) => void recordMobileInventoryCheck(targetLocation)}
-            onAuditSave={() => void recordMobileInventoryCheck(["창고", "매장"])}
+            onSave={() => void saveMobileInventory()}
             onOpenKeypad={setMobileKeypadTarget}
             onUndo={() => handleMobileHistoryNavigation("undo")}
             onRedo={() => handleMobileHistoryNavigation("redo")}

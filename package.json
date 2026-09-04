@@ -12,7 +12,7 @@
     "preview:admin": "vite preview --outDir dist-admin",
     "lint": "eslint .",
     "cap:sync": "npx cap sync",
-    "ios:prepare": "npm run build && npx cap copy ios",
+    "ios:prepare": "npm run build && node --test tests/production-supabase-bundle.test.mjs && npx cap copy ios",
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios"
   },

@@ -331,6 +331,11 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     setZoomRange(null);
   }
 
+  async function cancelNativeScanner() {
+    await stopScanner();
+    navigate({ name: "home" });
+  }
+
   async function changeZoom(nextZoom: number) {
     const scanner = scannerRef.current;
     if (!scanner?.isScanning) return;
@@ -415,7 +420,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
                 onClick={() => updateScanMode("auto")}
                 className={`native-scanner-mode-switch ${scanMode === "auto" ? "native-scanner-mode-switch-active" : ""}`}
               >
-                입고모드
+                입고
               </button>
               <button
                 type="button"
@@ -425,7 +430,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
                 onClick={() => updateScanMode("audit")}
                 className={`native-scanner-mode-switch ${scanMode === "audit" ? "native-scanner-mode-switch-active" : ""}`}
               >
-                실사모드
+                실사
               </button>
             </div>
           </div>
@@ -433,7 +438,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
             <p className="rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
               바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
             </p>
-            <button type="button" onClick={() => void stopScanner()} className="secondary-button w-full bg-white/95">
+            <button type="button" onClick={() => void cancelNativeScanner()} className="secondary-button w-full bg-white/95">
               스캔 중지
             </button>
           </div>
