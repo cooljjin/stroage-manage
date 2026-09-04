@@ -1,10 +1,16 @@
 import type { AuthChangeEvent, Provider, Session, SignInWithPasswordCredentials, SignUpWithPasswordCredentials, UserIdentity } from "@supabase/supabase-js";
+import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
+import { getNativeAuthCallbackUrl } from "../../lib/nativeAppConfiguration";
+import { requestNativeAppleCredential } from "../../lib/nativeAppleSignIn";
 import { supabase } from "../../lib/supabase";
 
 export type { AuthChangeEvent, Session, User, UserIdentity } from "@supabase/supabase-js";
 
-const NATIVE_AUTH_CALLBACK_URL = "com.jinkim.stockly://auth/callback";
+const NATIVE_AUTH_CALLBACK_PROTOCOLS = new Set([
+  "com.jinkim.stockly:",
+  "com.jinkim.storeinventory.poc:"
+]);
 const NATIVE_AUTH_STATE_STORAGE_KEY = "stockly-native-auth-state";
 const NATIVE_AUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000;
 export const ACCOUNT_LINK_RETURN_STORAGE_KEY = "store-inventory-account-link-return";
@@ -49,34 +55,102 @@ function getStoredNativeAuthState() {
   }
 }
 
-function nativeRedirectUrl(state: NativeAuthState) {
-  const callbackUrl = new URL(NATIVE_AUTH_CALLBACK_URL);
+async function nativeRedirectUrl(state: NativeAuthState) {
+  const callbackUrl = new URL(await getNativeAuthCallbackUrl());
   callbackUrl.searchParams.set("stockly_state", state.value);
   return callbackUrl.toString();
 }
 
-function getAuthRedirectUrl(purpose: NativeAuthPurpose = "oauth") {
+async function getAuthRedirectUrl(purpose: NativeAuthPurpose = "oauth") {
   if (Capacitor.isNativePlatform()) {
     return nativeRedirectUrl(createNativeAuthState(purpose));
   }
   return window.location.origin;
 }
 
-function getPasswordResetRedirectUrl() {
+async function getPasswordResetRedirectUrl() {
   if (Capacitor.isNativePlatform()) {
     return nativeRedirectUrl(createNativeAuthState("password-recovery"));
   }
   return `${window.location.origin}/password-reset`;
 }
 
-function signInWithOAuthProvider(provider: Provider, scopes?: string) {
-  return supabase.auth.signInWithOAuth({
+async function signInWithOAuthProvider(provider: Provider, scopes?: string) {
+  const result = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: getAuthRedirectUrl(),
-      scopes
+      redirectTo: await getAuthRedirectUrl(),
+      scopes,
+      queryParams: getOAuthLoginQueryParams(provider),
+      skipBrowserRedirect: Capacitor.isNativePlatform()
     }
   });
+
+  if (result.error || !Capacitor.isNativePlatform()) {
+    return result;
+  }
+
+  if (!result.data.url) {
+    return {
+      ...result,
+      error: new Error("OAuth 인증 URL을 생성하지 못했습니다.")
+    };
+  }
+
+  try {
+    await Browser.open({ url: result.data.url });
+    return result;
+  } catch (error) {
+    return {
+      ...result,
+      error: error instanceof Error ? error : new Error("인증 브라우저를 열지 못했습니다.")
+    };
+  }
+}
+
+function getOAuthQueryParams(provider: Provider) {
+  if (provider === "google" || provider === "kakao") {
+    return { prompt: "select_account" };
+  }
+
+  return undefined;
+}
+
+function getOAuthLoginQueryParams(provider: Provider) {
+  if (provider === "kakao" && Capacitor.getPlatform() === "ios") {
+    return { prompt: "login" };
+  }
+
+  return getOAuthQueryParams(provider);
+}
+
+async function signInWithNativeApple() {
+  const credential = await requestNativeAppleCredential();
+  if ("cancelled" in credential) {
+    return {
+      data: { session: null, user: null },
+      error: null
+    };
+  }
+
+  const result = await supabase.auth.signInWithIdToken({
+    provider: "apple",
+    token: credential.identityToken,
+    nonce: credential.nonce
+  });
+  if (result.error || !result.data.user) return result;
+
+  const existingMetadata = result.data.user.user_metadata ?? {};
+  const fullName = [credential.givenName, credential.familyName].filter(Boolean).join(" ");
+  const profileData: Record<string, string> = {};
+  if (!existingMetadata.full_name && fullName) profileData.full_name = fullName;
+  if (!existingMetadata.given_name && credential.givenName) profileData.given_name = credential.givenName;
+  if (!existingMetadata.family_name && credential.familyName) profileData.family_name = credential.familyName;
+  if (Object.keys(profileData).length > 0) {
+    await supabase.auth.updateUser({ data: profileData });
+  }
+
+  return result;
 }
 
 function getOAuthScopes(provider: Provider) {
@@ -86,10 +160,12 @@ function getOAuthScopes(provider: Provider) {
   return undefined;
 }
 
-function getOAuthOptions(provider: Provider) {
+async function getOAuthOptions(provider: Provider) {
   return {
-    redirectTo: getAuthRedirectUrl("account-link"),
-    scopes: getOAuthScopes(provider)
+    redirectTo: await getAuthRedirectUrl("account-link"),
+    scopes: getOAuthScopes(provider),
+    queryParams: getOAuthQueryParams(provider),
+    skipBrowserRedirect: Capacitor.isNativePlatform()
   };
 }
 
@@ -102,7 +178,7 @@ function parseNativeAuthCallback(url: string) {
   }
 
   if (
-    callbackUrl.protocol !== "com.jinkim.stockly:"
+    !NATIVE_AUTH_CALLBACK_PROTOCOLS.has(callbackUrl.protocol)
     || callbackUrl.hostname !== "auth"
     || callbackUrl.pathname !== "/callback"
     || callbackUrl.username
@@ -134,9 +210,9 @@ export const AuthService = {
     return supabase.auth.signUp(credentials);
   },
 
-  resetPasswordForEmail(email: string) {
+  async resetPasswordForEmail(email: string) {
     return supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: getPasswordResetRedirectUrl()
+      redirectTo: await getPasswordResetRedirectUrl()
     });
   },
 
@@ -185,6 +261,10 @@ export const AuthService = {
       };
     }
 
+    if (Capacitor.isNativePlatform()) {
+      await Browser.close().catch(() => undefined);
+    }
+
     localStorage.removeItem(NATIVE_AUTH_STATE_STORAGE_KEY);
     const result = await supabase.auth.exchangeCodeForSession(code);
     if (result.error) {
@@ -194,10 +274,19 @@ export const AuthService = {
 
   },
 
+  async closeNativeAuthBrowser() {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      await Browser.close();
+    } catch {
+      // The callback can cold-launch the app without an active browser view.
+    }
+  },
+
   isNativeAuthCallbackUrl(url: string) {
     try {
       const callbackUrl = new URL(url);
-      return callbackUrl.protocol === "com.jinkim.stockly:"
+      return NATIVE_AUTH_CALLBACK_PROTOCOLS.has(callbackUrl.protocol)
         && callbackUrl.hostname === "auth"
         && callbackUrl.pathname === "/callback"
         && !callbackUrl.username
@@ -223,6 +312,9 @@ export const AuthService = {
   },
 
   loginWithApple() {
+    if (Capacitor.getPlatform() === "ios") {
+      return signInWithNativeApple();
+    }
     return signInWithOAuthProvider("apple");
   },
 
@@ -234,12 +326,30 @@ export const AuthService = {
     return supabase.auth.getUserIdentities();
   },
 
-  linkOAuthIdentity(provider: "google" | "kakao") {
+  async linkOAuthIdentity(provider: "google" | "kakao") {
     localStorage.setItem(ACCOUNT_LINK_RETURN_STORAGE_KEY, provider);
-    return supabase.auth.linkIdentity({
+    const result = await supabase.auth.linkIdentity({
       provider,
-      options: getOAuthOptions(provider)
+      options: await getOAuthOptions(provider)
     });
+
+    if (result.error || !Capacitor.isNativePlatform()) return result;
+    if (!result.data.url) {
+      return {
+        ...result,
+        error: new Error("OAuth 인증 URL을 생성하지 못했습니다.")
+      };
+    }
+
+    try {
+      await Browser.open({ url: result.data.url });
+      return result;
+    } catch (error) {
+      return {
+        ...result,
+        error: error instanceof Error ? error : new Error("인증 브라우저를 열지 못했습니다.")
+      };
+    }
   },
 
   unlinkIdentity(identity: UserIdentity) {

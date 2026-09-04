@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 import type { HTMLMotionProps } from "motion/react";
 import { listContainerMotion, listItemMotion } from "../lib/animations";
 
@@ -11,11 +11,9 @@ export function AnimatedList({ children, ...props }: AnimatedListProps) {
   const shouldReduceMotion = useReducedMotion();
 
   return (
-    <LazyMotion features={domAnimation}>
-      <m.div {...props} initial={false} animate={shouldReduceMotion ? undefined : "animate"} variants={shouldReduceMotion ? undefined : listContainerMotion}>
-        {children}
-      </m.div>
-    </LazyMotion>
+    <m.div {...props} initial={false} animate={shouldReduceMotion ? undefined : "animate"} variants={shouldReduceMotion ? undefined : listContainerMotion}>
+      {children}
+    </m.div>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { motion, useAnimationFrame, useMotionValue, useTransform } from "motion/react";
+import { m, useAnimationFrame, useMotionValue, useTransform } from "motion/react";
 
 type GradientDirection = "horizontal" | "vertical" | "diagonal";
 
@@ -75,7 +75,7 @@ export function GradientText({
   const gradientColors = [...colors, colors[0]].join(", ");
 
   return (
-    <motion.span
+    <m.span
       className={`inline-block bg-clip-text text-transparent ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -87,6 +87,6 @@ export function GradientText({
       }}
     >
       {children}
-    </motion.span>
+    </m.span>
   );
 }

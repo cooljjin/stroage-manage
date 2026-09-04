@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
   if (jobError || !job) return jsonResponse({ error: "가져오기 작업을 찾을 수 없습니다." }, 404);
   if (!(await canManageJob(adminClient, authData.user.id, job.store_id))) return jsonResponse({ error: "레시피 가져오기 권한이 없습니다." }, 403);
   if (!job.storage_path) return failJob(adminClient, jobId, "원본 파일 경로가 없습니다.");
-  if (!job.approved_cost_usd || job.approved_cost_usd < job.estimated_cost_usd) return failJob(adminClient, jobId, "예상 비용 승인이 필요합니다.", "awaiting_cost_approval");
+  if (!job.approved_cost_usd || job.approved_cost_usd < job.estimated_cost_usd) return failJob(adminClient, jobId, "분석을 시작하려면 추가 확인이 필요합니다.", "awaiting_cost_approval");
   if (job.status !== "queued") return jsonResponse({ ok: true, status: job.status });
 
   const model = normalizeModel(Deno.env.get("GEMINI_RECIPE_MODEL") ?? DEFAULT_MODEL);
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       actual_cost_usd: actualCost,
-      error_message: overBudget ? "실제 사용량이 승인한 비용을 초과했습니다." : null,
+      error_message: overBudget ? "분석을 계속하려면 추가 확인이 필요합니다." : null,
       source_manifest: null
     }).eq("id", jobId);
     return jsonResponse({ ok: true, status, menuCount: menus.length, actualCostUsd: actualCost });

@@ -38,8 +38,8 @@ type Props = {
   onCommit: (target: MobileInventoryTarget) => void;
   onRebaseAutoBaseline: (location: Location) => void;
   onInventoryCheck: (location: Location) => void;
-  onSave: () => void;
   onOpenKeypad: (target: "warehouse" | "store") => void;
+  onSave: () => void;
   onUndo: () => void;
   onRedo: () => void;
 };
@@ -80,8 +80,8 @@ export function MobileInventoryControls({
   onCommit,
   onRebaseAutoBaseline,
   onInventoryCheck,
-  onSave,
   onOpenKeypad,
+  onSave,
   onUndo,
   onRedo
 }: Props) {
@@ -340,8 +340,13 @@ export function MobileInventoryControls({
             <Redo2 size={18} />
           </button>
         </div>
-        <button type="button" onClick={onSave} disabled={disabled || saveState === "dragging" || saveState === "pending"} className="primary-button inline-flex min-h-10 w-full items-center justify-center gap-1 px-3 py-1 text-sm sm:min-h-11" title={mode === "audit" ? "현재 수량으로 실사 저장" : "재고 저장"}>
-          <Check size={16} />저장
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={disabled || saveState === "dragging" || saveState === "pending"}
+          className="primary-button inline-flex min-h-12 w-full items-center justify-center px-3 py-2 text-base font-extrabold sm:min-h-11"
+        >
+          {saveState === "pending" ? "저장 중..." : "저장"}
         </button>
       </div>
     </section>

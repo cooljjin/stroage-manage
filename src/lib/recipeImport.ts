@@ -69,14 +69,18 @@ function normalizeMerges(sheet: WorkSheet) {
 
 async function readWorkbook(file: File, sourceType: RecipeImportSourceType): Promise<RecipeImportManifest> {
   const XLSX = await import("xlsx");
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellFormula: true, cellNF: true, cellStyles: false });
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellFormula: true, cellHTML: false, cellNF: true, cellStyles: false });
   const sheets: RecipeImportSheetManifest[] = [];
   let cellCount = 0;
+
+  if (workbook.SheetNames.length === 0) {
+    throw new Error("읽을 수 있는 시트가 없습니다. Microsoft Excel 또는 Google Sheets에서 새 XLSX 파일로 저장한 뒤 다시 시도해 주세요.");
+  }
 
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name];
     if (!sheet) {
-      throw new Error(`엑셀 시트 "${name}"을 읽지 못했습니다. 파일을 Excel에서 다시 저장한 뒤 재시도해 주세요.`);
+      throw new Error("일부 시트를 읽지 못했습니다. Microsoft Excel 또는 Google Sheets에서 새 XLSX 파일로 저장한 뒤 다시 시도해 주세요.");
     }
     const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: null, blankrows: false });
     const rows = rawRows.map((row) => row.map(normalizeCell));
@@ -115,8 +119,4 @@ export function estimateRecipeImportCost(manifest: RecipeImportManifest): Recipe
   const outputTokens = Math.max(500, Math.ceil(inputTokens * 0.35));
   const estimatedCostUsd = Math.max(0.01, Number(((inputTokens * RECIPE_IMPORT_INPUT_PRICE_PER_MILLION + outputTokens * RECIPE_IMPORT_OUTPUT_PRICE_PER_MILLION) / 1_000_000).toFixed(4)));
   return { inputTokens, outputTokens, estimatedCostUsd, model: RECIPE_IMPORT_MODEL };
-}
-
-export function formatRecipeImportCost(cost: number) {
-  return `$${cost.toFixed(4)}`;
 }

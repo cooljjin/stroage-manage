@@ -11,13 +11,15 @@
 - `{"action":"eligibility"}`: 탈퇴 분기와 이관 가능 직원 확인
 - `{"action":"request"}`: 탈퇴 실행
 - `{"action":"request","transferToUserId":"<user-id>"}`: 공동 매장 관리자의 관리자 이관 후 탈퇴
-- `{"action":"restore"}`: 30일 안의 개인 매장 탈퇴 요청 복구
+- `{"action":"restore"}`: 30일 안의 매장 탈퇴 요청 복구
+- `{"action":"delete_now"}`: 탈퇴 요청 중인 단독 매장과 auth 계정을 즉시 영구 삭제
 
 ## 역할별 동작
 
 - `staff`: 본인 auth 계정만 영구 삭제하며 다른 직원을 관리자로 승격하지 않음
 - 공동 매장의 `store_admin`: 같은 매장의 `staff`를 새 관리자로 이관한 뒤 본인 계정 삭제
-- 구성원이 없는 개인 매장의 `store_admin`: 매장과 프로필을 30일 동안 `pending_deletion` 상태로 전환
+- 이관할 구성원이 없는 단독 `store_admin`: 매장 이관 없이 30일 복구 기간으로 탈퇴 요청 가능
+- 탈퇴 요청 중인 단독 `store_admin`: 복구 대신 매장 데이터와 auth 계정을 바로 영구 삭제 가능
 - `master`: 고객용 탈퇴 endpoint에서 거부
 
 관리자 이관 뒤 본인 auth 삭제가 실패하면 새 관리자의 역할을 다시 `staff`로 되돌리려고 시도한다.

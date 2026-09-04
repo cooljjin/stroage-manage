@@ -1,6 +1,9 @@
 [functions.recipe-import]
 verify_jwt = true
 
+[functions.manage-account-deletion]
+verify_jwt = true
+
 [functions.recipe-import-cleanup]
 verify_jwt = false
 
