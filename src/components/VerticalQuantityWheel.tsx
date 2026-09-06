@@ -75,7 +75,7 @@ type AutomaticSpringMotion = {
 export function VerticalQuantityWheel({
   label, labelClassName, value, min = 0, max, disabled = false, hint, ariaLabel,
   onDraftChange, onCommit, onLongPress, onOpenKeypad, onDragStart, peerAnimation,
-  compact = false, showDragHint = true, authoritativeRebaseSequence, invertDrag = false, reverseDisplayOrder = false, snapFractionalValueOnStep = true, formatValue
+  compact = false, showDragHint = true, authoritativeRebaseSequence, invertDrag = false, reverseDisplayOrder = false, snapFractionalValueOnStep = false, formatValue
 }: Props) {
   const pointerRef = useRef<PointerState | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
