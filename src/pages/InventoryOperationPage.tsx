@@ -12,7 +12,7 @@ import { DEFAULT_ABUNDANT_MULTIPLIER } from "../lib/inventoryStock";
 import { createMutationRequestId, finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import { recordReceiptCheckOnly } from "../lib/receiptCheck";
 import { applyMobileInventoryChange, finalizeMobileInventorySession, type MobileInventoryApplyResult } from "../lib/mobileInventorySession";
-import { buildAuditTarget, buildAutoAdjustmentTarget, buildMobileHistoryTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, hasMobileInventoryChange, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
+import { buildAuditTarget, buildAutoAdjustmentTarget, buildMobileHistoryTarget, buildMoveTarget, clampMobileQuantity, getMoveDirectionForQuantities, hasMobileInventoryChange, resolveMobileDialMode, type MobileInventoryEditPoint, type MobileInventoryTarget, type MobileMoveDirection } from "../lib/mobileInventory";
 import { useMobileViewport } from "../hooks/useMobileViewport";
 import { useInventoryTouchViewport } from "../hooks/useInventoryTouchViewport";
 import { resolveStoreStaffNames } from "../lib/staffNames";
@@ -55,8 +55,7 @@ type QuantityDragState = {
 function readStoredMobileDialMode(defaultDialMode: boolean): boolean {
   if (typeof window === "undefined") return defaultDialMode;
   try {
-    const storedMode = window.localStorage.getItem(MOBILE_INPUT_MODE_STORAGE_KEY);
-    return storedMode === "dial" ? true : storedMode === "button" ? false : defaultDialMode;
+    return resolveMobileDialMode(window.localStorage.getItem(MOBILE_INPUT_MODE_STORAGE_KEY), defaultDialMode);
   } catch {
     return defaultDialMode;
   }

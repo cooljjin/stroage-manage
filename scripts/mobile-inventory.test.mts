@@ -10,7 +10,8 @@ import {
   getVerticalWheelTrackOffset,
   getVerticalWheelValueAfterSteps,
   normalizeMobileScanMode,
-  parseSignedMobileQuantity
+  parseSignedMobileQuantity,
+  resolveMobileDialMode
 } from "../src/lib/mobileInventory.ts";
 
 assert.deepEqual(
@@ -50,6 +51,11 @@ assert.equal(normalizeMobileScanMode("auto"), "auto", "stored receipt mode is ac
 assert.equal(normalizeMobileScanMode("audit"), "audit", "stored audit mode is accepted");
 assert.equal(normalizeMobileScanMode("unknown"), "auto", "invalid stored scan modes fall back to receipt mode");
 assert.equal(normalizeMobileScanMode(null), "auto", "missing stored scan modes fall back to receipt mode");
+assert.equal(resolveMobileDialMode("dial", false), true, "a saved dial preference takes priority over the viewport default");
+assert.equal(resolveMobileDialMode("button", true), false, "a saved button preference takes priority over the viewport default");
+assert.equal(resolveMobileDialMode(null, true), true, "a missing preference defaults to dial on touch inventory viewports");
+assert.equal(resolveMobileDialMode(null, false), false, "a missing preference defaults to buttons outside touch inventory viewports");
+assert.equal(resolveMobileDialMode("unknown", true), true, "an invalid preference falls back to the viewport default");
 assert.equal(
   getVerticalWheelValueAfterSteps(-0.5, 1, true),
   1,
@@ -433,10 +439,8 @@ assert.match(pageSource, /aria-controls="inventory-memo-content"/, "the memo tog
 assert.match(pageSource, /id="inventory-memo-content"[\s\S]*?hidden=\{!memoOpen\}/, "memo content is hidden when collapsed");
 assert.match(pageSource, /const \[action, setAction\] = useState<StockOperationAction>\(initialInventoryMode === "audit" \? "조정" : "입고"\);/, "native audit and receipt modes initialize the button form action correctly");
 assert.match(pageSource, /setAction\(nextMode === "audit" \? "조정" : "입고"\);/, "changing the native entry mode resets the button form to its matching action");
-assert.match(pageSource, /const \[mobileDialMode, setMobileDialMode\] = useState\(\(\) => readStoredMobileDialMode\(\)\);/, "the dial input mode restores a saved preference and defaults to dial mode on mobile operation screens");
 assert.match(pageSource, /const MOBILE_INPUT_MODE_STORAGE_KEY = "store-inventory-input-mode";/, "the inventory input mode uses a durable preference key");
-assert.match(pageSource, /readStoredMobileDialMode/, "the inventory input mode reads the saved preference on mount");
-assert.match(pageSource, /useState\(\(\) => readStoredMobileDialMode\(\)\)/, "the saved inventory input mode is restored when re-entering the operation screen");
+assert.match(pageSource, /useState\(\(\) => readStoredMobileDialMode\(isInventoryTouchViewport\)\)/, "the input mode restores a saved preference and uses the touch viewport only as its fallback");
 assert.match(pageSource, /window\.localStorage\.setItem\(MOBILE_INPUT_MODE_STORAGE_KEY, nextDialMode \? "dial" : "button"\)/, "changing the inventory input mode persists the selected presentation");
 assert.match(pageSource, /const mobileTouchUI = mobileTouchEnabled && isInventoryTouchViewport && mobileDialMode;/, "the new input switch controls whether the dial controls are rendered within the inventory touch viewport");
 assert.match(pageSource, /role="switch"[\s\S]*aria-label="재고 작업 입력 방식"[\s\S]*aria-checked=\{mobileDialMode\}/, "the operation input mode switch exposes its current state");
@@ -474,7 +478,7 @@ assert.match(scanSource, /const launchDelay = nativeScannerAvailable \? 0 : 250;
 assert.match(scanSource, /if \(nativeScannerAvailable\) \{[\s\S]*?setShowFallbackUi\(false\);[\s\S]*?const result = await scanNativeBarcode\(\);/, "every native launch hides a previously visible fallback screen before opening the scanner");
 assert.match(scanSource, /native-scanner-pending/, "native launch hides the surrounding React chrome while the native scanner is opening");
 assert.match(scanSource, /className=\{showFallbackUi \? undefined : "native-scanner-fallback-hidden"\}/, "the React scanner DOM stays mounted but is not visible until web fallback is selected");
-assert.match(scanSource, /setShowFallbackUi\(true\);[\s\S]*?new Html5Qrcode\(SCANNER_ID/, "the web scanner is created after the fallback DOM is kept mounted");
+assert.match(scanSource, /setShowFallbackUi\(true\);[\s\S]*?createWebBarcodeScanner\(SCANNER_ID\)/, "the web scanner is created after the fallback DOM is kept mounted");
 assert.doesNotMatch(scanSource, /native-scanner-launch-screen/, "the native path does not render a separate React launch screen");
 assert.match(controlsSource, /\["auto", "입고, 출고"\]/, "the receipt native mode lands on the receipt/outgoing mobile operation tab");
 

@@ -12,6 +12,10 @@ export function normalizeMobileScanMode(value: unknown): MobileScanMode {
   return value === "audit" ? "audit" : "auto";
 }
 
+export function resolveMobileDialMode(storedMode: string | null, defaultDialMode: boolean): boolean {
+  return storedMode === "dial" ? true : storedMode === "button" ? false : defaultDialMode;
+}
+
 export type MobileInventoryTarget = {
   mode: MobileInventoryMode;
   targetLocation: Location | null;
