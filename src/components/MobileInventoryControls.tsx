@@ -30,6 +30,7 @@ type Props = {
   saveState: "idle" | "dragging" | "pending" | "saved" | "error";
   saveError?: string;
   savedAtLabel?: string | null;
+  historyPositionLabel?: string | null;
   saveStatusLabel?: "서버에 저장됨" | "수정 시점" | "수량 확인 완료";
   canUndo: boolean;
   canRedo: boolean;
@@ -72,6 +73,7 @@ export function MobileInventoryControls({
   saveState,
   saveError,
   savedAtLabel,
+  historyPositionLabel,
   saveStatusLabel = "서버에 저장됨",
   canUndo,
   canRedo,
@@ -94,6 +96,7 @@ export function MobileInventoryControls({
     if (!isMove) setPeerAnimation(null);
   }, [isMove]);
   const totalQty = clampMobileQuantity(confirmedWarehouseQty + confirmedStoreQty);
+  const historyStatusLabel = historyPositionLabel ?? (savedAtLabel ? `편집 시점 ${savedAtLabel}` : null);
 
   function buildAutoAdjustment(location: Location, delta: number) {
     const target = buildAutoAdjustmentTarget(location, delta, autoBaselineWarehouseQty, autoBaselineStoreQty);
@@ -329,9 +332,9 @@ export function MobileInventoryControls({
           <div className="min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 px-2 py-1 text-[11px] dark:border-slate-800 sm:px-3 sm:py-2 sm:text-sm" role="status" aria-live="polite">
             {saveState === "dragging" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">수량을 조정하는 중...</span> : null}
             {saveState === "pending" ? <span className="block w-full truncate font-semibold text-brand-700 dark:text-brand-100">재고를 저장하는 중...</span> : null}
-            {saveState === "saved" ? <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300" title={savedAtLabel ? `${saveStatusLabel} · ${savedAtLabel}` : saveStatusLabel}><Check className="shrink-0" size={16} /><span className="truncate">{saveStatusLabel}{savedAtLabel ? ` · ${savedAtLabel}` : ""}</span></span> : null}
+            {saveState === "saved" ? <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300" title={historyStatusLabel ? `${saveStatusLabel} · ${historyStatusLabel}` : saveStatusLabel}><Check className="shrink-0" size={16} /><span className="truncate">{saveStatusLabel}{historyStatusLabel ? ` · ${historyStatusLabel}` : ""}</span></span> : null}
             {saveState === "error" ? <span className="block w-full truncate font-semibold text-rose-700 dark:text-rose-300" title={saveError ?? "저장하지 못했습니다."}>{saveError ?? "저장하지 못했습니다."}</span> : null}
-            {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{savedAtLabel ? `편집 시점 ${savedAtLabel}` : mode === "auto" ? "위로 밀면 입고, 아래로 밀면 출고" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요."}</span> : null}
+            {saveState === "idle" ? <span className="block w-full truncate font-semibold text-slate-500 dark:text-slate-400">{historyStatusLabel ?? (mode === "auto" ? "위로 밀면 입고, 아래로 밀면 출고" : mode === "move" ? "총재고 안에서 창고·매장 수량을 자유롭게 조정하세요." : "창고와 매장 수량을 각각 실사하세요.")}</span> : null}
           </div>
           <button type="button" onClick={onUndo} disabled={disabled || !canUndo || saveState === "dragging" || saveState === "pending" || saveState === "error"} className="secondary-button inline-flex min-h-10 min-w-10 items-center justify-center px-2 py-1 sm:min-h-11" aria-label="뒤로가기" title="뒤로가기">
             <Undo2 size={18} />

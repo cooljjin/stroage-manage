@@ -480,10 +480,13 @@ export function InventoryOperationPage({
   }
 
   function syncMobileEditHistory(nextHistory: MobileInventoryEditPoint[], nextIndex: number) {
+    const editAt = nextHistory[nextIndex]?.editAt ?? "";
     mobileEditHistoryRef.current = nextHistory;
     mobileEditHistoryIndexRef.current = nextIndex;
+    mobileEditPointAtRef.current = editAt;
     setMobileEditHistory(nextHistory);
     setMobileEditHistoryIndex(nextIndex);
+    setMobileEditPointAt(editAt);
   }
 
   function recordMobileEditResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget) {
@@ -500,7 +503,6 @@ export function InventoryOperationPage({
         storeQty: result.store_qty
       };
       syncMobileEditHistory(nextHistory, navigationIndex);
-      setMobileEditPointAt(currentPoint.editAt);
       setMobileSaveStatusLabel("수정 시점");
       return;
     }
@@ -517,7 +519,6 @@ export function InventoryOperationPage({
     };
     nextHistory.push(nextPoint);
     syncMobileEditHistory(nextHistory, nextHistory.length - 1);
-    setMobileEditPointAt(nextPoint.editAt);
     setMobileSaveStatusLabel("서버에 저장됨");
   }
 
@@ -540,11 +541,7 @@ export function InventoryOperationPage({
       const nextHistory = buildMobileEditHistoryPoints((data ?? []) as InventoryLog[], snapshot);
       if (nextHistory.length === 0) return;
 
-      mobileEditHistoryRef.current = nextHistory;
-      mobileEditHistoryIndexRef.current = nextHistory.length - 1;
-      setMobileEditHistory(nextHistory);
-      setMobileEditHistoryIndex(nextHistory.length - 1);
-      setMobileEditPointAt(nextHistory[nextHistory.length - 1].editAt || snapshot.updatedAt);
+      syncMobileEditHistory(nextHistory, nextHistory.length - 1);
       mobileEditHistoryLoadedRef.current = true;
     } finally {
       mobileEditHistoryLoadingRef.current = false;
@@ -608,11 +605,7 @@ export function InventoryOperationPage({
         targetLocation: null,
         moveDirection: null
       }];
-      mobileEditHistoryRef.current = initialHistory;
-      mobileEditHistoryIndexRef.current = 0;
-      setMobileEditHistory(initialHistory);
-      setMobileEditHistoryIndex(0);
-      setMobileEditPointAt(editAt);
+      syncMobileEditHistory(initialHistory, 0);
     }
     const conflictTarget = mobileConflictTargetRef.current;
     if (conflictTarget) {
@@ -742,12 +735,6 @@ export function InventoryOperationPage({
     return !hadError;
   }
 
-  function queueMobileTarget(target: MobileInventoryTarget) {
-    mobileDraftTargetRef.current = target;
-    mobileQueuedTargetRef.current = target;
-    setMobileSaveState("idle");
-  }
-
   async function saveMobileDraft() {
     const pendingDraft = mobileDraftTargetRef.current;
     if (pendingDraft && hasMobileInventoryChange(
@@ -811,12 +798,36 @@ export function InventoryOperationPage({
   }
 
   function handleMobileCommit(target: MobileInventoryTarget, historyNavigationIndex: number | null = null) {
-    mobileHistoryNavigationRef.current = historyNavigationIndex;
-    mobileDraftTargetRef.current = target;
+    const history = mobileEditHistoryRef.current;
+    const currentIndex = mobileEditHistoryIndexRef.current;
+    let nextIndex = historyNavigationIndex;
+
+    if (nextIndex === null) {
+      const currentPoint = history[currentIndex];
+      if (currentPoint?.warehouseQty === target.warehouseQty && currentPoint.storeQty === target.storeQty) {
+        nextIndex = currentIndex;
+      } else {
+        const nextHistory = history.slice(0, Math.max(0, currentIndex + 1));
+        nextHistory.push({ ...target, editAt: new Date().toISOString() });
+        nextIndex = nextHistory.length - 1;
+        syncMobileEditHistory(nextHistory, nextIndex);
+      }
+    } else {
+      syncMobileEditHistory(history, nextIndex);
+    }
+
+    mobileHistoryNavigationRef.current = nextIndex;
+    const snapshot = mobileConfirmedRef.current;
+    mobileDraftTargetRef.current = hasMobileInventoryChange(
+      target.warehouseQty,
+      target.storeQty,
+      snapshot.warehouseQty,
+      snapshot.storeQty
+    ) ? target : null;
     setMobileWarehouseQty(target.warehouseQty);
     setMobileStoreQty(target.storeQty);
+    setMobileSaveState("idle");
     setMobileSaveStatusLabel(historyNavigationIndex === null ? "서버에 저장됨" : "수정 시점");
-    queueMobileTarget(target);
   }
 
   async function recordMobileInventoryCheck(targetLocation: Location) {
@@ -866,7 +877,7 @@ export function InventoryOperationPage({
   }
 
   function handleMobileHistoryNavigation(direction: "undo" | "redo") {
-    if (mobileSaveInFlightRef.current || mobileQueuedTargetRef.current || mobileDraftTargetRef.current) return;
+    if (mobileSaveInFlightRef.current || mobileQueuedTargetRef.current) return;
 
     const history = mobileEditHistoryRef.current;
     const currentIndex = mobileEditHistoryIndexRef.current;
@@ -882,20 +893,6 @@ export function InventoryOperationPage({
       targetPoint,
       operationPoint
     );
-
-    if (!hasMobileInventoryChange(
-      target.warehouseQty,
-      target.storeQty,
-      snapshot.warehouseQty,
-      snapshot.storeQty
-    )) {
-      mobileHistoryNavigationRef.current = null;
-      syncMobileEditHistory(history, targetIndex);
-      setMobileEditPointAt(targetPoint.editAt);
-      setMobileSaveState("saved");
-      setMobileSaveStatusLabel("수정 시점");
-      return;
-    }
 
     handleMobileCommit(target, targetIndex);
   }
@@ -1690,12 +1687,12 @@ export function InventoryOperationPage({
             saveState={mobileSaveState}
             saveError={mobileSaveError}
             savedAtLabel={mobileEditPointAt ? formatDateTime(mobileEditPointAt) : null}
+            historyPositionLabel={mobileEditPointAt ? `히스토리 시점 ${formatDateTime(mobileEditPointAt)}` : null}
             saveStatusLabel={mobileSaveStatusLabel}
             canUndo={mobileEditHistoryIndex > 0}
             canRedo={mobileEditHistoryIndex >= 0 && mobileEditHistoryIndex < mobileEditHistory.length - 1}
             onModeChange={(nextMode) => {
               if (nextMode === mobileModeRef.current) return;
-              resetMobileDraft();
               mobileModeRef.current = nextMode;
               setMobileMode(nextMode);
               resetMobileAutoBaseline();
