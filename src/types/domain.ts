@@ -48,9 +48,13 @@ export type RouteName =
 export type Product = {
   id: string;
   store_id: string;
+  catalog_id?: string | null;
   barcode: string | null;
   name: string;
   category: Category;
+  brand?: string | null;
+  image_url?: string | null;
+  catalog_confirmed_at?: string | null;
   supplier_name: string | null;
   storage_type: string | null;
   default_location: Location;
@@ -75,6 +79,26 @@ export type Product = {
   is_important: boolean;
   is_active: boolean;
   created_at: string;
+};
+
+export type ProductCatalog = {
+  id: string;
+  gtin: string;
+  canonical_name: string;
+  brand: string | null;
+  manufacturer: string | null;
+  size: number | null;
+  unit: string | null;
+  quantity_text: string | null;
+  image_url: string | null;
+  source: string;
+  source_url: string | null;
+  license: string | null;
+  image_license: string | null;
+  confidence: number | null;
+  verified_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ProductCategory = {
@@ -440,6 +464,7 @@ export type AppRoute = {
   authMode?: "login" | "signup";
   authEmail?: string;
   barcode?: string;
+  barcodeFormat?: BarcodeSymbology;
   scanLaunchId?: number;
   initialInventoryMode?: MobileInventoryEntryMode;
   productId?: string;
@@ -449,6 +474,22 @@ export type AppRoute = {
   groupOrderDraft?: GroupOrderRouteDraft;
   recipeImportJobId?: string;
   storeId?: string;
+};
+
+export type BarcodeSymbology =
+  | "EAN_13"
+  | "EAN_8"
+  | "UPC_A"
+  | "UPC_E"
+  | "CODE_128"
+  | "CODE_39"
+  | "CODE_93"
+  | "ITF"
+  | "CODABAR"
+  | "UNKNOWN";
+
+export type BarcodeScanMetadata = {
+  barcodeFormat?: BarcodeSymbology;
 };
 
 export type RecipeImportJobStatus =

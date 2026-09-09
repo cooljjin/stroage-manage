@@ -1,4 +1,6 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { normalizeBarcodeFormat } from "./barcodeScanMetadata";
+import type { BarcodeSymbology } from "../types/domain";
 
 type PermissionState = "prompt" | "prompt-with-rationale" | "granted" | "denied" | string;
 
@@ -8,6 +10,7 @@ type BarcodeScannerPermissionStatus = {
 
 type NativeBarcode = {
   rawValue?: string;
+  format?: string;
 };
 
 type NativeScannerEvent = {
@@ -34,7 +37,7 @@ type NativeBarcodeScannerPlugin = {
 };
 
 type NativeBarcodeScanResult =
-  | { status: "success"; barcode: string }
+  | { status: "success"; barcode: string; barcodeFormat?: BarcodeSymbology }
   | { status: "register" }
   | { status: "unavailable"; message: string; fallbackToWeb: true }
   | { status: "permission-denied"; message: string; fallbackToWeb: false }
@@ -135,8 +138,9 @@ export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
     void (async () => {
       try {
         listenerPromises.push(barcodeScanner.addListener("barcodesScanned", (event) => {
-          const barcode = event.barcodes?.find((item) => item.rawValue?.trim())?.rawValue?.trim();
-          if (barcode) finish({ status: "success", barcode });
+          const item = event.barcodes?.find((candidate) => candidate.rawValue?.trim());
+          const barcode = item?.rawValue?.trim();
+          if (barcode) finish({ status: "success", barcode, barcodeFormat: normalizeBarcodeFormat(item?.format) });
         }));
         listenerPromises.push(barcodeScanner.addListener("scanError", (event) => {
           finish({

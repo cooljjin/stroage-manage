@@ -6,8 +6,9 @@ import { useMobileViewport } from "../hooks/useMobileViewport";
 import { normalizeMobileScanMode, type MobileScanMode } from "../lib/mobileInventory";
 import { isNativeBarcodeScannerAvailable, scanNativeBarcode, stopNativeBarcode } from "../lib/nativeBarcodeScanner";
 import { resolveProductByBarcode, searchResolvedProducts } from "../lib/resolvedProducts";
-import { createWebBarcodeScanner, preloadWebBarcodeScanner, webBarcodeCameraErrorMessage, type WebBarcodeScanner } from "../lib/webBarcodeScanner";
-import type { AppRoute, MobileInventoryEntryMode, Product } from "../types/domain";
+import { consumePendingScanEntry, type PendingScanEntry } from "../lib/barcodeScanMetadata";
+import { createWebBarcodeScanner, getWebBarcodeScanResult, preloadWebBarcodeScanner, webBarcodeCameraErrorMessage, type WebBarcodeScanner } from "../lib/webBarcodeScanner";
+import type { AppRoute, BarcodeSymbology, MobileInventoryEntryMode, Product } from "../types/domain";
 
 type Props = {
   navigate: (route: AppRoute) => void;
@@ -17,7 +18,7 @@ type Props = {
 
 const SCANNER_ID = "barcode-scanner";
 const PENDING_SCAN_STORAGE_KEY = "store-inventory-pending-scan";
-const PENDING_SCAN_TTL_MS = 5 * 60 * 1000;
+
 const DEFAULT_CAMERA_ZOOM = 2.5;
 const NATIVE_SCANNER_PENDING_CLASS = "native-scanner-pending";
 const SCAN_MODE_STORAGE_KEY = "store-inventory-scan-mode";
@@ -26,17 +27,11 @@ type FocusMediaTrackConstraints = MediaTrackConstraints & {
   advanced?: Array<MediaTrackConstraintSet & { focusMode?: string }>;
 };
 
-type PendingScanEntry = {
-  barcode: string;
-  storeId: string;
-  savedAt: number;
-  initialInventoryMode?: MobileInventoryEntryMode;
-};
 
-function savePendingScanBarcode(barcode: string, storeId: string, initialInventoryMode: MobileInventoryEntryMode) {
+function savePendingScanBarcode(barcode: string, storeId: string, initialInventoryMode: MobileInventoryEntryMode, barcodeFormat?: BarcodeSymbology) {
   const normalized = barcode.trim();
   if (!normalized) return;
-  const entry: PendingScanEntry = { barcode: normalized, storeId, savedAt: Date.now(), initialInventoryMode };
+  const entry: PendingScanEntry = { barcode: normalized, storeId, savedAt: Date.now(), initialInventoryMode, barcodeFormat };
   localStorage.setItem(PENDING_SCAN_STORAGE_KEY, JSON.stringify(entry));
 }
 
@@ -53,19 +48,10 @@ function readStoredScanMode(): MobileScanMode {
   }
 }
 
-function consumePendingScanBarcode(storeId: string): PendingScanEntry | null {
+function consumePendingScanBarcode(storeId: string) {
   const rawEntry = localStorage.getItem(PENDING_SCAN_STORAGE_KEY);
-  if (!rawEntry) return null;
-
-  try {
-    const entry = JSON.parse(rawEntry) as PendingScanEntry;
-    localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
-    if (entry.storeId !== storeId || Date.now() - entry.savedAt > PENDING_SCAN_TTL_MS) return null;
-    return entry.barcode.trim() ? { ...entry, initialInventoryMode: entry.initialInventoryMode ?? "auto" } : null;
-  } catch {
-    localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
-    return null;
-  }
+  localStorage.removeItem(PENDING_SCAN_STORAGE_KEY);
+  return consumePendingScanEntry(rawEntry, storeId);
 }
 
 function getBarcodeCandidates(barcode: string): string[] {
@@ -132,10 +118,10 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     void preloadWebBarcodeScanner().catch(() => undefined);
   }, [nativeScannerAvailable]);
 
-  const handleBarcode = useCallback(async (barcode: string, initialInventoryMode: MobileInventoryEntryMode = scanModeRef.current === "audit" && mobileTouchEnabled && isMobileViewport ? "audit" : "auto") => {
+  const handleBarcode = useCallback(async (barcode: string, initialInventoryMode: MobileInventoryEntryMode = scanModeRef.current === "audit" && mobileTouchEnabled && isMobileViewport ? "audit" : "auto", barcodeFormat?: BarcodeSymbology) => {
     if (barcodeHandlingRef.current) return;
     barcodeHandlingRef.current = true;
-    savePendingScanBarcode(barcode, currentStoreId, initialInventoryMode);
+    savePendingScanBarcode(barcode, currentStoreId, initialInventoryMode, barcodeFormat);
     setMessage(`스캔됨: ${barcode}`);
     if (scannerRef.current?.isScanning) {
       await scannerRef.current.stop().catch(() => undefined);
@@ -158,7 +144,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     } else {
       clearPendingScanBarcode();
       completedNavigationRef.current = true;
-      navigate({ name: "register", barcode });
+      navigate({ name: "register", barcode, barcodeFormat });
     }
   }, [currentStoreId, isMobileViewport, mobileTouchEnabled, navigate]);
 
@@ -219,7 +205,10 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
             height: { ideal: 1440 }
           }
         },
-        (decodedText) => void handleBarcode(decodedText),
+        (decodedText, result) => {
+          const scanResult = getWebBarcodeScanResult(decodedText, result);
+          void handleBarcode(scanResult.barcode, undefined, scanResult.barcodeFormat);
+        },
         () => undefined
       );
 
@@ -272,7 +261,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
         if (!mountedRef.current || completedNavigationRef.current || scanAttempt !== scanAttemptRef.current) return;
 
         if (result.status === "success") {
-          await handleBarcode(result.barcode, scanModeRef.current === "audit" ? "audit" : "auto");
+          await handleBarcode(result.barcode, scanModeRef.current === "audit" ? "audit" : "auto", result.barcodeFormat);
           return;
         }
 
@@ -311,7 +300,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     if (pendingScan) {
       const timer = window.setTimeout(() => {
         if (!mountedRef.current || completedNavigationRef.current) return;
-        void handleBarcode(pendingScan.barcode, pendingScan.initialInventoryMode);
+        void handleBarcode(pendingScan.barcode, pendingScan.initialInventoryMode, pendingScan.barcodeFormat);
       }, 0);
 
       return () => window.clearTimeout(timer);
@@ -402,7 +391,8 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     try {
       const result = await imageScanner.scanFileV2(file, false);
       if (!mountedRef.current || scanAttempt !== scanAttemptRef.current) return;
-      await handleBarcode(result.decodedText);
+      const scanResult = getWebBarcodeScanResult(result.decodedText, result);
+      await handleBarcode(scanResult.barcode, undefined, scanResult.barcodeFormat);
     } catch {
       if (mountedRef.current && scanAttempt === scanAttemptRef.current) {
         setMessage("사진에서 바코드를 찾지 못했습니다. 바코드가 화면을 크게 차지하도록 다시 촬영해 주세요.");
