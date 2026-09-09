@@ -23,3 +23,12 @@ test("dial inventory changes save only through the full-width save action", asyn
   const queueHandler = page.match(/function queueMobileTarget[\s\S]*?\n {2}\}/)?.[0] ?? "";
   assert.doesNotMatch(queueHandler, /flushMobileTargets\(/);
 });
+
+test("unchanged dial inventory save records both location checks", async () => {
+  const page = await readFile(pagePath, "utf8");
+
+  assert.match(
+    page,
+    /if \(!sessionId\) \{\s*if \(await recordMobileInventoryCheck\("창고"\)\) await recordMobileInventoryCheck\("매장"\);\s*return;\s*\}/
+  );
+});

@@ -749,7 +749,7 @@ export function InventoryOperationPage({
     }
     const sessionId = mobileSessionIdRef.current;
     if (!sessionId) {
-      setMobileSaveState("idle");
+      if (await recordMobileInventoryCheck("창고")) await recordMobileInventoryCheck("매장");
       return;
     }
     const { error: finalizeError } = await finalizeMobileInventorySession(sessionId);
@@ -830,8 +830,8 @@ export function InventoryOperationPage({
     setMobileSaveStatusLabel(historyNavigationIndex === null ? "서버에 저장됨" : "수정 시점");
   }
 
-  async function recordMobileInventoryCheck(targetLocation: Location) {
-    if (!item?.inventory || mobileInventoryCheckSaving) return;
+  async function recordMobileInventoryCheck(targetLocation: Location): Promise<boolean> {
+    if (!item?.inventory || mobileInventoryCheckSaving) return false;
 
     setMobileInventoryCheckSaving(true);
     try {
@@ -841,7 +841,7 @@ export function InventoryOperationPage({
       if (userError || !userData.user) {
         setMobileSaveState("error");
         setMobileSaveError(userError?.message ?? "로그인이 필요합니다.");
-        return;
+        return false;
       }
 
       const snapshot = mobileConfirmedRef.current;
@@ -862,15 +862,17 @@ export function InventoryOperationPage({
         if (checkError.message.includes("다른 직원이")) await loadProduct();
         setMobileSaveState("error");
         setMobileSaveError(formatMutationError(checkError));
-      } else {
-        mobileInventoryCheckRequestRef.current = null;
-        const result = (Array.isArray(data) ? data[0] : data) as { checked_at?: string } | null;
-        setMobileEditPointAt(result?.checked_at ?? "");
-        setMobileSaveState("saved");
-        setMobileSaveStatusLabel("수량 확인 완료");
-        await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
-        await loadLatestInventoryCheck();
+        return false;
       }
+
+      mobileInventoryCheckRequestRef.current = null;
+      const result = (Array.isArray(data) ? data[0] : data) as { checked_at?: string } | null;
+      setMobileEditPointAt(result?.checked_at ?? "");
+      setMobileSaveState("saved");
+      setMobileSaveStatusLabel("수량 확인 완료");
+      await completeStaleInventoryTodo(item.id, currentStoreId, userData.user.id);
+      await loadLatestInventoryCheck();
+      return true;
     } finally {
       setMobileInventoryCheckSaving(false);
     }

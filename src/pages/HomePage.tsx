@@ -1602,11 +1602,11 @@ export function HomePage({ navigate, currentStoreId }: Props) {
               />
               <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
                 <span>{handoverDraft.length}/2000</span>
-                <span>다음 단계에서 노출 기간을 정합니다.</span>
+                <span>다음 단계에서 게시 기간을 정합니다.</span>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <PressableButton type="button" onClick={resetHandoverComposer} className="secondary-button">취소</PressableButton>
-                <PressableButton type="submit" disabled={!handoverDraft.trim()} className="primary-button" surfaceFeedback={false}>다음: 노출 기간</PressableButton>
+                <PressableButton type="submit" disabled={!handoverDraft.trim()} className="primary-button" surfaceFeedback={false}>다음: 게시 기간</PressableButton>
               </div>
             </form>
           </section>
@@ -1614,15 +1614,15 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       ) : null}
 
       {showHandoverSchedule ? (
-        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="인수인계 노출 기간">
-          <button type="button" onClick={resetHandoverComposer} className="absolute inset-0 cursor-default" aria-label="인수인계 노출 기간 닫기" />
+        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/50 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="인수인계 게시 기간">
+          <button type="button" onClick={resetHandoverComposer} className="absolute inset-0 cursor-default" aria-label="인수인계 게시 기간 닫기" />
           <section className="relative z-10 w-full rounded-t-2xl bg-white p-3 shadow-2xl dark:bg-slate-950 sm:max-w-md sm:rounded-2xl">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h2 className="font-extrabold">노출 기간</h2>
+                <h2 className="font-extrabold">게시 기간</h2>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">오늘부터 언제까지 홈 화면에 표시할지 드래그하세요.</p>
               </div>
-              <PressableButton type="button" onClick={resetHandoverComposer} className="touch-button icon-button" aria-label="인수인계 노출 기간 닫기"><X size={20} /></PressableButton>
+              <PressableButton type="button" onClick={resetHandoverComposer} className="touch-button icon-button" aria-label="인수인계 게시 기간 닫기"><X size={20} /></PressableButton>
             </div>
             <div className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-bold text-brand-800 dark:bg-brand-950 dark:text-brand-100">
               {handoverIndefinite ? "작성자가 삭제할 때까지 계속 노출" : `오늘부터 ${handoverVisibilityUntil ? shortDateLabel(handoverVisibilityUntil) : "날짜를 선택하세요"}까지 노출`}
