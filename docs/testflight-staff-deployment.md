@@ -1,5 +1,7 @@
 # Stockly TestFlight 직원 배포
 
+> **확인 필요:** 아래 Bundle ID·Build는 과거 기록이다. [이중 채널 규칙](../AGENTS.md#ios-testflight-배포-채널)을 먼저 따르며 직원 업데이트에 개발용 Bundle ID를 사용하지 않는다.
+
 마지막 로컬 설정 점검: 2026-08-19
 
 이 문서는 App Store Connect에 새 iOS build를 업로드해 직원에게 TestFlight로 배포하는 절차다. 실제 App Store Connect 상태와 사용 가능한 build는 로그인 후 다시 확인한다.

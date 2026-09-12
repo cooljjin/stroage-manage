@@ -1,5 +1,7 @@
 # Mobile Dial Undo/Redo Repair Implementation Plan
 
+> **확인 필요:** 아래 초안 중 Undo/Redo 비활성화 계획은 현재 로컬 코드·`test/mobile-inventory-explicit-save.contract.test.mjs`의 저장 전 히스토리 탐색 계약과 다르다. 원문은 당시 제안으로 보존하며 재구현 전 승인 요구를 확인한다.
+
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** Make the inventory-operation dial mode’s Undo/Redo controls honest and usable when there is an unsaved quantity draft, without reintroducing automatic persistence.

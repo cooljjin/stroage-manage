@@ -46,6 +46,11 @@ values
   ('61000000-0000-0000-0000-000000000003', '00000000000031', '카탈로그 C', '브랜드 C', 'https://c.invalid/c.png', 'contract')
 on conflict (id) do nothing;
 
+create temporary table catalog_before on commit drop as
+select * from public.product_catalog
+where id in ('61000000-0000-0000-0000-000000000001',
+             '61000000-0000-0000-0000-000000000002',
+             '61000000-0000-0000-0000-000000000003');
 insert into public.products (
   id, store_id, name, barcode, category, unit_name, is_active,
   catalog_id, brand, image_url, catalog_confirmed_at
@@ -71,8 +76,8 @@ insert into public.inventory (product_id, store_id, warehouse_qty, store_qty)
 values
   ('31000000-0000-0000-0000-000000000001', '11000000-0000-0000-0000-000000000001', 10, 5),
   ('31000000-0000-0000-0000-000000000002', '11000000-0000-0000-0000-000000000001', 3, 2),
-  ('31000000-0000-0000-0000-000000000003', '11000000-0000-0000-0000-000000000001', 0, 0),
-  ('31000000-0000-0000-0000-000000000004', '11000000-0000-0000-0000-000000000001', 0, 0)
+  ('31000000-0000-0000-0000-000000000003', '11000000-0000-0000-0000-000000000001', 6, 1),
+  ('31000000-0000-0000-0000-000000000004', '11000000-0000-0000-0000-000000000001', 7, 4)
 on conflict (product_id) do nothing;
 insert into public.inventory (product_id, store_id, warehouse_qty, store_qty)
 values ('31000000-0000-0000-0000-000000000005', '11000000-0000-0000-0000-000000000002', 0, 0)
@@ -105,7 +110,6 @@ declare
   link_row public.product_alias_links%rowtype;
   state_row record;
   canonical public.products%rowtype;
-  alias_inventory public.inventory%rowtype;
 begin
   select link.* into link_row
   from public.product_alias_links link
@@ -130,15 +134,18 @@ begin
   select * into state_row from public.resolve_product_catalog_state(
     '31000000-0000-0000-0000-000000000002');
   if state_row.canonical_product_id is distinct from '31000000-0000-0000-0000-000000000001'
-    or not state_row.is_mixed_catalog
+    or state_row.is_mixed_catalog is not true
     or state_row.canonical_catalog_id is distinct from '61000000-0000-0000-0000-000000000001'
     or state_row.alias_catalog_ids is distinct from array['61000000-0000-0000-0000-000000000002']::uuid[] then
     raise exception 'mixed catalog state is unreadable';
   end if;
 
-  select * into alias_inventory from public.inventory
-  where product_id = '31000000-0000-0000-0000-000000000002';
-  if alias_inventory.warehouse_qty <> 0 or alias_inventory.store_qty <> 0 then
+  if not exists (
+    select 1 from public.inventory
+    where product_id = '31000000-0000-0000-0000-000000000002'
+      and warehouse_qty is not distinct from 0
+      and store_qty is not distinct from 0
+  ) then
     raise exception 'merge quantity distribution changed';
   end if;
 end $$;
@@ -151,8 +158,6 @@ select public.unmerge_product_alias(
 do $$
 declare
   restored public.products%rowtype;
-  canonical_inventory public.inventory%rowtype;
-  alias_inventory public.inventory%rowtype;
 begin
   select * into restored from public.products
   where id = '31000000-0000-0000-0000-000000000002';
@@ -162,10 +167,17 @@ begin
     or restored.catalog_confirmed_at is distinct from '2026-02-02 02:03:04+00'::timestamptz then
     raise exception 'unmerge did not restore original alias metadata';
   end if;
-  select * into canonical_inventory from public.inventory where product_id = '31000000-0000-0000-0000-000000000001';
-  select * into alias_inventory from public.inventory where product_id = '31000000-0000-0000-0000-000000000002';
-  if canonical_inventory.warehouse_qty <> 10 or canonical_inventory.store_qty <> 5
-    or alias_inventory.warehouse_qty <> 3 or alias_inventory.store_qty <> 2 then
+  if not exists (
+    select 1 from public.inventory
+    where product_id = '31000000-0000-0000-0000-000000000001'
+      and warehouse_qty is not distinct from 10
+      and store_qty is not distinct from 5
+  ) or not exists (
+    select 1 from public.inventory
+    where product_id = '31000000-0000-0000-0000-000000000002'
+      and warehouse_qty is not distinct from 3
+      and store_qty is not distinct from 2
+  ) then
     raise exception 'unmerge changed quantity restoration';
   end if;
   if (select count(*) from public.product_alias_links where unmerged_at is null) <> 0 then
@@ -199,13 +211,37 @@ end $$;
 
 select public.unmerge_product_alias(
   (select id from public.product_alias_links where alias_product_id = '31000000-0000-0000-0000-000000000004' and unmerged_at is null),
-  0, 0, 0, 0,
+  4, 2, 3, 2,
   (select warehouse_version from public.inventory where product_id = (select canonical_product_id from public.product_alias_links where alias_product_id = '31000000-0000-0000-0000-000000000004' and unmerged_at is null)),
   (select store_version from public.inventory where product_id = (select canonical_product_id from public.product_alias_links where alias_product_id = '31000000-0000-0000-0000-000000000004' and unmerged_at is null)),
   (select warehouse_version from public.inventory where product_id = '31000000-0000-0000-0000-000000000004'),
   (select store_version from public.inventory where product_id = '31000000-0000-0000-0000-000000000004'),
   '75000000-0000-0000-0000-000000000002'
 );
+
+do $$
+declare
+  link_row public.product_alias_links%rowtype;
+  survivor public.products%rowtype;
+  restored public.products%rowtype;
+begin
+  select link.* into link_row from public.product_alias_links link
+  where link.alias_product_id = '31000000-0000-0000-0000-000000000004'
+  order by link.merged_at desc limit 1;
+  select * into survivor from public.products where id = link_row.canonical_product_id;
+  select * into restored from public.products where id = link_row.alias_product_id;
+  if survivor.catalog_id is distinct from null
+    or survivor.catalog_confirmed_at is distinct from null
+    or not exists (select 1 from public.inventory where product_id = survivor.id and warehouse_qty = 4 and store_qty = 2)
+    or restored.catalog_id is distinct from '61000000-0000-0000-0000-000000000003'
+    or restored.brand is distinct from '로컬 D'
+    or restored.image_url is distinct from 'https://local.invalid/d.png'
+    or restored.catalog_confirmed_at is distinct from '2026-04-04 04:05:06+00'::timestamptz
+    or not exists (select 1 from public.inventory where product_id = restored.id and warehouse_qty = 3 and store_qty = 2)
+    or link_row.unmerged_at is null then
+    raise exception 'keep-new unmerge did not restore metadata, quantities, or inactive alias';
+  end if;
+end $$;
 
 -- keep_new_product=false also uses the reversible merge root and public unmerge.
 select public.register_and_merge_product_reversible(
@@ -217,7 +253,7 @@ select public.register_and_merge_product_reversible(
 );
 select public.unmerge_product_alias(
   (select id from public.product_alias_links where canonical_product_id = '31000000-0000-0000-0000-000000000003' and unmerged_at is null),
-  0, 0, 0, 0,
+  4, 0, 2, 1,
   (select warehouse_version from public.inventory where product_id = '31000000-0000-0000-0000-000000000003'),
   (select store_version from public.inventory where product_id = '31000000-0000-0000-0000-000000000003'),
   (select warehouse_version from public.inventory where product_id = (select alias_product_id from public.product_alias_links where canonical_product_id = '31000000-0000-0000-0000-000000000003' order by merged_at desc limit 1)),
@@ -225,11 +261,40 @@ select public.unmerge_product_alias(
   '77000000-0000-0000-0000-000000000001'
 );
 
+do $$
+declare
+  link_row public.product_alias_links%rowtype;
+  survivor public.products%rowtype;
+  restored public.products%rowtype;
+begin
+  select link.* into link_row from public.product_alias_links link
+  where link.canonical_product_id = '31000000-0000-0000-0000-000000000003'
+  order by link.merged_at desc limit 1;
+  select * into survivor from public.products where id = link_row.canonical_product_id;
+  select * into restored from public.products where id = link_row.alias_product_id;
+  if survivor.catalog_id is distinct from '61000000-0000-0000-0000-000000000003'
+    or survivor.brand is distinct from '로컬 C'
+    or survivor.image_url is distinct from 'https://local.invalid/c.png'
+    or survivor.catalog_confirmed_at is distinct from '2026-03-03 03:04:05+00'::timestamptz
+    or not exists (select 1 from public.inventory where product_id = survivor.id and warehouse_qty = 4 and store_qty = 0)
+    or restored.catalog_id is distinct from null
+    or restored.brand is distinct from null
+    or restored.image_url is distinct from null
+    or restored.catalog_confirmed_at is distinct from null
+    or not exists (select 1 from public.inventory where product_id = restored.id and warehouse_qty = 2 and store_qty = 1)
+    or link_row.unmerged_at is null then
+    raise exception 'keep-existing unmerge did not preserve metadata, quantities, or inactive alias';
+  end if;
+end $$;
+
 -- Legacy snapshots without explicit 086 fields still restore their JSON metadata.
 set local role postgres;
 update public.products
 set catalog_id = null, brand = null, image_url = null, catalog_confirmed_at = null, is_active = false
 where id in ('31000000-0000-0000-0000-000000000002', '31000000-0000-0000-0000-000000000003');
+update public.inventory
+set warehouse_qty = 0, store_qty = 0
+where product_id = '31000000-0000-0000-0000-000000000003';
 insert into public.product_alias_links (
   store_id, canonical_product_id, alias_product_id, merged_by, merge_request_id,
   product_snapshot, barcode_snapshot, merge_inventory_snapshot
@@ -276,24 +341,39 @@ do $$
 begin
   if (select catalog_id from public.products where id = '31000000-0000-0000-0000-000000000002')
       is distinct from '61000000-0000-0000-0000-000000000002'
-    or (select brand from public.products where id = '31000000-0000-0000-0000-000000000002') <> 'legacy brand' then
+    or (select brand from public.products where id = '31000000-0000-0000-0000-000000000002') is distinct from 'legacy brand'
+    or (select image_url from public.products where id = '31000000-0000-0000-0000-000000000002') is distinct from 'https://legacy.invalid/image.png'
+    or (select catalog_confirmed_at from public.products where id = '31000000-0000-0000-0000-000000000002') is distinct from '2026-02-02T02:03:04Z'::timestamptz then
     raise exception 'legacy snapshot compatibility failed';
   end if;
 end $$;
 
 do $$
 begin
-  if (select count(*) from public.product_catalog where id in (
-    '61000000-0000-0000-0000-000000000001',
-    '61000000-0000-0000-0000-000000000002'
-  )) <> 2
-    or (select gtin from public.product_catalog where id = '61000000-0000-0000-0000-000000000001') <> '00000000000017'
-    or (select canonical_name from public.product_catalog where id = '61000000-0000-0000-0000-000000000002') <> '카탈로그 B'
-    or (select brand from public.product_catalog where id = '61000000-0000-0000-0000-000000000002') <> '브랜드 B'
-    or (select image_url from public.product_catalog where id = '61000000-0000-0000-0000-000000000002') <> 'https://b.invalid/b.png' then
-    raise exception 'global catalog rows changed'; end if;
+  if not exists (select 1 from public.products
+    where id = '31000000-0000-0000-0000-000000000003'
+      and catalog_id is not distinct from null
+      and brand is not distinct from null
+      and image_url is not distinct from null
+      and catalog_confirmed_at is not distinct from null) then
+    raise exception 'pre-catalog snapshot did not restore four absent metadata keys';
+  end if;
 end $$;
 
+set local role postgres;
+do $$
+begin
+  if exists (
+    select 1
+    from catalog_before before_row
+    full join public.product_catalog after_row on after_row.id = before_row.id
+    where to_jsonb(before_row) is distinct from to_jsonb(after_row)
+  ) then
+    raise exception 'complete catalog rows or A/B/C GTIN mappings changed';
+  end if;
+end $$;
+
+set local role authenticated;
 set local role anon;
 select set_config('request.jwt.claims', '{}', true);
 do $$

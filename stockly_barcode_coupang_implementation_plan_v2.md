@@ -39,15 +39,7 @@ Stockly에서는 이 값을 **상품을 찾기 위한 검색 키**로 사용한�
 장기적으로는 다음 구조를 기준으로 잡는다.
 
 ```text
-Barcode
-↓
-Canonical Product
-↓
-Commerce Offer
-↓
-Price History
-↓
-Inventory
+Barcode → Canonical Product → Commerce Offer → Price History → Inventory
 ```
 
 - **Barcode**: 스캔된 UPC/EAN/GTIN
@@ -713,23 +705,14 @@ GTIN 또는 `브랜드 + 상품명 + 규격`으로 후보를 찾고 사용자가
 
 ```text
 ① product_catalog 설계
-↓
 ② 바코드 → Stockly Catalog 조회
-↓
 ③ Open Food Facts / UPC DB 연결
-↓
 ④ 사용자 확인 및 자체 DB 축적
-↓
 ⑤ 실제 한국 카페 품목으로 정확도 측정
-↓
 ⑥ 쿠팡 상품 연결
-↓
 ⑦ 구매 전환 검증
-↓
 ⑧ 가격 이력 축적
-↓
 ⑨ 가격 알림
-↓
 ⑩ Inventory Intelligence
 ```
 

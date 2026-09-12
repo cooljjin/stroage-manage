@@ -48,19 +48,21 @@ Native camera, web camera, image scan on a device, and manual test-store UI chec
 
 No SQL, dependency, database, external provider, deployment, commit, push, or merge changes were made. Existing dirty and untracked user files were preserved.
 
-## Correction round 2 — coverage only
+## Extra S10 recovery — test-only
 
-- Added a real mocked native-plugin boundary check for the selected barcode's `rawValue` and `format` pairing.
-- Added a retained wiring check for camera, image, native, pending replay, register-route metadata, and duplicate/lifecycle guards.
-- Existing helper tests still cover web camera/image mapping, legacy pending entries, malformed metadata, TTL/store scope, and UPC_E versus EAN_8.
+- The retained flow tests execute production `ScanPage`, including the native `status: "register"` branch, and assert its exact single `{ name: "register", barcode: "" }` route without a resolver/RPC call.
+- The harness preserves `useState`/`useRef` values across an explicit rerender; the manual test changes `initial-manual` to `entered-manual` and asserts the entered value drives registration.
+- `resolvedProducts.ts` is loaded from production; only the `DatabaseService.rpc` boundary is stubbed, so candidate RPC order is retained behavioral evidence.
+- Deferred tests enter a live native scan before invalidation/unmount, then release late results and assert no stale navigation plus native cleanup.
 
 Evidence:
 
-- `node --test tests/barcode-scan-metadata.test.mjs` — 7 passed, 1 skipped; native boundary test requires Node's module-mocking flag.
-- `node --experimental-loader /tmp/stockly-ts-extension-loader.mjs --experimental-test-module-mocks --test tests/barcode-scan-metadata.test.mjs` — 8 passed, 0 failed.
-- `node --test test/*.test.mjs tests/*.test.mjs` — 38 passed, 1 failed, 1 skipped; the sole failure is the pre-existing vertical wheel `snapFractionalValueOnStep` contract.
-- `npm run build` — passed, exit 0.
+- `node --experimental-loader ./tests/scan-page-loader.mjs --test ./tests/scan-page-flow.test.mjs` — 7 passed, 0 failed; includes native `status: "register"` no-RPC and state-preserving manual rerender evidence.
+- `node --experimental-loader ./tests/scan-page-loader.mjs --experimental-test-module-mocks --test ./tests/barcode-scan-metadata.test.mjs` — 8 passed, 0 failed.
+- `node --test ./test/*.test.mjs ./tests/*.test.mjs` — 66 passed, 1 failed, 8 skipped, 75 total, exit 1. The sole failure is the pre-existing vertical-wheel `snapFractionalValueOnStep` contract; no retained scanner flow failed.
+- Historical protected `npm run build` failure — earlier validation recorded `TS5033`/`EPERM` while writing `node_modules/.tmp/tsconfig.app.tsbuildinfo`; that is a shared-cache permission failure, not an application regression. A current rerun of `npm run build` passed, exit 0.
+- Safe isolated-cache type checks — `npx tsc -p tsconfig.app.json --tsBuildInfoFile /tmp/stockly-parallel-s10.app.tsbuildinfo --noEmit && npx tsc -p tsconfig.node.json --tsBuildInfoFile /tmp/stockly-parallel-s10.node.tsbuildinfo --noEmit` passed. The current Vite production bundle is covered by the passing `npm run build`; `vite --configLoader runner` was not counted because the terminal guard classified that invocation as a long-lived process.
 - `npm run lint` — passed, exit 0.
 - `git diff --check` — passed, exit 0.
 
-Model/provider: gpt-5.6-luna / openai-codex. No production files were changed in this correction. Native/web camera, image, physical barcode, and test-store UI checks remain unrun.
+Model/provider: gpt-5.6-luna / openai-codex. No production files were changed. Physical native/web/image camera, physical UPC-E/EAN-8, and test-store UI checks remain unrun.

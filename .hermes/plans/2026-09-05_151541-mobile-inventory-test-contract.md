@@ -52,9 +52,7 @@ The helper should receive a nullable stored mode and the viewport default. The t
 
 Run:
 
-```bash
-npx tsx scripts/mobile-inventory.test.mts
-```
+`npx tsx scripts/mobile-inventory.test.mts`
 
 Expected: failure because `resolveMobileDialMode` is not exported/available yet.
 
@@ -74,9 +72,7 @@ Refactor `readStoredMobileDialMode(defaultDialMode)` to read `localStorage` and 
 
 Run:
 
-```bash
-npx tsx scripts/mobile-inventory.test.mts
-```
+`npx tsx scripts/mobile-inventory.test.mts`
 
 Expected: all assertions pass.
 
@@ -110,9 +106,7 @@ The pure-helper tests in Task 1 are the authority for default behavior.
 
 Run:
 
-```bash
-npx tsx scripts/mobile-inventory.test.mts
-```
+`npx tsx scripts/mobile-inventory.test.mts`
 
 Expected: exit code 0.
 
@@ -125,9 +119,7 @@ Expected: exit code 0.
 
 **Step 1 — Run the focused contract test**
 
-```bash
-npx tsx scripts/mobile-inventory.test.mts
-```
+`npx tsx scripts/mobile-inventory.test.mts`
 
 Expected: exit code 0.
 

@@ -1,5 +1,7 @@
 # 레시피 자동 가져오기 배포 설정
 
+> **확인 필요:** 아래 cleanup 요청은 현재 로컬 구현과 다르다. [전용 정리 함수](../supabase/functions/recipe-import-cleanup/README.md)와 [배포 게이트](security-hardening-deployment.md)를 대조하며, 배포·dry-run·삭제 승인 확인 전 실행하지 않는다.
+
 레시피 자동 가져오기는 `recipe-import` Edge Function을 사용합니다. Gemini API 키는 브라우저나 Vercel 환경변수가 아니라 Supabase Edge Function secret으로만 등록해야 합니다.
 
 - `GEMINI_API_KEY`: Google AI Studio에서 새로 생성한 Gemini API 인증(auth) 키. Gemini API 전용으로 제한된 키를 사용하세요.

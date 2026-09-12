@@ -8,3 +8,7 @@ export { TimelineService } from "./timeline/TimelineService";
 export type { TimelineDay, TimelineEvent, TimelineEventType, TimelineMonth } from "./timeline/TimelineService";
 export type { ServiceError } from "./errors";
 export { normalizeServiceError } from "./errors";
+export { ProductLookupService } from "./catalog/ProductLookupService";
+export { OpenFoodFactsAdapter } from "./catalog/OpenFoodFactsAdapter";
+export type { OpenFoodFactsLookupResult } from "./catalog/OpenFoodFactsAdapter";
+export type { ProductCandidate, ProductLookupResult } from "../types/productLookup";

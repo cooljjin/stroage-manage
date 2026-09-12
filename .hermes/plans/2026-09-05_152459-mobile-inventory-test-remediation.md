@@ -38,9 +38,7 @@ Add executable assertions for the resolver behavior:
 
 Run:
 
-```bash
-npx tsx scripts/mobile-inventory.test.mts
-```
+`npx tsx scripts/mobile-inventory.test.mts`
 
 Expected before implementation: failure because the new resolver is not exported yet. This proves the test can catch a missing policy implementation.
 
@@ -61,9 +59,7 @@ Refactor `readStoredMobileDialMode(defaultDialMode)` so it only reads browser st
 
 Run:
 
-```bash
-npx tsx scripts/mobile-inventory.test.mts
-```
+`npx tsx scripts/mobile-inventory.test.mts`
 
 Expected: resolver behavior assertions pass.
 
@@ -87,9 +83,7 @@ Keep the meaningful integration checks:
 
 Run:
 
-```bash
-npx tsx scripts/mobile-inventory.test.mts
-```
+`npx tsx scripts/mobile-inventory.test.mts`
 
 Expected: exit code 0. The checklist now checks the current rulebook, not the old wording.
 

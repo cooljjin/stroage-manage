@@ -8,11 +8,13 @@ import { formatInventoryQuantity } from "../lib/inventory";
 import { searchResolvedProducts } from "../lib/resolvedProducts";
 import { createMutationRequestId, finishMutationRequest } from "../lib/mutationRequest";
 import * as Services from "../services";
-import type { AppRoute, GroupOrderRouteDraft, Inventory, Location, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
+import type { AppRoute, BarcodeSymbology, GroupOrderRouteDraft, Inventory, Location, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
+import type { ProductCandidate, ProductLookupResult } from "../types/productLookup";
 
 type Props = {
   productId?: string;
   barcode?: string;
+  barcodeFormat?: BarcodeSymbology;
   navigate: (route: AppRoute, options?: { replace?: boolean; resetToRoot?: boolean; restore?: boolean }) => void;
   currentStoreId: string;
   returnTo?: "prep-items" | "group-order" | "group-order-recipes";
@@ -79,6 +81,62 @@ function parseStorageTypes(value: string | null): StorageType[] {
   return STORAGE_TYPES.filter((type) => value.split(",").map((item) => item.trim()).includes(type));
 }
 
+function normalizeLookupFormat(format?: BarcodeSymbology) {
+  if (format === "EAN_8") return "EAN8" as const;
+  if (format === "UPC_E") return "UPC_E" as const;
+  if (format === "UPC_A") return "UPC_A" as const;
+  if (format === "EAN_13") return "EAN13" as const;
+  return format === undefined ? undefined : null;
+}
+
+export function normalizeProductLookupIdentity(barcode: string, format?: BarcodeSymbology) {
+  const normalizedFormat = normalizeLookupFormat(format);
+  return `${barcode.trim()}|${normalizedFormat ?? ""}`;
+}
+
+export function applyProductCandidateToDraft(candidate: ProductCandidate, userEditedName: boolean) {
+  return userEditedName ? {} : { name: candidate.canonical_name };
+}
+
+export function canApplyProductLookup(sequence: number, currentSequence: number, identity: string, currentIdentity: string, cancelled: boolean) {
+  return !cancelled && sequence === currentSequence && identity === currentIdentity;
+}
+
+type LookupExecution =
+  | { status: "hit"; candidate: ProductCandidate }
+  | { status: "miss" }
+  | { status: "error"; message: string }
+  | { status: "stale" };
+
+type LookupFormat = "EAN8" | "UPC_E" | "UPC_A" | "EAN13";
+
+type LookupDependencies = {
+  lookup: (input: string, format?: LookupFormat) => Promise<ProductLookupResult>;
+  invoke: (functionName: string, options: { body: Record<string, string> }) => Promise<{ data: { status?: string; candidate?: ProductCandidate } | null; error: { message: string } | null }>;
+};
+
+export async function executeProductLookup(value: string, format: BarcodeSymbology | undefined, storeId: string, isCurrent: (identity: string) => boolean, dependencies: LookupDependencies): Promise<LookupExecution> {
+  const rawBarcode = value;
+  const lookupFormat = normalizeLookupFormat(format);
+  if (lookupFormat === null) return { status: "error", message: "이 바코드 형식은 직접 입력으로 등록해 주세요." };
+  const identity = normalizeProductLookupIdentity(rawBarcode, format);
+  const result = await dependencies.lookup(rawBarcode, lookupFormat);
+  if (!isCurrent(identity)) return { status: "stale" };
+  if (result.status === "hit") return { status: "hit", candidate: result.candidate };
+  if (result.status !== "miss") {
+    return { status: "error", message: result.status === "unavailable" ? result.error.message : result.status === "rate_limited" ? "조회 한도를 초과했습니다. 직접 입력할 수 있습니다." : "이 바코드는 직접 입력으로 등록해 주세요." };
+  }
+  const edgeResult = await dependencies.invoke("product-lookup", { body: { barcode: rawBarcode, storeId, ...(lookupFormat ? { format: lookupFormat } : {}) } });
+  if (!isCurrent(identity)) return { status: "stale" };
+  if (edgeResult.error || !edgeResult.data) return { status: "error", message: edgeResult.error?.message ?? "상품 정보를 조회하지 못했습니다. 직접 입력해 주세요." };
+  if (edgeResult.data.candidate) return { status: "hit", candidate: edgeResult.data.candidate };
+  return { status: edgeResult.data.status === "rate_limited" ? "error" : "miss", ...(edgeResult.data.status === "rate_limited" ? { message: "조회 한도를 초과했습니다. 직접 입력할 수 있습니다." } : {}) } as LookupExecution;
+}
+
+export function shouldLookupProductCandidate(isRegisterMode: boolean, barcode: string) {
+  return isRegisterMode && Boolean(barcode.trim());
+}
+
 function formatProductUpdateError(message: string) {
   if (
     message.includes("unit_weight_enabled")
@@ -122,7 +180,7 @@ function ProductMergeInfo({ product, inventory, title, description }: { product:
   );
 }
 
-export function ProductEditPage({ productId, barcode: initialBarcode = "", navigate, currentStoreId, returnTo, prepDraft, groupOrderDraft }: Props) {
+export function ProductEditPage({ productId, barcode: initialBarcode = "", barcodeFormat: initialBarcodeFormat, navigate, currentStoreId, returnTo, prepDraft, groupOrderDraft }: Props) {
   const isRegisterMode = !productId;
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -165,6 +223,14 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
   const [unmerging, setUnmerging] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [candidate, setCandidate] = useState<ProductCandidate | null>(null);
+  const [candidateImageFailed, setCandidateImageFailed] = useState(false);
+  const [lookupStatus, setLookupStatus] = useState<"idle" | "loading" | "miss" | "error">("idle");
+  const [lookupMessage, setLookupMessage] = useState("");
+  const lookupSequenceRef = useRef(0);
+  const lookupIdentityRef = useRef(normalizeProductLookupIdentity(barcode, initialBarcodeFormat));
+  const lookupCancelledRef = useRef(false);
+  const nameEditedRef = useRef(false);
   const mergeRequestRef = useRef<string | null>(null);
   const unmergeRequestRef = useRef<string | null>(null);
 
@@ -264,6 +330,46 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
   useEffect(() => {
     void loadProduct();
   }, [loadProduct]);
+
+  const lookupCandidate = useCallback(async (value: string, format?: BarcodeSymbology) => {
+    if (!shouldLookupProductCandidate(isRegisterMode, value)) return;
+    const sequence = lookupSequenceRef.current + 1;
+    const identity = normalizeProductLookupIdentity(value, format);
+    lookupSequenceRef.current = sequence;
+    lookupIdentityRef.current = identity;
+    lookupCancelledRef.current = false;
+    setCandidate(null);
+    setCandidateImageFailed(false);
+    setLookupMessage("");
+    setLookupStatus("loading");
+    const result = await executeProductLookup(value, format, currentStoreId, (requestIdentity) => canApplyProductLookup(sequence, lookupSequenceRef.current, requestIdentity, lookupIdentityRef.current, lookupCancelledRef.current), {
+      lookup: Services.ProductLookupService.lookup,
+      invoke: Services.EdgeFunctionService.invoke
+    });
+    if (result.status === "stale") return;
+    if (result.status === "hit") {
+      setCandidate(result.candidate);
+      setLookupStatus("idle");
+      return;
+    }
+    setLookupStatus(result.status === "error" ? "error" : "miss");
+    setLookupMessage(result.status === "error" ? result.message : "일치하는 상품이 없습니다. 직접 입력해 주세요.");
+  }, [currentStoreId, isRegisterMode]);
+
+  useEffect(() => {
+    return () => {
+      lookupCancelledRef.current = true;
+      lookupSequenceRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isRegisterMode || !initialBarcode.trim()) return;
+    void lookupCandidate(initialBarcode, initialBarcodeFormat);
+    return () => {
+      lookupSequenceRef.current += 1;
+    };
+  }, [initialBarcode, initialBarcodeFormat, isRegisterMode, lookupCandidate]);
 
   useEffect(() => {
     const keyword = mergeSearch.trim();
@@ -755,20 +861,50 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", navig
       <PageTitle
         title={isRegisterMode ? "상품 등록" : "상품 수정"}
         description={isRegisterMode ? "미등록 상품을 등록한 뒤 바로 재고 작업으로 이동합니다." : product?.name}
-        action={<button className="secondary-button px-3" type="button" onClick={() => navigate(getExitRoute(), { replace: true })}>취소</button>}
+        action={<button className="secondary-button px-3" type="button" onClick={() => { lookupCancelledRef.current = true; lookupSequenceRef.current += 1; navigate(getExitRoute(), { replace: true }); }}>취소</button>}
       />
 
       <form onSubmit={handleSubmit} className="panel w-full max-w-2xl overflow-hidden p-4">
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <label className="block min-w-0 sm:col-span-2">
             <span className="mb-1 block text-sm font-semibold">상품명</span>
-            <input className="field" value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
+            <input className="field" value={name} onChange={(event) => { nameEditedRef.current = true; setName(event.target.value); }} required autoFocus />
           </label>
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">바코드</span>
-            <input className="field" value={barcode} onChange={(event) => setBarcode(event.target.value)} />
+            <input className="field" value={barcode} onChange={(event) => { const value = event.target.value; lookupSequenceRef.current += 1; lookupIdentityRef.current = normalizeProductLookupIdentity(value, initialBarcodeFormat); setBarcode(value); setCandidate(null); setLookupStatus("idle"); setLookupMessage(""); }} />
+            {isRegisterMode ? (
+              <button type="button" disabled={lookupStatus === "loading" || !barcode.trim()} onClick={() => void lookupCandidate(barcode)} className="secondary-button mt-2 w-full">
+                {lookupStatus === "loading" ? "상품 정보 조회 중..." : "상품 정보 조회"}
+              </button>
+            ) : null}
           </label>
+
+          {isRegisterMode && (candidate || lookupStatus === "loading" || lookupMessage) ? (
+            <section className="min-w-0 rounded-md border border-brand-200 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950 sm:col-span-2" aria-live="polite">
+              {lookupStatus === "loading" ? <StatusMessage>상품 정보를 조회하는 중...</StatusMessage> : null}
+              {candidate ? (
+                <div className="flex min-w-0 gap-3">
+                  {candidate.image_url && !candidateImageFailed ? <img src={candidate.image_url} alt={candidate.canonical_name} className="h-20 w-20 shrink-0 rounded-md object-contain" onError={() => setCandidateImageFailed(true)} /> : <div className="grid h-20 w-20 shrink-0 place-items-center rounded-md bg-slate-200 text-xs font-bold text-slate-500 dark:bg-slate-800">이미지 없음</div>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold">{candidate.canonical_name}</p>
+                    {candidate.brand ? <p className="mt-1 text-xs">{candidate.brand}</p> : null}
+                    {candidate.quantity_text || candidate.size || candidate.unit ? <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">규격 확인: {[candidate.quantity_text, candidate.size && `${candidate.size}${candidate.unit ?? ""}`].filter(Boolean).join(" · ")}</p> : null}
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">출처: {candidate.source}</p>
+                  </div>
+                </div>
+              ) : null}
+              {lookupMessage ? <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{lookupMessage}</p> : null}
+              {candidate ? (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button type="button" className="primary-button px-2 text-sm" onClick={() => { const draft = applyProductCandidateToDraft(candidate, nameEditedRef.current); if (draft.name !== undefined) setName(draft.name); setLookupMessage("후보 정보를 입력했습니다. 저장 전에 내용을 확인해 주세요."); }}>맞아요</button>
+                  <button type="button" className="secondary-button px-2 text-sm" onClick={() => setLookupMessage("상품명을 직접 수정해 주세요.")}>직접 수정</button>
+                  <button type="button" className="secondary-button px-2 text-sm" onClick={() => { setCandidate(null); setLookupMessage("직접 입력 모드입니다."); }}>직접 입력</button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">카테고리</span>

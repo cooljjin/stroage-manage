@@ -1,5 +1,7 @@
 # Stockly 작업 인수인계
 
+> **확인 필요:** 경로·branch·HEAD·미커밋 변경·기능 제한은 2026-08-13 스냅샷이다. 현재 상태로 재사용하지 말고 작업 전 `git status --short --branch`와 관련 코드를 대조한다.
+
 마지막 점검: 2026-08-13 로컬 작업 트리
 
 이 문서는 다음 작업자가 현재 저장소 구조와 미검증 범위를 빠르게 파악하기 위한 요약이다. 운영 Supabase, Vercel, App Store Connect 상태는 이 문서만으로 확정하지 않는다.
@@ -36,28 +38,8 @@
 
 고객용 앱 라우팅은 React Router가 아니라 `src/App.tsx`의 route state와 navigation stack으로 관리한다.
 
-하단 메뉴:
-
-- 홈
-- 재고현황
-- 스캔
-- 부족재고
-- 작업로그
-
-상단 메뉴:
-
-- 프랩관리모드
-- 프랩품목 관리
-- 단체주문 계산
-- 메뉴 레시피 등록
-- 개별관리 품목
-- To do list
-- 카테고리 관리
-- 품목 단위 관리
-- 발주처 관리
-- 직원 관리
-- 권한 부여
-- 환경설정
+- 하단 메뉴: 홈, 재고현황, 스캔, 부족재고, 작업로그
+- 상단 메뉴: 프랩관리모드, 프랩품목 관리, 단체주문 계산, 메뉴 레시피 등록, 개별관리 품목, To do list, 카테고리 관리, 품목 단위 관리, 발주처 관리, 직원 관리, 권한 부여, 환경설정
 
 메뉴 노출은 역할과 `staff_permissions`에 따라 달라진다.
 
@@ -93,11 +75,7 @@
 
 ## 재고와 발주 핵심 흐름
 
-- 상품 정보: `products`
-- 위치별 수량: `inventory`
-- 작업 기록: `inventory_logs`
-- 보조 바코드: `product_barcodes`
-- 확정 발주: `confirmed_order_items`
+데이터: 상품 `products`, 위치별 수량 `inventory`, 작업 기록 `inventory_logs`, 보조 바코드 `product_barcodes`, 확정 발주 `confirmed_order_items`.
 
 `normalizeInventoryItem`이 창고·매장·총재고와 부족 여부를 계산한다.
 
@@ -142,29 +120,7 @@
 
 ## 개발과 검증
 
-```bash
-npm ci
-npm run build
-npm run lint
-```
-
-운영 콘솔을 변경했다면:
-
-```bash
-npm run build:admin
-```
-
-`npm run lint`가 생성물 때문에 실패하면 원인을 분리하고 소스 검증도 실행한다.
-
-```bash
-npx eslint src admin-console
-```
-
-Supabase 직접 호출 잔여:
-
-```bash
-rg "import \\{ supabase \\}|supabase\\." src admin-console
-```
+설치, 기본·운영 콘솔 검증, 생성물 lint 실패 분리, Supabase 잔여 호출 검색은 [README](../README.md)의 절차를 따른다.
 
 초대코드 흐름:
 

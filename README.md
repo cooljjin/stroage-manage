@@ -78,12 +78,7 @@ npx eslint src admin-console
 
 ## 인증과 매장 연결
 
-지원 로그인:
-
-- 이메일/비밀번호
-- Google OAuth
-- Kakao OAuth
-- Apple OAuth
+지원 로그인: 이메일/비밀번호, Google·Kakao·Apple OAuth.
 
 로그인한 계정에 프로필이 없으면 다음 중 하나로 매장을 연결한다.
 
@@ -106,41 +101,21 @@ com.jinkim.stockly://auth/callback
 
 Supabase Auth Redirect URLs와 iOS/Android URL scheme 설정이 모두 필요하다.
 
+> **확인 필요:** 단일 callback의 채널 범위는 [이중 채널 규칙](AGENTS.md#ios-testflight-배포-채널)과 대조한다.
+
 ## 역할과 권한
 
 - `master`: 별도 운영자 콘솔에서 전체 매장과 사용자를 관리
 - `store_admin`: 본인 매장의 설정, 직원, 권한, 품목 기준정보를 관리
 - `staff`: 재고 업무를 수행하며 필요한 관리 권한을 선택적으로 부여받을 수 있음
 
-직원에게 선택적으로 부여할 수 있는 권한:
-
-- 카테고리 관리
-- 발주처 관리
-- 메뉴 레시피 등록
-- 발주 품목 확정
+직원 선택 권한: 카테고리 관리, 발주처 관리, 메뉴 레시피 등록, 발주 품목 확정.
 
 프런트엔드의 메뉴 숨김은 편의를 위한 것이고 실제 데이터 보호는 Supabase RLS와 RPC 검증이 담당해야 한다.
 
 ## Supabase 의존성 규칙
 
-React 컴포넌트, 페이지, 훅, 일반 helper에서 Supabase 클라이언트를 직접 import하거나 호출하지 않는다.
-
-```text
-React Component / Hook / Helper
-        |
-        v
-src/services
-        |
-        v
-Supabase
-```
-
-허용되는 직접 접근 위치:
-
-- `src/lib/supabase.ts`
-- `src/services/**`
-
-일반 코드는 서비스 계층을 사용한다.
+직접 접근 허용 위치·용도별 서비스·쿼리 의미/UI/인증 보존은 [AGENTS.md](AGENTS.md#supabase-의존성-규칙)를 따른다. 서비스 사용 예:
 
 ```ts
 import * as Services from "../services";
@@ -150,8 +125,6 @@ const { data, error } = await Services.DatabaseService
   .eq("store_id", currentStoreId)
   .eq("is_active", true);
 ```
-
-인증은 `AuthService`, 파일은 `StorageService`, Edge Function은 `EdgeFunctionService`를 사용한다. 서비스 계층으로 옮길 때 쿼리 의미, UI, 인증 흐름을 함께 바꾸지 않는다.
 
 직접 호출 잔여 확인:
 
@@ -166,6 +139,8 @@ rg "import \\{ supabase \\}|supabase\\." src admin-console
 - 변경 전후에 `src/types/supabase.ts`와 `src/types/domain.ts`를 맞춘다.
 - 배포 전 `npx supabase migration list --linked`로 로컬·원격 이력을 비교한다.
 - RLS, policy, security-definer RPC는 매장 범위와 역할 검증을 함께 확인한다.
+
+> **확인 필요:** 아래 범위·진행 상태는 2026-08-13 기록이다. 현재는 `060` 이후 파일과 `059_security_data_protection.sql`의 Git 이력이 있다. 원격 적용 여부는 미확인이다.
 
 로컬에는 `001`부터 `059`까지 migration 파일이 있다. `059_security_data_protection.sql`은 현재 작업 트리의 진행 중 변경이므로 원격 적용 여부를 문서만 보고 판단하면 안 된다.
 
