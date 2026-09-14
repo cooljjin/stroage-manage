@@ -365,6 +365,7 @@ export function InventoryOperationPage({
   const [mobileStoreQty, setMobileStoreQty] = useState(0);
   const [mobileAutoBaseline, setMobileAutoBaseline] = useState<MobileInventoryBaseline>({ warehouseQty: 0, storeQty: 0 });
   const [mobileAutoRebaseSequence, setMobileAutoRebaseSequence] = useState(0);
+  const [mobileHistoryRebaseSequence, setMobileHistoryRebaseSequence] = useState(0);
   const [mobileConfirmedSnapshot, setMobileConfirmedSnapshot] = useState<ConfirmedInventorySnapshot>({ warehouseQty: 0, storeQty: 0, warehouseVersion: 0, storeVersion: 0, updatedAt: "" });
   const [mobileSaveState, setMobileSaveState] = useState<"idle" | "dragging" | "pending" | "saved" | "error">("idle");
   const [mobileSaveStatusLabel, setMobileSaveStatusLabel] = useState<"서버에 저장됨" | "수정 시점" | "수량 확인 완료">("서버에 저장됨");
@@ -896,6 +897,7 @@ export function InventoryOperationPage({
       operationPoint
     );
 
+    setMobileHistoryRebaseSequence((sequence) => sequence + 1);
     handleMobileCommit(target, targetIndex);
   }
 
@@ -1686,6 +1688,7 @@ export function InventoryOperationPage({
             disabled={mobileInventoryCheckSaving || mobileSaveState === "pending"}
             rebaseDisabled={mobileInventoryCheckSaving || mobileSaveState === "dragging" || mobileSaveState === "pending"}
             autoRebaseSequence={mobileAutoRebaseSequence}
+            historyRebaseSequence={mobileHistoryRebaseSequence}
             saveState={mobileSaveState}
             saveError={mobileSaveError}
             savedAtLabel={mobileEditPointAt ? formatDateTime(mobileEditPointAt) : null}

@@ -27,6 +27,7 @@ type Props = {
   disabled?: boolean;
   rebaseDisabled?: boolean;
   autoRebaseSequence?: number;
+  historyRebaseSequence?: number;
   saveState: "idle" | "dragging" | "pending" | "saved" | "error";
   saveError?: string;
   savedAtLabel?: string | null;
@@ -70,6 +71,7 @@ export function MobileInventoryControls({
   disabled = false,
   rebaseDisabled = false,
   autoRebaseSequence,
+  historyRebaseSequence,
   saveState,
   saveError,
   savedAtLabel,
@@ -97,6 +99,7 @@ export function MobileInventoryControls({
   }, [isMove]);
   const totalQty = clampMobileQuantity(confirmedWarehouseQty + confirmedStoreQty);
   const historyStatusLabel = historyPositionLabel ?? (savedAtLabel ? `편집 시점 ${savedAtLabel}` : null);
+  const wheelRebaseSequence = (autoRebaseSequence ?? 0) + (historyRebaseSequence ?? 0);
 
   function buildAutoAdjustment(location: Location, delta: number) {
     const target = buildAutoAdjustmentTarget(location, delta, autoBaselineWarehouseQty, autoBaselineStoreQty);
@@ -183,6 +186,7 @@ export function MobileInventoryControls({
           invertDrag
           compact
           disabled={disabled}
+          authoritativeRebaseSequence={wheelRebaseSequence}
           ariaLabel={`${location} ${formatInventoryQuantity(currentQty)}`}
           formatValue={formatInventoryQuantity}
           onDraftChange={(value, inputKind) => handleLocationDraft(location, value, inputKind, "absolute")}
@@ -200,6 +204,7 @@ export function MobileInventoryControls({
           reverseDisplayOrder
           snapFractionalValueOnStep
           disabled={disabled}
+          authoritativeRebaseSequence={wheelRebaseSequence}
           hint={hint}
           ariaLabel={`${location} 조정값 ${formatSignedQuantity(delta)}, 현재 재고 ${formatInventoryQuantity(currentQty)}`}
           formatValue={formatSignedQuantity}
@@ -243,7 +248,7 @@ export function MobileInventoryControls({
           invertDrag
           reverseDisplayOrder
           snapFractionalValueOnStep
-          authoritativeRebaseSequence={autoRebaseSequence}
+          authoritativeRebaseSequence={wheelRebaseSequence}
           disabled={disabled}
           hint={hint}
           ariaLabel={`${location} 조정값 ${formatSignedQuantity(delta)}, 현재 재고 ${formatInventoryQuantity(currentQty)}`}
@@ -298,6 +303,7 @@ export function MobileInventoryControls({
               labelClassName="text-sm font-extrabold"
               value={warehouseQty}
               disabled={disabled}
+              authoritativeRebaseSequence={wheelRebaseSequence}
               hint={formatCheckLabel(lastInventoryCheckDates.warehouse)}
               showDragHint={false}
               ariaLabel={`창고 수량 ${formatInventoryQuantity(warehouseQty)}`}
@@ -313,6 +319,7 @@ export function MobileInventoryControls({
               labelClassName="text-sm font-extrabold"
               value={storeQty}
               disabled={disabled}
+              authoritativeRebaseSequence={wheelRebaseSequence}
               hint={formatCheckLabel(lastInventoryCheckDates.store)}
               showDragHint={false}
               ariaLabel={`매장 수량 ${formatInventoryQuantity(storeQty)}`}
