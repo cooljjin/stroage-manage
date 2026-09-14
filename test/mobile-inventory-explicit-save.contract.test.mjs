@@ -16,7 +16,8 @@ test("mobile inventory drafts are persisted only by the save action", () => {
   const saveMobileDraft = functionBody("saveMobileDraft", "changeMobileInputMode");
 
   assert.doesNotMatch(inventoryOperationPage, /mobileFinalizeRef|registerBeforeLeave|visibilitychange|pagehide|appStateChange|recoverMobileInventorySessions/);
-  assert.match(saveMobileDraft, /mobileQueuedTargetRef\.current = pendingDraft/);
+  assert.match(saveMobileDraft, /for \(const target of buildMobileSaveTargets\(pendingDraft\)\)/);
+  assert.match(saveMobileDraft, /mobileQueuedTargetRef\.current = target/);
   assert.match(saveMobileDraft, /await flushMobileTargets\(\)/);
   assert.match(saveMobileDraft, /await finalizeMobileInventorySession\(sessionId\)/);
   assert.match(inventoryOperationPage, /onSave=\{\(\) => void saveMobileDraft\(\)\}/);

@@ -639,6 +639,30 @@ export function InventoryOperationPage({
     setMobileSaveStatusLabel("서버에 저장됨");
   }
 
+  function buildMobileSaveTargets(draft: MobileInventoryTarget): MobileInventoryTarget[] {
+    if (draft.mode === "move") return [draft];
+
+    const snapshot = mobileConfirmedRef.current;
+    const targets: MobileInventoryTarget[] = [];
+    if (draft.warehouseQty !== snapshot.warehouseQty) {
+      targets.push({
+        ...draft,
+        targetLocation: "창고",
+        warehouseQty: draft.warehouseQty,
+        storeQty: snapshot.storeQty
+      });
+    }
+    if (draft.storeQty !== snapshot.storeQty) {
+      targets.push({
+        ...draft,
+        targetLocation: "매장",
+        warehouseQty: draft.warehouseQty,
+        storeQty: draft.storeQty
+      });
+    }
+    return targets;
+  }
+
 
   function applyMobileResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget) {
     mobileEditPointAtRef.current = null;
@@ -744,9 +768,13 @@ export function InventoryOperationPage({
       mobileConfirmedRef.current.warehouseQty,
       mobileConfirmedRef.current.storeQty
     )) {
-      mobileQueuedTargetRef.current = pendingDraft;
-      const saved = await flushMobileTargets();
-      if (!saved) return;
+      for (const target of buildMobileSaveTargets(pendingDraft)) {
+        mobileQueuedTargetRef.current = target;
+        mobileDraftTargetRef.current = target;
+        mobileHistoryNavigationRef.current = mobileEditHistoryIndexRef.current;
+        const saved = await flushMobileTargets();
+        if (!saved) return;
+      }
     }
     const sessionId = mobileSessionIdRef.current;
     if (!sessionId) {
