@@ -664,7 +664,7 @@ export function InventoryOperationPage({
   }
 
 
-  function applyMobileResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget) {
+  function applyMobileResult(result: MobileInventoryApplyResult, target: MobileInventoryTarget, renderDialValues: boolean) {
     mobileEditPointAtRef.current = null;
     const nextSnapshot = {
       warehouseQty: result.warehouse_qty,
@@ -676,13 +676,15 @@ export function InventoryOperationPage({
     mobileSessionIdRef.current = result.session_id;
     updateMobileConfirmedSnapshot(nextSnapshot);
     if (target.mode !== mobileModeRef.current) resetMobileAutoBaseline(nextSnapshot);
-    setMobileWarehouseQty(result.warehouse_qty);
-    setMobileStoreQty(result.store_qty);
-    updateItemInventory(result);
+    if (renderDialValues) {
+      setMobileWarehouseQty(result.warehouse_qty);
+      setMobileStoreQty(result.store_qty);
+      updateItemInventory(result);
+    }
     recordMobileEditResult(result, target);
   }
 
-  async function flushMobileTargets(): Promise<boolean> {
+  async function flushMobileTargets(renderDialValues = true): Promise<boolean> {
     if (mobileSaveInFlightRef.current) return false;
     mobileSaveInFlightRef.current = true;
     setMobileSaveState("pending");
@@ -744,7 +746,7 @@ export function InventoryOperationPage({
             break;
           }
 
-          applyMobileResult(data, target);
+          applyMobileResult(data, target, renderDialValues);
           if (mobileDraftTargetRef.current === target) mobileDraftTargetRef.current = null;
           setMobileSaveState("saved");
         }
@@ -768,11 +770,12 @@ export function InventoryOperationPage({
       mobileConfirmedRef.current.warehouseQty,
       mobileConfirmedRef.current.storeQty
     )) {
-      for (const target of buildMobileSaveTargets(pendingDraft)) {
+      const targets = buildMobileSaveTargets(pendingDraft);
+      for (const [index, target] of targets.entries()) {
         mobileQueuedTargetRef.current = target;
         mobileDraftTargetRef.current = target;
         mobileHistoryNavigationRef.current = mobileEditHistoryIndexRef.current;
-        const saved = await flushMobileTargets();
+        const saved = await flushMobileTargets(index === targets.length - 1);
         if (!saved) return;
       }
     }
