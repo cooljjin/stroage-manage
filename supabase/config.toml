@@ -1,12 +1,6 @@
 [functions.recipe-import]
 verify_jwt = true
 
-[functions.product-lookup]
-verify_jwt = true
-
-[functions.product-confirm]
-verify_jwt = true
-
 [functions.manage-account-deletion]
 verify_jwt = true
 

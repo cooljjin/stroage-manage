@@ -2,23 +2,23 @@ import type { StaffProfile } from "../types/domain";
 import * as Services from "../services";
 import type { Session } from "../services";
 
-export async function ensureCurrentProfile(session: Session): Promise<{ profile: StaffProfile | null; errorMessage: string }> {
+export async function ensureCurrentProfile(session: Session): Promise<StaffProfile | null> {
   const { data: profile, error } = await Services.DatabaseService.rpc("get_my_profile");
 
   if (error) {
-    return { profile: null, errorMessage: error.message };
+    return null;
   }
 
   if (profile) {
     const email = session.user.email ?? null;
     if (profile.email !== email) {
       const { data: syncedProfile, error: syncError } = await Services.DatabaseService.rpc("sync_my_profile_email");
-      if (!syncError && syncedProfile) return { profile: syncedProfile, errorMessage: "" };
+      if (!syncError && syncedProfile) return syncedProfile;
     }
-    return { profile, errorMessage: "" };
+    return profile;
   }
 
-  return { profile: null, errorMessage: "" };
+  return null;
 }
 
 export async function getCurrentStoreId(): Promise<{ storeId: string | null; errorMessage: string }> {

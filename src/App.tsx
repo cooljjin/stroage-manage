@@ -236,8 +236,6 @@ export default function App() {
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [staffPermissions, setStaffPermissions] = useState<StaffPermissionKey[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [profileLoadError, setProfileLoadError] = useState("");
-  const [profileLoadRetry, setProfileLoadRetry] = useState(0);
   const [route, setRoute] = useState<AppRoute>(() => initialRoute());
   const [activeTab, setActiveTab] = useState<NavigationTab>("home");
   const [inventoryListState, setInventoryListState] = useState<InventoryListPageState>();
@@ -336,25 +334,15 @@ export default function App() {
       setProfile(null);
       setStaffPermissions([]);
       setProfileLoading(false);
-      setProfileLoadError("");
       return;
     }
     const currentSession = session;
 
     async function loadProfile() {
       setProfileLoading(profileRef.current === null);
-      setProfileLoadError("");
-      const { profile: existingProfile, errorMessage } = await ensureCurrentProfile(currentSession);
+      const existingProfile = await ensureCurrentProfile(currentSession);
 
       if (cancelled) return;
-
-      if (errorMessage) {
-        setProfile(null);
-        setStaffPermissions([]);
-        setProfileLoadError(errorMessage);
-        setProfileLoading(false);
-        return;
-      }
 
       if (existingProfile) {
         setProfile(existingProfile);
@@ -382,7 +370,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session, profileLoadRetry]);
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -725,18 +713,6 @@ export default function App() {
     return <div className="grid min-h-dvh place-items-center bg-slate-50 text-slate-700 dark:bg-slate-950 dark:text-slate-200">매장 정보를 연결하는 중...</div>;
   }
 
-  if (profileLoadError) {
-    return (
-      <div className="grid min-h-dvh place-items-center bg-slate-50 px-4 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
-        <div className="panel w-full max-w-md p-5 text-center">
-          <p className="font-bold">인터넷 연결이 지연되고 있습니다.</p>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">연결을 확인한 뒤 다시 시도해 주세요.</p>
-          <button type="button" className="primary-button mt-4 w-full" onClick={() => setProfileLoadRetry((value) => value + 1)}>다시 시도</button>
-        </div>
-      </div>
-    );
-  }
-
   if (!profile || !profile.store_id || profile.store_id === "null") {
     return (
       <div className="min-h-dvh bg-slate-50 px-4 py-6 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
@@ -884,7 +860,6 @@ export default function App() {
               {permittedRoute.name === "register" && (
                 <ProductEditPage
                   barcode={permittedRoute.barcode ?? ""}
-                  barcodeFormat={permittedRoute.barcodeFormat}
                   navigate={navigate}
                   currentStoreId={profile.store_id}
                 />

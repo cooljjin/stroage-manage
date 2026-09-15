@@ -1,4 +1,4 @@
-import type { Category, InventoryAction, Location, ProductCatalog, RecipeUsageUnit, StockStatus, UnitWeightUnit } from "./domain";
+import type { Category, InventoryAction, Location, RecipeUsageUnit, StockStatus, UnitWeightUnit } from "./domain";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -52,7 +52,6 @@ export type Database = {
           user_id: string;
           request_id: string;
           operation_type: string;
-          request_fingerprint: string | null;
           result_json: Json | null;
           created_at: string;
           completed_at: string | null;
@@ -63,13 +62,11 @@ export type Database = {
           user_id: string;
           request_id: string;
           operation_type: string;
-          request_fingerprint?: string | null;
           result_json?: Json | null;
           created_at?: string;
           completed_at?: string | null;
         };
         Update: {
-          request_fingerprint?: string | null;
           result_json?: Json | null;
           completed_at?: string | null;
         };
@@ -123,13 +120,9 @@ export type Database = {
         Row: {
           id: string;
           store_id: string;
-          catalog_id: string | null;
           barcode: string | null;
           name: string;
           category: Category;
-          brand: string | null;
-          image_url: string | null;
-          catalog_confirmed_at: string | null;
           supplier_name: string | null;
           storage_type: string | null;
           default_location: Location;
@@ -158,13 +151,9 @@ export type Database = {
         Insert: {
           id?: string;
           store_id?: string;
-          catalog_id?: string | null;
           barcode?: string | null;
           name: string;
           category: Category;
-          brand?: string | null;
-          image_url?: string | null;
-          catalog_confirmed_at?: string | null;
           supplier_name?: string | null;
           storage_type?: string | null;
           default_location?: Location;
@@ -192,13 +181,9 @@ export type Database = {
         };
         Update: {
           store_id?: string;
-          catalog_id?: string | null;
           barcode?: string | null;
           name?: string;
           category?: Category;
-          brand?: string | null;
-          image_url?: string | null;
-          catalog_confirmed_at?: string | null;
           supplier_name?: string | null;
           storage_type?: string | null;
           default_location?: Location;
@@ -222,54 +207,6 @@ export type Database = {
           minimum_stock?: number;
           is_important?: boolean;
           is_active?: boolean;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "products_catalog_id_fkey";
-            columns: ["catalog_id"];
-            isOneToOne: false;
-            referencedRelation: "product_catalog";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      product_catalog: {
-        Row: ProductCatalog;
-        Insert: {
-          id?: string;
-          gtin: string;
-          canonical_name: string;
-          brand?: string | null;
-          manufacturer?: string | null;
-          size?: number | null;
-          unit?: string | null;
-          quantity_text?: string | null;
-          image_url?: string | null;
-          source: string;
-          source_url?: string | null;
-          license?: string | null;
-          image_license?: string | null;
-          confidence?: number | null;
-          verified_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          gtin?: string;
-          canonical_name?: string;
-          brand?: string | null;
-          manufacturer?: string | null;
-          size?: number | null;
-          unit?: string | null;
-          quantity_text?: string | null;
-          image_url?: string | null;
-          source?: string;
-          source_url?: string | null;
-          license?: string | null;
-          image_license?: string | null;
-          confidence?: number | null;
-          verified_at?: string | null;
-          updated_at?: string;
         };
         Relationships: [];
       };
@@ -413,10 +350,6 @@ export type Database = {
           merged_at: string;
           merge_request_id: string;
           product_snapshot: Json;
-          catalog_id_snapshot: string | null;
-          brand_snapshot: string | null;
-          image_url_snapshot: string | null;
-          catalog_confirmed_at_snapshot: string | null;
           barcode_snapshot: Json;
           merge_inventory_snapshot: Json;
           unmerged_by: string | null;
@@ -433,10 +366,6 @@ export type Database = {
           merged_at?: string;
           merge_request_id: string;
           product_snapshot: Json;
-          catalog_id_snapshot?: string | null;
-          brand_snapshot?: string | null;
-          image_url_snapshot?: string | null;
-          catalog_confirmed_at_snapshot?: string | null;
           barcode_snapshot: Json;
           merge_inventory_snapshot: Json;
           unmerged_by?: string | null;
@@ -1827,18 +1756,6 @@ export type Database = {
         };
         Returns: string;
       };
-      resolve_product_catalog_state: {
-        Args: {
-          target_product_id: string;
-        };
-        Returns: {
-          requested_product_id: string;
-          canonical_product_id: string;
-          canonical_catalog_id: string | null;
-          alias_catalog_ids: string[];
-          is_mixed_catalog: boolean;
-        }[];
-      };
       resolve_product_by_barcode: {
         Args: {
           target_store_id: string;
@@ -1894,30 +1811,10 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["products"]["Row"];
       };
-      create_product_with_catalog: {
-        Args: {
-          actor_id: string;
-          product_store_id: string;
-          product_data: Json;
-          catalog_data: Json | null;
-          request_id: string;
-        };
-        Returns: Database["public"]["Tables"]["products"]["Row"];
-      };
       restore_product_with_inventory: {
         Args: {
           target_product_id: string;
           product_data: Json;
-        };
-        Returns: Database["public"]["Tables"]["products"]["Row"];
-      };
-      restore_product_with_catalog: {
-        Args: {
-          actor_id: string;
-          target_product_id: string;
-          product_data: Json;
-          catalog_data: Json | null;
-          request_id: string;
         };
         Returns: Database["public"]["Tables"]["products"]["Row"];
       };

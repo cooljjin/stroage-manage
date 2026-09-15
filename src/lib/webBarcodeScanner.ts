@@ -1,5 +1,4 @@
 import type { Html5Qrcode } from "html5-qrcode";
-export { getWebBarcodeScanResult } from "./barcodeScanMetadata";
 
 type Html5QrcodeModule = typeof import("html5-qrcode");
 
