@@ -17,6 +17,10 @@ export type ProductCandidate = Pick<
   | "license"
   | "image_license"
   | "confidence"
+  | "category"
+  | "storage_type"
+  | "supplier_name"
+  | "product_url"
 >;
 
 export type ProductLookupResult =

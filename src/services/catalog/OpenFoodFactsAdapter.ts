@@ -50,7 +50,11 @@ function makeCandidate(gtin: string, product: Record<string, unknown>, sourceUrl
     source_url: sourceUrl,
     license: "ODbL-1.0; verify current Open Food Facts terms before persistence",
     image_license: "CC BY-SA 4.0; verify current image attribution before persistence",
-    confidence: null
+    confidence: null,
+    category: null,
+    storage_type: null,
+    supplier_name: null,
+    product_url: null
   };
 }
 

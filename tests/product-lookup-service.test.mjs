@@ -31,27 +31,31 @@ const candidate = {
   source_url: null,
   license: null,
   image_license: null,
-  confidence: null
+  confidence: null,
+  category: null,
+  storage_type: null,
+  supplier_name: null,
+  product_url: null
 };
 
-function stubSelect(result) {
-  DatabaseService.select = () => Promise.resolve(result);
+function stubRpc(result) {
+  DatabaseService.rpc = () => Promise.resolve(result);
 }
 
 test("returns a catalog hit with nullable metadata", async () => {
-  stubSelect({ data: candidate, error: null });
+  stubRpc({ data: [candidate], error: null });
   assert.deepEqual(await ProductLookupService.lookup("036000291452"), {
     status: "hit", input: "036000291452", gtin: candidate.gtin, candidate
   });
 });
 
 test("distinguishes catalog miss and database failure", async () => {
-  stubSelect({ data: null, error: null });
+  stubRpc({ data: [], error: null });
   assert.deepEqual(await ProductLookupService.lookup("036000291452"), {
     status: "miss", input: "036000291452", gtin: candidate.gtin
   });
 
-  stubSelect({ data: null, error: { message: "database unavailable", code: "PGRST000" } });
+  stubRpc({ data: null, error: { message: "database unavailable", code: "PGRST000" } });
   const result = await ProductLookupService.lookup("036000291452");
   assert.equal(result.status, "unavailable");
   assert.equal(result.error.message, "database unavailable");
@@ -60,7 +64,7 @@ test("distinguishes catalog miss and database failure", async () => {
 
 test("does not query invalid or ambiguous input", async () => {
   let calls = 0;
-  DatabaseService.select = () => { calls += 1; return Promise.resolve({ data: candidate, error: null }); };
+  DatabaseService.rpc = () => { calls += 1; return Promise.resolve({ data: [candidate], error: null }); };
   assert.equal((await ProductLookupService.lookup("96385074")).status, "ambiguous");
   assert.equal((await ProductLookupService.lookup("036000291453")).status, "invalid");
   assert.equal(calls, 0);

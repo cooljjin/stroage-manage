@@ -95,7 +95,13 @@ export function normalizeProductLookupIdentity(barcode: string, format?: Barcode
 }
 
 export function applyProductCandidateToDraft(candidate: ProductCandidate, userEditedName: boolean) {
-  return userEditedName ? {} : { name: candidate.canonical_name };
+  return {
+    ...(!userEditedName ? { name: candidate.canonical_name } : {}),
+    ...(candidate.category ? { category: candidate.category } : {}),
+    ...(candidate.storage_type ? { storageTypes: parseStorageTypes(candidate.storage_type) } : {}),
+    ...(candidate.supplier_name ? { supplierName: candidate.supplier_name } : {}),
+    ...(candidate.product_url ? { productUrl: candidate.product_url } : {})
+  };
 }
 
 export function canApplyProductLookup(sequence: number, currentSequence: number, identity: string, currentIdentity: string, cancelled: boolean) {
@@ -231,6 +237,11 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
   const lookupIdentityRef = useRef(normalizeProductLookupIdentity(barcode, initialBarcodeFormat));
   const lookupCancelledRef = useRef(false);
   const nameEditedRef = useRef(false);
+  const categoryEditedRef = useRef(false);
+  const storageTypesEditedRef = useRef(false);
+  const supplierEditedRef = useRef(false);
+  const productUrlEditedRef = useRef(false);
+  const autoAppliedDraftRef = useRef<ReturnType<typeof applyProductCandidateToDraft>>({});
   const mergeRequestRef = useRef<string | null>(null);
   const unmergeRequestRef = useRef<string | null>(null);
 
@@ -252,12 +263,12 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
 
     if (isRegisterMode) {
       setProduct(null);
-      setCategories(nextCategories);
-      setSuppliers(nextSuppliers);
+      setCategories((current) => [...nextCategories, ...current.filter((item) => !nextCategories.some((next) => next.name === item.name))]);
+      setSuppliers((current) => [...nextSuppliers, ...current.filter((item) => !nextSuppliers.some((next) => next.name === item.name))]);
       setUnits(nextUnits);
       setBarcode(initialBarcode);
-      setCategory((current) => (nextCategories.some((item) => item.name === current) ? current : nextCategories.find((item) => item.name === "기타")?.name ?? nextCategories[0]?.name ?? "기타"));
-      setSupplierName((current) => (current && nextSuppliers.some((item) => item.name === current) ? current : ""));
+      setCategory((current) => (current && (categoryEditedRef.current || current !== "기타") ? current : nextCategories.find((item) => item.name === "기타")?.name ?? nextCategories[0]?.name ?? "기타"));
+      setSupplierName((current) => current || "");
       setUnitName((current) => (current && nextUnits.some((item) => item.name === current) ? current : nextUnits.find((item) => item.name === "낱개")?.name ?? nextUnits[0]?.name ?? ""));
       setLoading(false);
       return;
@@ -331,6 +342,37 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
     void loadProduct();
   }, [loadProduct]);
 
+  const applyCandidateToForm = useCallback((nextCandidate: ProductCandidate) => {
+    const draft = applyProductCandidateToDraft(nextCandidate, nameEditedRef.current);
+    const applied: ReturnType<typeof applyProductCandidateToDraft> = {};
+    if (draft.name !== undefined) { setName(draft.name); applied.name = draft.name; }
+    if (draft.category !== undefined && !categoryEditedRef.current) {
+      const nextCategory = draft.category;
+      setCategory(nextCategory);
+      applied.category = nextCategory;
+      setCategories((current) => current.some((item) => item.name === nextCategory) ? current : [...current, { id: `catalog:${nextCategory}`, name: nextCategory, is_active: true, sort_order: current.length + 1, created_at: new Date(0).toISOString() }]);
+    }
+    if (draft.storageTypes !== undefined && !storageTypesEditedRef.current) { setStorageTypes(draft.storageTypes); applied.storageTypes = draft.storageTypes; }
+    if (draft.supplierName !== undefined && !supplierEditedRef.current) {
+      const nextSupplierName = draft.supplierName;
+      setSupplierName(nextSupplierName);
+      applied.supplierName = nextSupplierName;
+      setSuppliers((current) => current.some((item) => item.name === nextSupplierName) ? current : [...current, { id: `catalog:${nextSupplierName}`, name: nextSupplierName, order_method: "link", sms_phone: null, sms_template: null, is_active: true, created_at: new Date(0).toISOString() }]);
+    }
+    if (draft.productUrl !== undefined && !productUrlEditedRef.current) { setProductUrl(draft.productUrl); applied.productUrl = draft.productUrl; }
+    autoAppliedDraftRef.current = applied;
+  }, []);
+
+  const clearAutoAppliedCandidate = useCallback(() => {
+    const applied = autoAppliedDraftRef.current;
+    if (applied.name !== undefined && !nameEditedRef.current) setName((current) => current === applied.name ? "" : current);
+    if (applied.category !== undefined && !categoryEditedRef.current) setCategory((current) => current === applied.category ? "기타" : current);
+    if (applied.storageTypes !== undefined && !storageTypesEditedRef.current) setStorageTypes((current) => current.join(",") === applied.storageTypes?.join(",") ? [] : current);
+    if (applied.supplierName !== undefined && !supplierEditedRef.current) setSupplierName((current) => current === applied.supplierName ? "" : current);
+    if (applied.productUrl !== undefined && !productUrlEditedRef.current) setProductUrl((current) => current === applied.productUrl ? "" : current);
+    autoAppliedDraftRef.current = {};
+  }, []);
+
   const lookupCandidate = useCallback(async (value: string, format?: BarcodeSymbology) => {
     if (!shouldLookupProductCandidate(isRegisterMode, value)) return;
     const sequence = lookupSequenceRef.current + 1;
@@ -350,11 +392,15 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
     if (result.status === "hit") {
       setCandidate(result.candidate);
       setLookupStatus("idle");
+      if (result.candidate.source === "catalog") {
+        applyCandidateToForm(result.candidate);
+        setLookupMessage("공용 카탈로그 정보를 자동 입력했습니다. 저장 전에 내용을 확인해 주세요.");
+      }
       return;
     }
     setLookupStatus(result.status === "error" ? "error" : "miss");
     setLookupMessage(result.status === "error" ? result.message : "일치하는 상품이 없습니다. 직접 입력해 주세요.");
-  }, [currentStoreId, isRegisterMode]);
+  }, [applyCandidateToForm, currentStoreId, isRegisterMode]);
 
   useEffect(() => {
     return () => {
@@ -873,7 +919,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">바코드</span>
-            <input className="field" value={barcode} onChange={(event) => { const value = event.target.value; lookupSequenceRef.current += 1; lookupIdentityRef.current = normalizeProductLookupIdentity(value, initialBarcodeFormat); setBarcode(value); setCandidate(null); setLookupStatus("idle"); setLookupMessage(""); }} />
+            <input className="field" value={barcode} onChange={(event) => { const value = event.target.value; clearAutoAppliedCandidate(); lookupSequenceRef.current += 1; lookupIdentityRef.current = normalizeProductLookupIdentity(value, initialBarcodeFormat); setBarcode(value); setCandidate(null); setLookupStatus("idle"); setLookupMessage(""); }} />
             {isRegisterMode ? (
               <button type="button" disabled={lookupStatus === "loading" || !barcode.trim()} onClick={() => void lookupCandidate(barcode)} className="secondary-button mt-2 w-full">
                 {lookupStatus === "loading" ? "상품 정보 조회 중..." : "상품 정보 조회"}
@@ -898,7 +944,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
               {lookupMessage ? <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{lookupMessage}</p> : null}
               {candidate ? (
                 <div className="mt-3 grid grid-cols-3 gap-2">
-                  <button type="button" className="primary-button px-2 text-sm" onClick={() => { const draft = applyProductCandidateToDraft(candidate, nameEditedRef.current); if (draft.name !== undefined) setName(draft.name); setLookupMessage("후보 정보를 입력했습니다. 저장 전에 내용을 확인해 주세요."); }}>맞아요</button>
+                  <button type="button" className="primary-button px-2 text-sm" onClick={() => { applyCandidateToForm(candidate); setLookupMessage("후보 정보를 입력했습니다. 저장 전에 내용을 확인해 주세요."); }}>맞아요</button>
                   <button type="button" className="secondary-button px-2 text-sm" onClick={() => setLookupMessage("상품명을 직접 수정해 주세요.")}>직접 수정</button>
                   <button type="button" className="secondary-button px-2 text-sm" onClick={() => { setCandidate(null); setLookupMessage("직접 입력 모드입니다."); }}>직접 입력</button>
                 </div>
@@ -908,7 +954,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">카테고리</span>
-            <select className="field" value={category} onChange={(event) => setCategory(event.target.value)}>
+            <select className="field" value={category} onChange={(event) => { categoryEditedRef.current = true; setCategory(event.target.value); }}>
               {categories.map((item) => (
                 <option key={item.id} value={item.name}>
                   {item.name}
@@ -925,6 +971,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
                   key={type || "none"}
                   type="button"
                   onClick={() => {
+                    storageTypesEditedRef.current = true;
                     if (!type) {
                       setStorageTypes([]);
                       return;
@@ -941,7 +988,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
 
           <label className="block min-w-0 sm:col-span-2">
             <span className="mb-1 block text-sm font-semibold">발주처</span>
-            <select className="field" value={supplierName} onChange={(event) => setSupplierName(event.target.value)}>
+            <select className="field" value={supplierName} onChange={(event) => { supplierEditedRef.current = true; setSupplierName(event.target.value); }}>
               <option value="">미지정</option>
               {suppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.name}>
@@ -990,7 +1037,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
               <span>링크</span>
               <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">링크를 추가하면 간편하게 발주가 가능합니다</span>
             </span>
-            <input className="field" type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder="https://..." />
+            <input className="field" type="url" value={productUrl} onChange={(event) => { productUrlEditedRef.current = true; setProductUrl(event.target.value); }} placeholder="https://..." />
           </label>
 
           <div className="min-w-0 rounded-md border border-slate-200 p-3 dark:border-slate-800 sm:col-span-2">

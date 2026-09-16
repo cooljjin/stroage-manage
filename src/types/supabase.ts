@@ -245,6 +245,10 @@ export type Database = {
           unit?: string | null;
           quantity_text?: string | null;
           image_url?: string | null;
+          category?: string | null;
+          storage_type?: string | null;
+          supplier_name?: string | null;
+          product_url?: string | null;
           source: string;
           source_url?: string | null;
           license?: string | null;
@@ -263,6 +267,10 @@ export type Database = {
           unit?: string | null;
           quantity_text?: string | null;
           image_url?: string | null;
+          category?: string | null;
+          storage_type?: string | null;
+          supplier_name?: string | null;
+          product_url?: string | null;
           source?: string;
           source_url?: string | null;
           license?: string | null;
@@ -1893,6 +1901,30 @@ export type Database = {
           product_data: Json;
         };
         Returns: Database["public"]["Tables"]["products"]["Row"];
+      };
+      lookup_shared_product_catalog: {
+        Args: {
+          target_gtin: string;
+        };
+        Returns: {
+          gtin: string;
+          canonical_name: string;
+          brand: string | null;
+          manufacturer: string | null;
+          size: number | null;
+          unit: string | null;
+          quantity_text: string | null;
+          image_url: string | null;
+          source: string;
+          source_url: string | null;
+          license: string | null;
+          image_license: string | null;
+          confidence: number | null;
+          category: string | null;
+          storage_type: string | null;
+          supplier_name: string | null;
+          product_url: string | null;
+        }[];
       };
       create_product_with_catalog: {
         Args: {

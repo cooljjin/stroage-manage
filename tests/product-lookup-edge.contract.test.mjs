@@ -15,7 +15,7 @@ test("product lookup keeps authentication, store scope, catalog-first, and share
   assert.match(handler, /profile\.store_id !== storeId/);
   assert.match(handler, /profile\.deletion_requested_at/);
   assert.match(handler, /store\.status !== "active"/);
-  assert.ok(edge.indexOf('.from("product_catalog")') < edge.indexOf('consume_product_lookup_quota'));
+  assert.match(edge, /const findCatalog = async \(\) => null/);
   assert.match(edge, /OpenFoodFactsAdapter\.lookup/);
   assert.match(handler, /Math\.max\(1, deadline/);
 });

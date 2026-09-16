@@ -96,6 +96,10 @@ export type ProductCatalog = {
   license: string | null;
   image_license: string | null;
   confidence: number | null;
+  category: string | null;
+  storage_type: string | null;
+  supplier_name: string | null;
+  product_url: string | null;
   verified_at: string | null;
   created_at: string;
   updated_at: string;

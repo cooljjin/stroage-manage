@@ -2,7 +2,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { OpenFoodFactsAdapter } from "../../../src/services/catalog/OpenFoodFactsAdapter.ts";
 import { createProductLookupHandler, type LookupProfile, type LookupStore } from "./handler.ts";
 
-const candidateColumns = "gtin, canonical_name, brand, manufacturer, size, unit, quantity_text, image_url, source, source_url, license, image_license, confidence";
 const TOKEN_SECRET_NAME = "PRODUCT_LOOKUP_TOKEN_SECRET";
 
 Deno.serve(async (req) => {
@@ -28,10 +27,10 @@ Deno.serve(async (req) => {
     const { data, error } = await adminClient.from("stores").select("id, status").eq("id", storeId).maybeSingle<LookupStore>();
     return error ? null : data;
   };
-  const findCatalog = async (gtin: string) => {
-    const { data, error } = await adminClient.from("product_catalog").select(candidateColumns).eq("gtin", gtin).maybeSingle();
-    return error ? null : data;
-  };
+  // The client performs the single quota-counted shared-catalog lookup. The
+  // fallback function only calls the external provider, avoiding a second
+  // quota charge and preventing a fallback path around the catalog quota.
+  const findCatalog = async () => null;
   const consumeQuota = async (userId: string) => {
     const { data, error } = await adminClient.rpc("consume_product_lookup_quota", { actor_id: userId });
     if (error) return null;

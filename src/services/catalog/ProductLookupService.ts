@@ -3,22 +3,6 @@ import type { ProductCandidate, ProductLookupResult } from "../../types/productL
 import { normalizeServiceError } from "../errors";
 import { DatabaseService } from "../database/DatabaseService";
 
-const candidateColumns = [
-  "gtin",
-  "canonical_name",
-  "brand",
-  "manufacturer",
-  "size",
-  "unit",
-  "quantity_text",
-  "image_url",
-  "source",
-  "source_url",
-  "license",
-  "image_license",
-  "confidence"
-].join(", ");
-
 export const ProductLookupService = {
   async lookup(input: string, format?: GtinFormat): Promise<ProductLookupResult> {
     const validation = validateGtin(input, format);
@@ -27,9 +11,8 @@ export const ProductLookupService = {
     }
 
     try {
-      const { data, error } = await DatabaseService.select("product_catalog", candidateColumns, {
-        filters: [{ column: "gtin", operator: "eq", value: validation.gtin14 }],
-        maybeSingle: true
+      const { data, error } = await DatabaseService.rpc("lookup_shared_product_catalog", {
+        target_gtin: validation.gtin14
       });
 
       if (error) {
@@ -40,8 +23,9 @@ export const ProductLookupService = {
           error: normalizeServiceError(error) ?? { message: "상품 카탈로그를 조회할 수 없습니다." }
         };
       }
-      if (!data) return { status: "miss", input, gtin: validation.gtin14 };
-      return { status: "hit", input, gtin: validation.gtin14, candidate: data as ProductCandidate };
+      const candidate = (Array.isArray(data) ? data[0] : data) as ProductCandidate | null;
+      if (!candidate) return { status: "miss", input, gtin: validation.gtin14 };
+      return { status: "hit", input, gtin: validation.gtin14, candidate };
     } catch (error) {
       return {
         status: "unavailable",

@@ -12,7 +12,7 @@ const { ProductEditPage } = await server.ssrLoadModule("/src/pages/ProductEditPa
 const Services = await server.ssrLoadModule("/src/services/index.ts");
 test.after(() => server.close());
 
-const candidate = { canonical_name: "후보 상품", source: "catalog", brand: "브랜드" };
+const candidate = { canonical_name: "후보 상품", source: "external", brand: "브랜드" };
 const product = { id: "existing", store_id: "store-1", name: "기존 상품", barcode: "999", category: "기타", supplier_name: null, storage_type: null, default_location: "창고", unit_name: "개", unit_weight_enabled: false, unit_weight: null, unit_weight_unit: null, processing_required: false, processed_unit_weight: null, processed_unit_weight_unit: null, product_url: null, order_completed: false, confirmed_order_pending: false, urgent_order_requested: false, urgent_order_quantity: null, fresh_order_selected: false, fresh_order_selected_at: null, receipt_check_only: false, status_enabled: false, stock_status: null, minimum_stock: 0, is_important: false, is_active: true, created_at: new Date(0).toISOString() };
 
 function queryResult(data = []) {
@@ -21,8 +21,10 @@ function queryResult(data = []) {
   return query;
 }
 
-function setupHarness({ barcode = " 123 ", barcodeFormat, productId, lookupResult, lookupImpl, edgeResult = { data: { status: "miss" }, error: null }, deferred = false } = {}) {
+function setupHarness({ barcode = " 123 ", barcodeFormat, productId, lookupResult, lookupImpl, edgeResult = { data: { status: "miss" }, error: null }, deferred = false, deferredDataLoad = false } = {}) {
   let resolveLookup;
+  let resolveDataLoad;
+  const dataLoad = deferredDataLoad ? new Promise((resolve) => { resolveDataLoad = resolve; }) : null;
   const lookup = async (...args) => deferred ? new Promise((resolve) => { resolveLookup = resolve; }) : lookupImpl ? lookupImpl(...args) : lookupResult;
   const harness = { stateIndex: 0, stateValues: [], refIndex: 0, refValues: [], effectIndex: 0, effectInitialized: [], cleanups: [], lookupCalls: 0, mounted: true, postUnmountSetters: 0 };
   const dispatcher = {
@@ -45,13 +47,18 @@ function setupHarness({ barcode = " 123 ", barcodeFormat, productId, lookupResul
   React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentDispatcher.current = dispatcher;
   Services.ProductLookupService.lookup = async (...args) => { harness.lookupCalls += 1; return lookup(...args); };
   Services.EdgeFunctionService.invoke = async () => edgeResult;
-  Services.DatabaseService.select = () => queryResult(productId ? [product] : []);
+  Services.DatabaseService.select = () => {
+    if (!dataLoad) return queryResult(productId ? [product] : []);
+    const query = { order: () => query, eq: () => query, single: () => dataLoad.then((data) => ({ data: data[0] ?? null, error: null })) };
+    query.then = (resolve, reject) => dataLoad.then((data) => ({ data, error: null })).then(resolve, reject);
+    return query;
+  };
   Services.DatabaseService.rpc = async () => ({ data: [], error: null });
   const navigations = [];
   harness.render = () => { harness.stateIndex = 0; harness.refIndex = 0; harness.effectIndex = 0; harness.tree = ProductEditPage({ productId, barcode, barcodeFormat, navigate: (route) => navigations.push(route), currentStoreId: "store-1" }); return harness.tree; };
   harness.render();
   harness.unmount = () => { harness.mounted = false; harness.cleanups.forEach((cleanup) => cleanup?.()); };
-  return { harness, navigations, resolveLookup: (value) => resolveLookup?.(value) };
+  return { harness, navigations, resolveLookup: (value) => resolveLookup?.(value), resolveDataLoad: (value = []) => resolveDataLoad?.(value) };
 }
 
 function walk(node, visit, found = []) {
@@ -70,6 +77,7 @@ function walk(node, visit, found = []) {
 function text(node) { if (typeof node === "string") return node; return walk(node, (item, found) => { if (typeof item === "string") found.push(item); }).join(""); }
 function buttons(tree) { return walk(tree, (node, found) => { if (node.type === "button") found.push(node); }); }
 function inputs(tree) { return walk(tree, (node, found) => { if (node.type === "input") found.push(node); }); }
+function selects(tree) { return walk(tree, (node, found) => { if (node.type === "select") found.push(node); }); }
 async function settle() { for (let index = 0; index < 6; index += 1) await new Promise((resolve) => globalThis.queueMicrotask(resolve)); }
 
 // The production component is rendered with only React/service boundaries replaced; lookup state and handlers remain production code.
@@ -93,6 +101,97 @@ test("ProductEditPage registration flow accepts a candidate and preserves a user
   buttons(second.harness.tree).find((button) => text(button).includes("맞아요")).props.onClick();
   second.harness.render();
   assert.equal(inputs(second.harness.tree).find((input) => input.props.value === "후보 상품").props.value, "후보 상품");
+});
+
+test("shared catalog candidate fills only reusable product registration fields", async () => {
+  const { applyProductCandidateToDraft } = await server.ssrLoadModule("/src/pages/ProductEditPage.tsx");
+  const draft = applyProductCandidateToDraft({
+    ...candidate,
+    category: "음료",
+    storage_type: "냉장",
+    supplier_name: "공용 발주처",
+    product_url: "https://orders.example.invalid/item/123"
+  }, false);
+
+  assert.deepEqual(draft, {
+    name: "후보 상품",
+    category: "음료",
+    storageTypes: ["냉장"],
+    supplierName: "공용 발주처",
+    productUrl: "https://orders.example.invalid/item/123"
+  });
+  assert.equal("store_id" in draft, false);
+  assert.equal("source_store_id" in draft, false);
+});
+
+test("shared catalog candidate auto-fills registration defaults after a scan", async () => {
+  const sharedCandidate = {
+    ...candidate,
+    source: "catalog",
+    category: "음료",
+    storage_type: "냉장",
+    supplier_name: "공용 발주처",
+    product_url: "https://orders.example.invalid/item/123"
+  };
+  const { harness } = setupHarness({ lookupResult: { status: "hit", input: "123", gtin: "123", candidate: sharedCandidate } });
+  await settle();
+  harness.render();
+
+  assert.ok(inputs(harness.tree).some((input) => input.props.value === "후보 상품"));
+  assert.ok(inputs(harness.tree).some((input) => input.props.value === "https://orders.example.invalid/item/123"));
+  assert.match(text(harness.tree), /공용 카탈로그 정보를 자동 입력했습니다/);
+});
+
+test("changing the barcode clears defaults auto-applied for the previous catalog product", async () => {
+  const sharedCandidate = { ...candidate, source: "catalog", category: "음료", storage_type: "냉장", supplier_name: "공용 발주처", product_url: "https://orders.example.invalid/shared" };
+  const flow = setupHarness({ lookupResult: { status: "hit", input: "123", gtin: "123", candidate: sharedCandidate } });
+  await settle(); flow.harness.render();
+  const barcodeInput = inputs(flow.harness.tree).find((input) => input.props.value === " 123 ");
+  barcodeInput.props.onChange({ target: { value: "456" } });
+  flow.harness.render();
+
+  assert.ok(inputs(flow.harness.tree).some((input) => input.props.required && input.props.value === ""));
+  assert.ok(inputs(flow.harness.tree).some((input) => input.props.type === "url" && input.props.value === ""));
+  assert.equal(selects(flow.harness.tree)[0].props.value, "기타");
+  assert.equal(selects(flow.harness.tree)[1].props.value, "");
+  assert.doesNotMatch(buttons(flow.harness.tree).find((button) => text(button) === "냉장").props.className, /bg-brand-600/);
+});
+
+test("shared catalog defaults do not overwrite fields edited while lookup is pending", async () => {
+  const sharedCandidate = { ...candidate, source: "catalog", category: "음료", storage_type: "냉장", supplier_name: "공용 발주처", product_url: "https://orders.example.invalid/shared" };
+  const flow = setupHarness({ barcode: "", deferred: true });
+  await settle(); flow.harness.render();
+  const barcodeInput = inputs(flow.harness.tree).find((input) => input.props.value === "" && !input.props.required);
+  barcodeInput.props.onChange({ target: { value: "123" } });
+  flow.harness.render();
+  buttons(flow.harness.tree).find((button) => button.props.className === "secondary-button mt-2 w-full").props.onClick();
+  await settle(); flow.harness.render();
+
+  inputs(flow.harness.tree).find((input) => input.props.required).props.onChange({ target: { value: "직접 입력 이름" } });
+  selects(flow.harness.tree)[0].props.onChange({ target: { value: "기타" } });
+  buttons(flow.harness.tree).find((button) => text(button) === "상온").props.onClick();
+  selects(flow.harness.tree)[1].props.onChange({ target: { value: "직접 발주처" } });
+  inputs(flow.harness.tree).find((input) => input.props.type === "url").props.onChange({ target: { value: "https://manual.example.invalid/item" } });
+  flow.resolveLookup({ status: "hit", input: "123", gtin: "123", candidate: sharedCandidate });
+  await settle(); flow.harness.render();
+
+  assert.ok(inputs(flow.harness.tree).some((input) => input.props.value === "직접 입력 이름"));
+  assert.ok(inputs(flow.harness.tree).some((input) => input.props.value === "https://manual.example.invalid/item"));
+  assert.equal(selects(flow.harness.tree)[0].props.value, "기타");
+  assert.equal(selects(flow.harness.tree)[1].props.value, "직접 발주처");
+  assert.match(buttons(flow.harness.tree).find((button) => text(button) === "상온").props.className, /bg-brand-600/);
+});
+
+test("late option loading preserves already applied shared catalog defaults", async () => {
+  const sharedCandidate = { ...candidate, source: "catalog", category: "음료", storage_type: "냉장", supplier_name: "공용 발주처", product_url: "https://orders.example.invalid/shared" };
+  const flow = setupHarness({ lookupResult: { status: "hit", input: "123", gtin: "123", candidate: sharedCandidate }, deferredDataLoad: true });
+  await settle(); flow.harness.render();
+  flow.resolveDataLoad([]);
+  await settle(); flow.harness.render();
+
+  assert.ok(inputs(flow.harness.tree).some((input) => input.props.value === "후보 상품"));
+  assert.equal(selects(flow.harness.tree)[0].props.value, "음료");
+  assert.equal(selects(flow.harness.tree)[1].props.value, "공용 발주처");
 });
 
 test("ProductEditPage exposes real miss/error fallback outcomes and registration-only guard", async () => {
