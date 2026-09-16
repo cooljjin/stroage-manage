@@ -41,6 +41,7 @@ test("returns a bounded attributed candidate for an exact OFF hit", async () => 
 test("distinguishes missing, malformed, mismatch, timeout and rate limit", async () => {
   const lookup = (fetch) => OpenFoodFactsAdapter.lookup(barcode, undefined, { fetch, timeoutMs: 5 });
   assert.equal((await lookup(async () => response({ status: 0, code: barcode }))).status, "missing");
+  assert.equal((await lookup(async () => new globalThis.Response("not found", { status: 404 }))).status, "missing");
   assert.equal((await lookup(async () => new globalThis.Response("not json"))).status, "malformed");
   assert.equal((await lookup(async () => response({ status: 1, code: "036000291453", product: product.product }))).status, "mismatch");
   assert.equal((await lookup(async (_input, init) => new Promise((_, reject) => {

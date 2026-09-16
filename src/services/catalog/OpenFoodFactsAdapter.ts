@@ -71,6 +71,7 @@ export const OpenFoodFactsAdapter = {
         headers: { Accept: "application/json", "User-Agent": USER_AGENT },
         signal: controller.signal
       });
+      if (response.status === 404) return { status: "missing", input, gtin };
       if (response.status === 429) {
         const retryAfter = Number(response.headers.get("retry-after"));
         return {
