@@ -1,9 +1,32 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-export default defineConfig({
-  plugins: [
+const deploymentProjectRefs = {
+  staging: "nchvyxhyfatgwpvilbng",
+  production: "pcvpkndyqkljgbrvssza"
+} as const;
+
+export default defineConfig(({ mode }) => {
+  if (mode === "staging" || mode === "production") {
+    const env = loadEnv(mode, process.cwd(), "VITE_");
+    const expectedProjectRef = deploymentProjectRefs[mode];
+    if (env.VITE_DEPLOYMENT_ENV !== mode) {
+      throw new Error(`${mode} build requires VITE_DEPLOYMENT_ENV=${mode}`);
+    }
+    if (env.VITE_SUPABASE_PROJECT_REF !== expectedProjectRef) {
+      throw new Error(`${mode} build has an invalid VITE_SUPABASE_PROJECT_REF`);
+    }
+    if (env.VITE_SUPABASE_URL !== `https://${expectedProjectRef}.supabase.co`) {
+      throw new Error(`${mode} build has an invalid VITE_SUPABASE_URL`);
+    }
+    if (!env.VITE_SUPABASE_ANON_KEY) {
+      throw new Error(`${mode} build requires VITE_SUPABASE_ANON_KEY`);
+    }
+  }
+
+  return {
+    plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
@@ -34,5 +57,6 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"]
       }
     })
-  ]
+    ]
+  };
 });

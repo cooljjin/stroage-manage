@@ -378,7 +378,9 @@ PWA:
 - `vite-plugin-pwa`가 build 때 service worker를 생성합니다.
 - 캐시 영향 때문에 UI가 바뀌었는데 기기에서 안 바뀌는 경우 새 빌드/배포 후 앱 캐시를 의심합니다.
 
-### iOS TestFlight 배포 채널
+### 환경과 iOS TestFlight 배포 채널
+
+환경 대상과 release 불변 조건은 [`docs/environments.md`](docs/environments.md)를 따릅니다. local Supabase는 폐기 가능한 자동화 테스트용, `App` / `com.jinkim.stockly`는 staging TestFlight용, `Stockly Staff` / `com.jinkim.storeinventory.poc`는 production TestFlight용입니다.
 
 iOS TestFlight는 개발용과 직원 배포용의 별도 앱으로 운영합니다. 두 앱은 Bundle ID, 서명 프로파일, OAuth callback URL이 다르므로 배포 설정을 임의로 섞지 않습니다.
 

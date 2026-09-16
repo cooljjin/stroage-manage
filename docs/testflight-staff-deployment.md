@@ -1,17 +1,19 @@
 # Stockly TestFlight 직원 배포
 
-> **확인 필요:** 아래 Bundle ID·Build는 과거 기록이다. [이중 채널 규칙](../AGENTS.md#ios-testflight-배포-채널)을 먼저 따르며 직원 업데이트에 개발용 Bundle ID를 사용하지 않는다.
+> **확인 필요:** 아래 Bundle ID·Build는 과거 기록이다. [이중 채널 규칙](../AGENTS.md#환경과-ios-testflight-배포-채널)을 먼저 따르며 직원 업데이트에 개발용 Bundle ID를 사용하지 않는다.
 
 마지막 로컬 설정 점검: 2026-08-19
 
 이 문서는 App Store Connect에 새 iOS build를 업로드해 직원에게 TestFlight로 배포하는 절차다. 실제 App Store Connect 상태와 사용 가능한 build는 로그인 후 다시 확인한다.
 
-## 현재 로컬 설정
+## 직원 production 채널 설정
 
-- 앱 이름: `Stockly`
-- Bundle ID: `com.jinkim.stockly`
-- Version: 1.0
-- Build: 16 (현재 작업 트리 설정)
+- scheme: `Stockly Staff`
+- Bundle ID: `com.jinkim.storeinventory.poc`
+- Supabase project ref: `pcvpkndyqkljgbrvssza`
+- Version·Build: Xcode와 App Store Connect에서 archive 전에 다시 확인
+
+`com.jinkim.stockly`는 개발/staging 채널이며 직원 앱 업데이트에 사용하지 않는다. 환경 대상과 API bundle guard는 [environments.md](environments.md)를 따른다.
 - iOS 최소 버전: 15.5
 - workspace: `ios/App/App.xcworkspace`
 - Capacitor `webDir`: `dist`
@@ -34,7 +36,7 @@ npm run lint
 5. iOS 번들을 새로 준비한다.
 
 ```bash
-npm run ios:prepare
+npm run ios:prepare:production
 npm run cap:ios
 ```
 
@@ -45,10 +47,11 @@ npm run cap:ios
 Xcode에서:
 
 1. `App.xcworkspace`를 연다.
-2. `App` target의 Signing Team과 Bundle ID를 확인한다.
-3. Version과 Build를 확인한다.
-4. 실행 대상을 `Any iOS Device (arm64)` 또는 현재 Xcode의 generic iOS device로 선택한다.
-5. `Product > Archive`를 실행한다.
+2. `Stockly Staff` scheme을 선택한다.
+3. `Stockly Staff` target의 Signing Team과 Bundle ID가 `com.jinkim.storeinventory.poc`인지 확인한다.
+4. Version과 Build를 확인한다.
+5. 실행 대상을 `Any iOS Device (arm64)` 또는 현재 Xcode의 generic iOS device로 선택한다.
+6. `Product > Archive`를 실행한다.
 
 같은 Build 번호는 다시 업로드할 수 없다. 현재 로컬 값이 16이더라도 App Store Connect에 16이 이미 존재하면 17 이상을 사용한다.
 
@@ -100,8 +103,8 @@ App Store Connect 사용자로 등록된 팀원에게 빠르게 배포할 때 �
 1. 코드·DB·함수 변경 범위 확정
 2. build/lint와 필요한 브라우저·기기 검증
 3. 새 Build 번호 설정
-4. `npm run ios:prepare`
-5. Archive와 Upload
+4. `npm run ios:prepare:production`
+5. Xcode에서 `Stockly Staff` / `com.jinkim.storeinventory.poc`를 재확인하고 Archive와 Upload
 6. TestFlight 처리·검토 상태 확인
 7. 대상 그룹에 build 배포
 8. 실제 직원 iPhone에서 설치된 Version/Build 확인

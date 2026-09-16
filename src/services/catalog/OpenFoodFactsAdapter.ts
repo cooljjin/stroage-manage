@@ -1,5 +1,5 @@
-import { validateGtin, type GtinFormat } from "../../lib/gtin";
-import type { ProductCandidate } from "../../types/productLookup";
+import { validateGtin, type GtinFormat } from "../../lib/gtin.ts";
+import type { ProductCandidate } from "../../types/productLookup.ts";
 
 const OPEN_FOOD_FACTS_API = "https://world.openfoodfacts.org/api/v2/product";
 const REQUEST_TIMEOUT_MS = 5000;

@@ -36,12 +36,16 @@ Node.js와 npm이 필요하다.
 npm ci
 ```
 
-프로젝트 루트에 `.env`를 만들고 다음 값을 설정한다.
+개발 서버는 프로젝트 루트의 `.env`를 사용한다. TestFlight 채널 빌드는 `.env.staging` 또는 `.env.production`을 사용하며 값은 Git에 기록하지 않는다.
 
 ```text
+VITE_DEPLOYMENT_ENV=staging
 VITE_SUPABASE_URL=https://<project-ref>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon-key>
+VITE_SUPABASE_PROJECT_REF=<project-ref>
 ```
+
+환경·채널 매핑과 배포 불변 조건은 [docs/environments.md](docs/environments.md)를 따른다.
 
 고객용 앱:
 
@@ -159,9 +163,11 @@ rg "import \\{ supabase \\}|supabase\\." src admin-console
 `server.url`이 없으므로 설치된 앱은 Vercel 화면이 아니라 앱 안의 `dist`를 사용한다. 웹 코드를 기기에 반영하려면 새로 빌드하고 native project에 복사한 뒤 다시 설치하거나 TestFlight 빌드를 올려야 한다.
 
 ```bash
-npm run ios:prepare
+npm run ios:prepare:staging
 npm run cap:ios
 ```
+
+직원 TestFlight archive에는 `npm run ios:prepare:production`만 사용한다. 이전 `npm run ios:prepare`는 호환성용이며 TestFlight에 사용하지 않는다.
 
 Android:
 
@@ -181,7 +187,11 @@ npm run cap:android
 - `docs/native-scanner-poc.md`: 현재 네이티브/웹 스캐너 구조와 검증법
 - `docs/animation-implementation.md`: 애니메이션 적용 현황
 - `docs/ios-staff-install.md`: Xcode 직접 설치 절차
-- `docs/testflight-staff-deployment.md`: TestFlight 배포 절차
+- `docs/environments.md`: local/staging/production 환경과 iOS 채널 계약
+- `docs/staging-test-data.md`: staging `테스트 매장` fixture와 정리 절차
+- `docs/staging-release-checklist.md`: staging backend/browser/iPhone release gate
+- `docs/testflight-staff-deployment.md`: 직원 TestFlight production 배포 절차
+- `docs/testflight-api-key-deployment.md`: 개발용 TestFlight API Key archive/export/upload 절차
 - `docs/security-hardening-deployment.md`: 보안 강화 단계별 배포·중단 게이트
 - `docs/privacy-policy-ko.md`: 개인정보 처리 안내 초안
 - `docs/windows-ai-agent-start-prompt.md`: Windows 개발 환경을 시작할 때 AI 에이전트에게 전달할 프롬프트

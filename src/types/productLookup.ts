@@ -1,4 +1,4 @@
-import type { GtinFormat } from "../lib/gtin";
+import type { GtinFormat } from "../lib/gtin.ts";
 import type { ProductCatalog } from "./domain";
 import type { ServiceError } from "../services/errors";
 

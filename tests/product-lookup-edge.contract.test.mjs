@@ -5,6 +5,8 @@ import { URL } from "node:url";
 
 const edge = await readFile(new URL("../supabase/functions/product-lookup/index.ts", import.meta.url), "utf8");
 const handler = await readFile(new URL("../supabase/functions/product-lookup/handler.ts", import.meta.url), "utf8");
+const adapter = await readFile(new URL("../src/services/catalog/OpenFoodFactsAdapter.ts", import.meta.url), "utf8");
+const productLookupTypes = await readFile(new URL("../src/types/productLookup.ts", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/087_product_lookup_quota.sql", import.meta.url), "utf8");
 
 test("product lookup keeps authentication, store scope, catalog-first, and shared quota boundaries", () => {
@@ -16,6 +18,11 @@ test("product lookup keeps authentication, store scope, catalog-first, and share
   assert.ok(edge.indexOf('.from("product_catalog")') < edge.indexOf('consume_product_lookup_quota'));
   assert.match(edge, /OpenFoodFactsAdapter\.lookup/);
   assert.match(handler, /Math\.max\(1, deadline/);
+});
+
+test("shared modules imported by the Edge Function use Deno-resolvable TypeScript paths", () => {
+  assert.match(adapter, /from "\.\.\/\.\.\/lib\/gtin\.ts"/);
+  assert.match(productLookupTypes, /from "\.\.\/lib\/gtin\.ts"/);
 });
 
 test("candidate confirmation is server-only HMAC and explicitly bound", () => {
