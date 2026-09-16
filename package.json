@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:admin": "vite --config admin-console/vite.config.ts",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/build-for-deployment.mjs",
     "build:staging": "vite build --mode staging",
     "build:production": "vite build --mode production",
     "build:admin": "tsc -p admin-console/tsconfig.json --noEmit && vite build --config admin-console/vite.config.ts",
