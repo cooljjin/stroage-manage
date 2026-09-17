@@ -36,6 +36,10 @@ test("web camera and image results retain the decoder format", () => {
     barcodeFormat: "UPC_E"
   });
   assert.deepEqual(getWebBarcodeScanResult("01234567"), { barcode: "01234567" });
+  assert.deepEqual(getWebBarcodeScanResult(" PADDED ", { result: { format: { formatName: "CODE_128" } } }), {
+    barcode: " PADDED ",
+    barcodeFormat: "CODE_128"
+  });
 });
 
 test("pending metadata roundtrip keeps legacy entries and rejects malformed formats", () => {
@@ -61,6 +65,7 @@ test("pending consumption normalizes untrusted metadata and enforces store and T
   assert.equal(consumePendingScanEntry(JSON.stringify({ ...base, barcodeFormat: "EAN8" }), "test", now).barcodeFormat, "UNKNOWN");
   assert.equal(consumePendingScanEntry(JSON.stringify({ ...base, barcodeFormat: "UPC_E" }), "test", now).barcodeFormat, "UPC_E");
   assert.equal(consumePendingScanEntry(JSON.stringify({ ...base, barcodeFormat: "EAN_8" }), "test", now).barcodeFormat, "EAN_8");
+  assert.equal(consumePendingScanEntry(JSON.stringify({ ...base, barcode: " PADDED ", barcodeFormat: "CODE_128" }), "test", now).barcode, " PADDED ");
   assert.equal(consumePendingScanEntry(JSON.stringify({ ...base, savedAt: now - 5 * 60 * 1000 - 1 }), "test", now), null);
   assert.equal(consumePendingScanEntry(JSON.stringify(base), "other", now), null);
 });
@@ -82,7 +87,7 @@ test("native scanner preserves the format from the selected barcode", async (t) 
     startScan: async () => listeners.get("barcodesScanned")({
       barcodes: [
         { rawValue: "", format: "EAN_8" },
-        { rawValue: "01234567", format: "UPC_E" }
+        { rawValue: " 01234567 ", format: "UPC_E" }
       ]
     }),
     stopScan: async () => undefined
@@ -97,7 +102,7 @@ test("native scanner preserves the format from the selected barcode", async (t) 
   const { scanNativeBarcode } = await import(`../src/lib/nativeBarcodeScanner.ts?native-test=${Date.now()}`);
   assert.deepEqual(await scanNativeBarcode(), {
     status: "success",
-    barcode: "01234567",
+    barcode: " 01234567 ",
     barcodeFormat: "UPC_E"
   });
 });

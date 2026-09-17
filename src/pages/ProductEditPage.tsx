@@ -9,7 +9,7 @@ import { searchResolvedProducts } from "../lib/resolvedProducts";
 import { createMutationRequestId, finishMutationRequest } from "../lib/mutationRequest";
 import * as Services from "../services";
 import type { AppRoute, BarcodeSymbology, GroupOrderRouteDraft, Inventory, Location, PrepItemRouteDraft, Product, ProductCategory, ProductSupplier, ProductUnit, StorageType, UnitWeightUnit } from "../types/domain";
-import type { ProductCandidate, ProductLookupResult } from "../types/productLookup";
+import type { ProductCandidate, ProductLookupFormat, ProductLookupResult } from "../types/productLookup";
 
 type Props = {
   productId?: string;
@@ -83,10 +83,8 @@ function parseStorageTypes(value: string | null): StorageType[] {
 
 function normalizeLookupFormat(format?: BarcodeSymbology) {
   if (format === "EAN_8") return "EAN8" as const;
-  if (format === "UPC_E") return "UPC_E" as const;
-  if (format === "UPC_A") return "UPC_A" as const;
   if (format === "EAN_13") return "EAN13" as const;
-  return format === undefined ? undefined : null;
+  return format;
 }
 
 export function normalizeProductLookupIdentity(barcode: string, format?: BarcodeSymbology) {
@@ -114,17 +112,14 @@ type LookupExecution =
   | { status: "error"; message: string }
   | { status: "stale" };
 
-type LookupFormat = "EAN8" | "UPC_E" | "UPC_A" | "EAN13";
-
 type LookupDependencies = {
-  lookup: (input: string, format?: LookupFormat) => Promise<ProductLookupResult>;
+  lookup: (input: string, format?: ProductLookupFormat) => Promise<ProductLookupResult>;
   invoke: (functionName: string, options: { body: Record<string, string> }) => Promise<{ data: { status?: string; candidate?: ProductCandidate } | null; error: { message: string } | null }>;
 };
 
 export async function executeProductLookup(value: string, format: BarcodeSymbology | undefined, storeId: string, isCurrent: (identity: string) => boolean, dependencies: LookupDependencies): Promise<LookupExecution> {
   const rawBarcode = value;
   const lookupFormat = normalizeLookupFormat(format);
-  if (lookupFormat === null) return { status: "error", message: "이 바코드 형식은 직접 입력으로 등록해 주세요." };
   const identity = normalizeProductLookupIdentity(rawBarcode, format);
   const result = await dependencies.lookup(rawBarcode, lookupFormat);
   if (!isCurrent(identity)) return { status: "stale" };
@@ -132,6 +127,7 @@ export async function executeProductLookup(value: string, format: BarcodeSymbolo
   if (result.status !== "miss") {
     return { status: "error", message: result.status === "unavailable" ? result.error.message : result.status === "rate_limited" ? "조회 한도를 초과했습니다. 직접 입력할 수 있습니다." : "이 바코드는 직접 입력으로 등록해 주세요." };
   }
+  if (result.externalLookupEligible === false || !result.gtin) return { status: "miss" };
   const edgeResult = await dependencies.invoke("product-lookup", { body: { barcode: rawBarcode, storeId, ...(lookupFormat ? { format: lookupFormat } : {}) } });
   if (!isCurrent(identity)) return { status: "stale" };
   if (edgeResult.error || !edgeResult.data) return { status: "error", message: edgeResult.error?.message ?? "상품 정보를 조회하지 못했습니다. 직접 입력해 주세요." };
@@ -194,6 +190,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
   const [units, setUnits] = useState<ProductUnit[]>([]);
   const [name, setName] = useState("");
   const [barcode, setBarcode] = useState(initialBarcode);
+  const [activeBarcodeFormat, setActiveBarcodeFormat] = useState<BarcodeSymbology | undefined>(initialBarcodeFormat);
   const [category, setCategory] = useState("기타");
   const [supplierName, setSupplierName] = useState("");
   const [storageTypes, setStorageTypes] = useState<StorageType[]>([]);
@@ -267,6 +264,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
       setSuppliers((current) => [...nextSuppliers, ...current.filter((item) => !nextSuppliers.some((next) => next.name === item.name))]);
       setUnits(nextUnits);
       setBarcode(initialBarcode);
+      setActiveBarcodeFormat(initialBarcodeFormat);
       setCategory((current) => (current && (categoryEditedRef.current || current !== "기타") ? current : nextCategories.find((item) => item.name === "기타")?.name ?? nextCategories[0]?.name ?? "기타"));
       setSupplierName((current) => current || "");
       setUnitName((current) => (current && nextUnits.some((item) => item.name === current) ? current : nextUnits.find((item) => item.name === "낱개")?.name ?? nextUnits[0]?.name ?? ""));
@@ -306,6 +304,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
       setUnits(unitsWithProduct);
       setName(nextProduct.name);
       setBarcode(nextProduct.barcode ?? "");
+      setActiveBarcodeFormat(nextProduct.barcode_format ?? undefined);
       setCategory(nextProduct.category);
       setSupplierName(nextProduct.supplier_name ?? "");
       setStorageTypes(parseStorageTypes(nextProduct.storage_type));
@@ -336,7 +335,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
     }
 
     setLoading(false);
-  }, [currentStoreId, initialBarcode, isRegisterMode, productId]);
+  }, [currentStoreId, initialBarcode, initialBarcodeFormat, isRegisterMode, productId]);
 
   useEffect(() => {
     void loadProduct();
@@ -480,10 +479,13 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
     const nextProcessingRequired = unitWeightEnabled && unitMeasureType !== "count" && processingRequired;
     const parsedProcessedUnitWeight = Number(processedUnitWeight || 0);
     const nextProcessedUnitWeight = nextProcessingRequired ? parsedProcessedUnitWeight : null;
+    const preserveScannedPayload = activeBarcodeFormat && ["CODE_128", "CODE_39", "CODE_93", "ITF", "CODABAR"].includes(activeBarcodeFormat);
+    const nextBarcode = preserveScannedPayload ? barcode : barcode.trim();
 
     return {
       name: name.trim(),
-      barcode: barcode.trim() || null,
+      barcode: nextBarcode || null,
+      barcode_format: nextBarcode ? activeBarcodeFormat ?? null : null,
       category,
       supplier_name: supplierName || null,
       storage_type: storageTypes.length > 0 ? storageTypes.join(", ") : null,
@@ -717,6 +719,12 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
     if (updateError) {
       setError(formatProductUpdateError(updateError.message));
     } else {
+      if (productValues.barcode && productValues.barcode_format && product) {
+        await Services.DatabaseService.rpc("publish_existing_product_defaults", {
+          target_product_id: product.id,
+          target_format: productValues.barcode_format
+        });
+      }
       navigate(getExitRoute(), { replace: true });
     }
   }
@@ -919,9 +927,9 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
 
           <label className="block min-w-0">
             <span className="mb-1 block text-sm font-semibold">바코드</span>
-            <input className="field" value={barcode} onChange={(event) => { const value = event.target.value; clearAutoAppliedCandidate(); lookupSequenceRef.current += 1; lookupIdentityRef.current = normalizeProductLookupIdentity(value, initialBarcodeFormat); setBarcode(value); setCandidate(null); setLookupStatus("idle"); setLookupMessage(""); }} />
+            <input className="field" value={barcode} onChange={(event) => { const value = event.target.value; clearAutoAppliedCandidate(); lookupSequenceRef.current += 1; setActiveBarcodeFormat(undefined); lookupIdentityRef.current = normalizeProductLookupIdentity(value); setBarcode(value); setCandidate(null); setLookupStatus("idle"); setLookupMessage(""); }} />
             {isRegisterMode ? (
-              <button type="button" disabled={lookupStatus === "loading" || !barcode.trim()} onClick={() => void lookupCandidate(barcode)} className="secondary-button mt-2 w-full">
+              <button type="button" disabled={lookupStatus === "loading" || !barcode.trim()} onClick={() => void lookupCandidate(barcode, activeBarcodeFormat)} className="secondary-button mt-2 w-full">
                 {lookupStatus === "loading" ? "상품 정보 조회 중..." : "상품 정보 조회"}
               </button>
             ) : null}

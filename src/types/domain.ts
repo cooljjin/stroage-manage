@@ -50,6 +50,7 @@ export type Product = {
   store_id: string;
   catalog_id?: string | null;
   barcode: string | null;
+  barcode_format?: BarcodeSymbology | null;
   name: string;
   category: Category;
   brand?: string | null;

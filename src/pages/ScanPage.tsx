@@ -29,9 +29,8 @@ type FocusMediaTrackConstraints = MediaTrackConstraints & {
 
 
 function savePendingScanBarcode(barcode: string, storeId: string, initialInventoryMode: MobileInventoryEntryMode, barcodeFormat?: BarcodeSymbology) {
-  const normalized = barcode.trim();
-  if (!normalized) return;
-  const entry: PendingScanEntry = { barcode: normalized, storeId, savedAt: Date.now(), initialInventoryMode, barcodeFormat };
+  if (!barcode.trim()) return;
+  const entry: PendingScanEntry = { barcode, storeId, savedAt: Date.now(), initialInventoryMode, barcodeFormat };
   localStorage.setItem(PENDING_SCAN_STORAGE_KEY, JSON.stringify(entry));
 }
 
@@ -54,18 +53,20 @@ function consumePendingScanBarcode(storeId: string) {
   return consumePendingScanEntry(rawEntry, storeId);
 }
 
-function getBarcodeCandidates(barcode: string): string[] {
+function getBarcodeCandidates(barcode: string, barcodeFormat?: BarcodeSymbology): string[] {
   const normalized = barcode.trim();
-  const candidates = new Set([normalized]);
+  const preserveExactPayload = barcodeFormat === "CODE_128" || barcodeFormat === "CODE_39" || barcodeFormat === "CODE_93" || barcodeFormat === "ITF" || barcodeFormat === "CODABAR";
+  const candidates = new Set([barcode]);
+  if (!preserveExactPayload && normalized !== barcode) candidates.add(normalized);
 
-  if (/^\d{12}$/.test(normalized)) candidates.add(`0${normalized}`);
-  if (/^0\d{12}$/.test(normalized)) candidates.add(normalized.slice(1));
+  if (!preserveExactPayload && /^\d{12}$/.test(normalized)) candidates.add(`0${normalized}`);
+  if (!preserveExactPayload && /^0\d{12}$/.test(normalized)) candidates.add(normalized.slice(1));
 
   return [...candidates];
 }
 
-async function findProductByBarcode(barcode: string, currentStoreId: string): Promise<{ product: Product | null; errorMessage: string }> {
-  return resolveProductByBarcode(currentStoreId, getBarcodeCandidates(barcode));
+async function findProductByBarcode(barcode: string, currentStoreId: string, barcodeFormat?: BarcodeSymbology): Promise<{ product: Product | null; errorMessage: string }> {
+  return resolveProductByBarcode(currentStoreId, getBarcodeCandidates(barcode, barcodeFormat));
 }
 
 export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
@@ -128,7 +129,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     }
     setScannerActive(false);
 
-    const { product, errorMessage } = await findProductByBarcode(barcode, currentStoreId);
+    const { product, errorMessage } = await findProductByBarcode(barcode, currentStoreId, barcodeFormat);
     if (!mountedRef.current || completedNavigationRef.current) return;
     if (errorMessage) {
       clearPendingScanBarcode();

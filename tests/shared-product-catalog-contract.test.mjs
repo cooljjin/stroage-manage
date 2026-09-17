@@ -7,7 +7,7 @@ const service = await readFile(new URL("../src/services/catalog/ProductLookupSer
 const domain = await readFile(new URL("../src/types/domain.ts", import.meta.url), "utf8");
 
 test("catalog lookup uses a restricted RPC instead of exposing the catalog table", () => {
-  assert.match(service, /rpc\("lookup_shared_product_catalog"/);
+  assert.match(service, /rpc\("lookup_shared_product_catalog_v2"/);
   assert.doesNotMatch(service, /select\("product_catalog"/);
 });
 

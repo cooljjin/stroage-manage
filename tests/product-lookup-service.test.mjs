@@ -69,3 +69,24 @@ test("does not query invalid or ambiguous input", async () => {
   assert.equal((await ProductLookupService.lookup("036000291453")).status, "invalid");
   assert.equal(calls, 0);
 });
+
+test("looks up CODE_128 through the internal v2 catalog without external-provider semantics", async () => {
+  let rpcName;
+  let rpcArgs;
+  DatabaseService.rpc = (name, args) => {
+    rpcName = name;
+    rpcArgs = args;
+    return Promise.resolve({ data: [{ ...candidate, status: "hit", gtin: null, barcode_format: "CODE_128", barcode_value: "R011824490001", source: "catalog" }], error: null });
+  };
+  const result = await ProductLookupService.lookup("R011824490001", "CODE_128");
+  assert.equal(result.status, "hit");
+  assert.equal(result.candidate.canonical_name, candidate.canonical_name);
+  assert.equal(rpcName, "lookup_shared_product_catalog_v2");
+  assert.deepEqual(rpcArgs, { target_barcode: "R011824490001", target_format: "CODE_128" });
+  assert.equal(result.externalLookupEligible, false);
+});
+
+test("surfaces explicit v2 quota status", async () => {
+  DatabaseService.rpc = () => Promise.resolve({ data: [{ status: "rate_limited" }], error: null });
+  assert.equal((await ProductLookupService.lookup("R011824490001", "CODE_128")).status, "rate_limited");
+});

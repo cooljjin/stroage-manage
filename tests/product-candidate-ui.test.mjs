@@ -26,7 +26,7 @@ function setupHarness({ barcode = " 123 ", barcodeFormat, productId, lookupResul
   let resolveDataLoad;
   const dataLoad = deferredDataLoad ? new Promise((resolve) => { resolveDataLoad = resolve; }) : null;
   const lookup = async (...args) => deferred ? new Promise((resolve) => { resolveLookup = resolve; }) : lookupImpl ? lookupImpl(...args) : lookupResult;
-  const harness = { stateIndex: 0, stateValues: [], refIndex: 0, refValues: [], effectIndex: 0, effectInitialized: [], cleanups: [], lookupCalls: 0, mounted: true, postUnmountSetters: 0 };
+  const harness = { stateIndex: 0, stateValues: [], refIndex: 0, refValues: [], effectIndex: 0, effectInitialized: [], cleanups: [], lookupCalls: 0, lookupArgs: [], mounted: true, postUnmountSetters: 0 };
   const dispatcher = {
     useState(initial) {
       const index = harness.stateIndex++;
@@ -45,7 +45,7 @@ function setupHarness({ barcode = " 123 ", barcodeFormat, productId, lookupResul
     }
   };
   React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentDispatcher.current = dispatcher;
-  Services.ProductLookupService.lookup = async (...args) => { harness.lookupCalls += 1; return lookup(...args); };
+  Services.ProductLookupService.lookup = async (...args) => { harness.lookupCalls += 1; harness.lookupArgs.push(args); return lookup(...args); };
   Services.EdgeFunctionService.invoke = async () => edgeResult;
   Services.DatabaseService.select = () => {
     if (!dataLoad) return queryResult(productId ? [product] : []);
@@ -249,7 +249,7 @@ test("ProductEditPage fallback statuses keep manual Save enabled through the com
     ["invalid", { status: "invalid", input: "123" }],
     ["ambiguous", { status: "ambiguous", input: "123" }],
     ["rate_limited", { status: "rate_limited", input: "123" }],
-    ["Edge error", { status: "miss", input: "123" }]
+    ["Edge error", { status: "miss", input: "123", gtin: "00000000000123" }]
   ];
   for (const [label, lookupResult] of cases) {
     const options = label === "Edge error" ? { lookupResult, edgeResult: { data: null, error: { message: "service offline" } } } : { lookupResult };
@@ -322,6 +322,19 @@ test("ProductEditPage forwards trimmed identity and candidate acceptance through
   assert.equal(typeof buttons(setup.harness.tree).find((button) => text(button).includes("직접 입력")).props.onClick, "function");
 });
 
+test("manual barcode edits clear stale scan symbology before a new lookup", async () => {
+  const flow = setupHarness({ barcode: "R011824490001", barcodeFormat: "CODE_128", lookupResult: { status: "miss", input: "R011824490001", externalLookupEligible: false } });
+  await settle(); flow.harness.render();
+  assert.equal(flow.harness.lookupArgs[0][1], "CODE_128");
+
+  const barcodeInput = inputs(flow.harness.tree).find((input) => input.props.value === "R011824490001");
+  barcodeInput.props.onChange({ target: { value: "MANUAL-EDIT" } });
+  flow.harness.render();
+  buttons(flow.harness.tree).find((button) => button.props.className === "secondary-button mt-2 w-full").props.onClick();
+  await settle();
+  assert.equal(flow.harness.lookupArgs.at(-1)[1], undefined);
+});
+
 test("orchestration helper retains manual fallback and stale guards", async () => {
   const { executeProductLookup, normalizeProductLookupIdentity, shouldLookupProductCandidate } = await server.ssrLoadModule("/src/pages/ProductEditPage.tsx");
   assert.equal(shouldLookupProductCandidate(true, " 123 "), true);
@@ -329,4 +342,16 @@ test("orchestration helper retains manual fallback and stale guards", async () =
   const identity = normalizeProductLookupIdentity(" 123 ", "EAN_13");
   const result = await executeProductLookup(" 123 ", "EAN_13", "store-1", (value) => value === identity, { lookup: async () => ({ status: "miss", input: "123", gtin: "123" }), invoke: async () => ({ data: { status: "rate_limited" }, error: null }) });
   assert.equal(result.status, "error");
+});
+
+test("non-GTIN catalog misses never invoke the external provider", async () => {
+  const { executeProductLookup, normalizeProductLookupIdentity } = await server.ssrLoadModule("/src/pages/ProductEditPage.tsx");
+  let edgeCalls = 0;
+  const identity = normalizeProductLookupIdentity("R011824490001", "CODE_128");
+  const result = await executeProductLookup("R011824490001", "CODE_128", "store-1", (value) => value === identity, {
+    lookup: async () => ({ status: "miss", input: "R011824490001", externalLookupEligible: false }),
+    invoke: async () => { edgeCalls += 1; return { data: { status: "miss" }, error: null }; }
+  });
+  assert.equal(result.status, "miss");
+  assert.equal(edgeCalls, 0);
 });

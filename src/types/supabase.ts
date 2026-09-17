@@ -1,4 +1,4 @@
-import type { Category, InventoryAction, Location, ProductCatalog, RecipeUsageUnit, StockStatus, UnitWeightUnit } from "./domain";
+import type { BarcodeSymbology, Category, InventoryAction, Location, ProductCatalog, RecipeUsageUnit, StockStatus, UnitWeightUnit } from "./domain";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -125,6 +125,7 @@ export type Database = {
           store_id: string;
           catalog_id: string | null;
           barcode: string | null;
+          barcode_format: BarcodeSymbology | null;
           name: string;
           category: Category;
           brand: string | null;
@@ -160,6 +161,7 @@ export type Database = {
           store_id?: string;
           catalog_id?: string | null;
           barcode?: string | null;
+          barcode_format?: BarcodeSymbology | null;
           name: string;
           category: Category;
           brand?: string | null;
@@ -194,6 +196,7 @@ export type Database = {
           store_id?: string;
           catalog_id?: string | null;
           barcode?: string | null;
+          barcode_format?: BarcodeSymbology | null;
           name?: string;
           category?: Category;
           brand?: string | null;
@@ -1925,6 +1928,35 @@ export type Database = {
           supplier_name: string | null;
           product_url: string | null;
         }[];
+      };
+      lookup_shared_product_catalog_v2: {
+        Args: { target_barcode: string; target_format: string | null };
+        Returns: Array<{
+          status: "hit" | "miss" | "rate_limited" | "invalid";
+          gtin: string | null;
+          barcode_format: string | null;
+          barcode_value: string | null;
+          canonical_name: string | null;
+          brand: string | null;
+          manufacturer: string | null;
+          size: number | null;
+          unit: string | null;
+          quantity_text: string | null;
+          image_url: string | null;
+          source: string | null;
+          source_url: string | null;
+          license: string | null;
+          image_license: string | null;
+          confidence: number | null;
+          category: string | null;
+          storage_type: string | null;
+          supplier_name: string | null;
+          product_url: string | null;
+        }>;
+      };
+      publish_existing_product_defaults: {
+        Args: { target_product_id: string; target_format: string };
+        Returns: boolean;
       };
       create_product_with_catalog: {
         Args: {

@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { normalizeBarcodeFormat } from "./barcodeScanMetadata";
+import { normalizeBarcodeFormat } from "./barcodeScanMetadata.ts";
 import type { BarcodeSymbology } from "../types/domain";
 
 type PermissionState = "prompt" | "prompt-with-rationale" | "granted" | "denied" | string;
@@ -139,8 +139,8 @@ export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
       try {
         listenerPromises.push(barcodeScanner.addListener("barcodesScanned", (event) => {
           const item = event.barcodes?.find((candidate) => candidate.rawValue?.trim());
-          const barcode = item?.rawValue?.trim();
-          if (barcode) finish({ status: "success", barcode, barcodeFormat: normalizeBarcodeFormat(item?.format) });
+          const barcode = item?.rawValue;
+          if (barcode?.trim()) finish({ status: "success", barcode, barcodeFormat: normalizeBarcodeFormat(item?.format) });
         }));
         listenerPromises.push(barcodeScanner.addListener("scanError", (event) => {
           finish({
