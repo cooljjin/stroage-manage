@@ -10,7 +10,7 @@
 - Bundle ID: `com.jinkim.stockly`
 - Team ID: `RQMBNM7XVV`
 - Version: `1.0`
-- Build: `79`
+- Build: `80`
 - Workspace: `ios/App/App.xcworkspace`
 - Scheme/Target: `App`
 - Configuration: `Release`
