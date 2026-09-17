@@ -952,7 +952,7 @@ export function ProductEditPage({ productId, barcode: initialBarcode = "", barco
               {lookupMessage ? <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{lookupMessage}</p> : null}
               {candidate ? (
                 <div className="mt-3 grid grid-cols-3 gap-2">
-                  <button type="button" className="primary-button px-2 text-sm" onClick={() => { applyCandidateToForm(candidate); setLookupMessage("후보 정보를 입력했습니다. 저장 전에 내용을 확인해 주세요."); }}>맞아요</button>
+                  <button type="button" className="primary-button px-2 text-sm" onClick={() => { applyCandidateToForm(candidate); setLookupMessage("정보가 자동기입 되었습니다. 나머지 정보를 입력해 주세요."); }}>맞아요</button>
                   <button type="button" className="secondary-button px-2 text-sm" onClick={() => setLookupMessage("상품명을 직접 수정해 주세요.")}>직접 수정</button>
                   <button type="button" className="secondary-button px-2 text-sm" onClick={() => { setCandidate(null); setLookupMessage("직접 입력 모드입니다."); }}>직접 입력</button>
                 </div>

@@ -14,7 +14,7 @@ expected_bundle_id="com.jinkim.stockly"
 staff_bundle_id="com.jinkim.storeinventory.poc"
 expected_team_id="RQMBNM7XVV"
 expected_version="${STOCKLY_IOS_EXPECTED_VERSION:-1.0}"
-expected_build="${STOCKLY_IOS_EXPECTED_BUILD:-81}"
+expected_build="${STOCKLY_IOS_EXPECTED_BUILD:-82}"
 output_dir_arg="${STOCKLY_IOS_OUTPUT_DIR:-}"
 upload=false
 
@@ -34,7 +34,7 @@ Usage:
 
 Options:
   --channel development       개발용 채널만 허용합니다 (기본값).
-  --expected-build NUMBER    검사할 build 번호 (기본값: 81).
+  --expected-build NUMBER    검사할 build 번호 (기본값: 82).
   --output-dir PATH          결과를 둘 상위 디렉터리 (기본값: tmp/ios-testflight-api-key).
   --upload                    로컬 검증 후 API Key로 TestFlight 업로드합니다.
   -h, --help                 도움말을 표시합니다.

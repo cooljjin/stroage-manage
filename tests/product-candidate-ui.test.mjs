@@ -94,6 +94,7 @@ test("ProductEditPage registration flow accepts a candidate and preserves a user
   accept.props.onClick();
   harness.render();
   assert.equal(inputs(harness.tree).find((input) => input.props.className === "field").props.value, "사용자 상품");
+  assert.match(text(harness.tree), /정보가 자동기입 되었습니다\. 나머지 정보를 입력해 주세요\./);
 
   const second = setupHarness({ lookupResult: { status: "hit", input: "123", gtin: "123", candidate } });
   await settle();

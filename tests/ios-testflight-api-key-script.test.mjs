@@ -14,7 +14,7 @@ test("iOS TestFlight script is pinned to the development channel", () => {
   assert.match(script, /expected_bundle_id="com\.jinkim\.stockly"/);
   assert.match(script, /staff_bundle_id="com\.jinkim\.storeinventory\.poc"/);
   assert.match(script, /expected_team_id="RQMBNM7XVV"/);
-  assert.match(script, /expected_build="\$\{STOCKLY_IOS_EXPECTED_BUILD:-81\}"/);
+  assert.match(script, /expected_build="\$\{STOCKLY_IOS_EXPECTED_BUILD:-82\}"/);
   assert.match(script, /assert_build_setting "PRODUCT_BUNDLE_IDENTIFIER" "\$expected_bundle_id"/);
   assert.match(script, /assert_build_setting "CURRENT_PROJECT_VERSION" "\$expected_build"/);
 });
@@ -25,8 +25,8 @@ test("TestFlight web assets use the validated staging preparation path", () => {
   assert.doesNotMatch(script, /npx cap sync ios/);
 });
 
-test("deployment documentation matches Xcode build 81 and safe staging preparation", () => {
-  assert.match(deploymentDoc, /Build: `81`/);
+test("deployment documentation matches Xcode build 82 and safe staging preparation", () => {
+  assert.match(deploymentDoc, /Build: `82`/);
   assert.match(deploymentDoc, /npm run ios:prepare:staging/);
   assert.doesNotMatch(deploymentDoc, /`npm run build`/);
   assert.doesNotMatch(deploymentDoc, /`npx cap sync ios`/);
