@@ -1131,6 +1131,10 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
 
           {visibleLowStockItems.length === 0 ? <StatusMessage type="success">표시할 부족 재고가 없습니다.</StatusMessage> : null}
 
+          <p className="mt-4 px-1 pb-2 text-center text-[11px] font-medium leading-relaxed text-slate-400 dark:text-slate-500">
+            이 페이지에는 쿠팡 파트너스 제휴 링크가 포함되어 있으며, 해당 링크를 통해 상품을 구매할 경우 Stockly에 일정액의 수수료가 지급됩니다.
+          </p>
+
           {freshModalOpen ? (
             <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 px-4 py-6">
               <div className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
