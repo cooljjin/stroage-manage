@@ -53,7 +53,7 @@ export function MasterUsersPage() {
 
   const groupedProfiles = useMemo(() => {
     return profiles.reduce<Record<string, StaffProfile[]>>((groups, profile) => {
-      const storeName = storeNameById.get(profile.store_id) ?? "매장 미지정";
+      const storeName = storeNameById.get(profile.store_id ?? "") ?? "매장 미지정";
       groups[storeName] = groups[storeName] ?? [];
       groups[storeName].push(profile);
       return groups;
@@ -82,7 +82,7 @@ export function MasterUsersPage() {
       setStores((storesResult.data ?? []) as Store[]);
       setProfiles(nextProfiles);
       setDraftNames(Object.fromEntries(nextProfiles.map((profile) => [profile.id, profile.display_name])));
-      setDraftStoreIds(Object.fromEntries(nextProfiles.map((profile) => [profile.id, profile.store_id])));
+      setDraftStoreIds(Object.fromEntries(nextProfiles.map((profile) => [profile.id, profile.store_id ?? ""])));
     }
 
     setLoading(false);
