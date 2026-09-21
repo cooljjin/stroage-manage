@@ -5,7 +5,7 @@ set -eux
 HOMEBREW_NO_AUTO_UPDATE=1 brew install node
 export PATH="$(brew --prefix node)/bin:$PATH"
 
-cd "$CI_WORKSPACE"
+cd "$(dirname "$0")/../../.."
 node --version
 npm --version
 npm ci
