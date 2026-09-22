@@ -1,0 +1,18 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "RQMBNM7XVV.com.jinkim.stockly",
+          "RQMBNM7XVV.com.jinkim.storeinventory.poc"
+        ],
+        "components": [
+          {
+            "/": "/attendance/tag/*",
+            "comment": "NFC attendance links"
+          }
+        ]
+      }
+    ]
+  }
+}

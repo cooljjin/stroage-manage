@@ -423,7 +423,7 @@ export type Database = {
           id: string;
           store_id: string;
           user_id: string;
-          permission_key: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+          permission_key: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation" | "attendance_management";
           granted_by: string | null;
           created_at: string;
         };
@@ -431,12 +431,12 @@ export type Database = {
           id?: string;
           store_id: string;
           user_id: string;
-          permission_key: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+          permission_key: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation" | "attendance_management";
           granted_by?: string | null;
           created_at?: string;
         };
         Update: {
-          permission_key?: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+          permission_key?: "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation" | "attendance_management";
           granted_by?: string | null;
         };
         Relationships: [];
@@ -1664,6 +1664,72 @@ export type Database = {
         };
         Relationships: [];
       };
+      attendance_tags: {
+        Row: { id: string; store_id: string; name: string; token_hash: string; is_active: boolean; created_by: string; created_at: string; updated_at: string };
+        Insert: { id?: string; store_id: string; name: string; token_hash: string; is_active?: boolean; created_by: string; created_at?: string; updated_at?: string };
+        Update: { name?: string; is_active?: boolean; updated_at?: string };
+        Relationships: [];
+      };
+      attendance_work_schedules: {
+        Row: { id: string; store_id: string; user_id: string; weekday: number; start_time: string; end_time: string; unpaid_break_minutes: number; effective_from: string; effective_to: string | null; created_by: string; created_at: string };
+        Insert: { id?: string; store_id: string; user_id: string; weekday: number; start_time: string; end_time: string; unpaid_break_minutes?: number; effective_from: string; effective_to?: string | null; created_by: string; created_at?: string };
+        Update: { start_time?: string; end_time?: string; unpaid_break_minutes?: number; effective_to?: string | null };
+        Relationships: [];
+      };
+      attendance_schedule_overrides: {
+        Row: { id: string; store_id: string; user_id: string; work_date: string; is_day_off: boolean; start_time: string | null; end_time: string | null; unpaid_break_minutes: number; note: string | null; created_by: string; created_at: string };
+        Insert: { id?: string; store_id: string; user_id: string; work_date: string; is_day_off?: boolean; start_time?: string | null; end_time?: string | null; unpaid_break_minutes?: number; note?: string | null; created_by: string; created_at?: string };
+        Update: { is_day_off?: boolean; start_time?: string | null; end_time?: string | null; unpaid_break_minutes?: number; note?: string | null };
+        Relationships: [];
+      };
+      attendance_pay_rates: {
+        Row: { id: string; store_id: string; user_id: string; hourly_wage: number; weekly_contracted_minutes: number; effective_from: string; effective_to: string | null; created_by: string; created_at: string };
+        Insert: { id?: string; store_id: string; user_id: string; hourly_wage: number; weekly_contracted_minutes: number; effective_from: string; effective_to?: string | null; created_by: string; created_at?: string };
+        Update: { hourly_wage?: number; weekly_contracted_minutes?: number; effective_from?: string; effective_to?: string | null };
+        Relationships: [];
+      };
+      attendance_payroll_rules: {
+        Row: { id: string; store_id: string; effective_from: string; effective_to: string | null; overtime_multiplier: number; night_multiplier: number; holiday_multiplier: number; weekly_threshold_minutes: number; weekly_overtime_threshold_minutes: number; rounding_rule: "half_up" | "floor" | "ceil"; rounding_version: number; is_confirmed: boolean; updated_by: string | null; updated_at: string };
+        Insert: { id?: string; store_id: string; effective_from?: string; effective_to?: string | null; overtime_multiplier?: number; night_multiplier?: number; holiday_multiplier?: number; weekly_threshold_minutes?: number; weekly_overtime_threshold_minutes?: number; rounding_rule?: "half_up" | "floor" | "ceil"; rounding_version?: number; is_confirmed?: boolean; updated_by?: string | null; updated_at?: string };
+        Update: { effective_from?: string; effective_to?: string | null; overtime_multiplier?: number; night_multiplier?: number; holiday_multiplier?: number; weekly_threshold_minutes?: number; weekly_overtime_threshold_minutes?: number; rounding_rule?: "half_up" | "floor" | "ceil"; rounding_version?: number; is_confirmed?: boolean; updated_by?: string | null; updated_at?: string };
+        Relationships: [];
+      };
+      attendance_punch_events: {
+        Row: { id: string; store_id: string; user_id: string; tag_id: string; punch_type: "check_in" | "check_out"; tagged_at: string; entered_at: string | null; confirmed_at: string | null; expires_at: string; status: "pending" | "completed" | "cancelled" | "expired"; request_id: string; finalize_request_id: string | null; needs_review: boolean; created_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      attendance_shifts: {
+        Row: { id: string; store_id: string; user_id: string; check_in_event_id: string; check_out_event_id: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null; entered_check_in_at: string; entered_check_out_at: string | null; confirmed_check_in_at: string; confirmed_check_out_at: string | null; unpaid_break_minutes: number; status: "open" | "closed" | "needs_review" | "approved"; manager_note: string | null; created_at: string; updated_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      attendance_shift_segments: {
+        Row: { id: string; shift_id: string; store_id: string; segment_type: "schedule_overrun" | "overtime" | "night" | "holiday"; starts_at: string; ends_at: string; status: "candidate" | "confirmed" | "rejected"; confirmed_by: string | null; confirmed_at: string | null; created_at: string };
+        Insert: { id?: string; shift_id: string; store_id: string; segment_type: "schedule_overrun" | "overtime" | "night" | "holiday"; starts_at: string; ends_at: string; status?: "candidate" | "confirmed" | "rejected"; confirmed_by?: string | null; confirmed_at?: string | null; created_at?: string };
+        Update: { status?: "candidate" | "confirmed" | "rejected"; confirmed_by?: string | null; confirmed_at?: string | null };
+        Relationships: [];
+      };
+      attendance_weekly_allowances: {
+        Row: { id: string; store_id: string; user_id: string; week_start: string; eligible: boolean; allowance_amount: number; confirmed_by: string; confirmed_at: string; note: string | null };
+        Insert: { id?: string; store_id: string; user_id: string; week_start: string; eligible: boolean; allowance_amount?: number; confirmed_by: string; confirmed_at?: string; note?: string | null };
+        Update: { eligible?: boolean; allowance_amount?: number; confirmed_by?: string; confirmed_at?: string; note?: string | null };
+        Relationships: [];
+      };
+      attendance_shift_audit: {
+        Row: { id: string; shift_id: string; store_id: string; changed_by: string; reason: string; before_values: Json; after_values: Json; created_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      attendance_management_audit: {
+        Row: { id: string; store_id: string; entity_type: string; entity_id: string; changed_by: string; reason: string; before_values: Json | null; after_values: Json | null; created_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       store_closure_dates: {
         Row: {
           closure_date: string;
@@ -1684,6 +1750,21 @@ export type Database = {
       };
     };
     Functions: {
+      create_attendance_tag: { Args: { tag_name: string }; Returns: Json };
+      update_attendance_tag: { Args: { target_tag_id: string; tag_name: string; active: boolean }; Returns: Database["public"]["Tables"]["attendance_tags"]["Row"] };
+      rotate_attendance_tag: { Args: { target_tag_id: string; change_reason: string }; Returns: Json };
+      begin_attendance_punch: { Args: { raw_token: string; request_id: string }; Returns: { id: string; punch_type: "check_in" | "check_out"; tagged_at: string; expires_at: string; status: string; store_id: string; tag_name: string; open_check_in_at: string | null; scheduled_time: string | null; suggested_time: string | null; warning_message: string | null } | null };
+      get_my_pending_attendance_punch: { Args: Record<string, never>; Returns: { id: string; punch_type: "check_in" | "check_out"; tagged_at: string; expires_at: string; status: string; store_id: string; tag_name: string; open_check_in_at: string | null; scheduled_time: string | null; suggested_time: string | null; warning_message: string | null } | null };
+      finalize_attendance_punch: { Args: { target_event_id: string; entered_time: string; request_id: string }; Returns: Json };
+      manage_attendance_shift: { Args: { target_shift_id: string; confirmed_check_in: string; confirmed_check_out: string | null; unpaid_break: number; target_status: string; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_shifts"]["Row"] };
+      recalculate_attendance_segments: { Args: { target_shift_id: string }; Returns: undefined };
+      attendance_manager: { Args: { target_store_id: string }; Returns: boolean };
+      save_attendance_work_schedule: { Args: { target_user_id: string; target_weekday: number; target_start_time: string; target_end_time: string; target_break_minutes: number; target_effective_from: string; target_effective_to: string | null; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_work_schedules"]["Row"] };
+      save_attendance_schedule_override: { Args: { target_user_id: string; target_work_date: string; target_is_day_off: boolean; target_start_time: string | null; target_end_time: string | null; target_break_minutes: number; target_note: string | null; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_schedule_overrides"]["Row"] };
+      save_attendance_pay_rate: { Args: { target_user_id: string; target_hourly_wage: number; target_weekly_contracted_minutes: number; target_effective_from: string; target_effective_to: string | null; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_pay_rates"]["Row"] };
+      save_attendance_payroll_rules: { Args: { target_effective_from: string; target_effective_to: string | null; target_overtime_multiplier: number; target_night_multiplier: number; target_holiday_multiplier: number; target_weekly_threshold_minutes: number; target_weekly_overtime_threshold_minutes: number; target_rounding_rule: "half_up" | "floor" | "ceil"; target_rounding_version: number; target_is_confirmed: boolean; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_payroll_rules"]["Row"] };
+      confirm_attendance_segments: { Args: { target_shift_id: string; target_segment_id: string; target_status: "confirmed" | "rejected"; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_shift_segments"]["Row"] };
+      confirm_attendance_weekly_allowance: { Args: { target_user_id: string; target_week_start: string; target_eligible: boolean; target_note: string | null; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_weekly_allowances"]["Row"] };
       is_admin: {
         Args: {
           user_id: string;

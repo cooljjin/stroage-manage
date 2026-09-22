@@ -2,6 +2,15 @@
   "framework": "vite",
   "headers": [
     {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
@@ -32,6 +41,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "destination": "/apple-app-site-association"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

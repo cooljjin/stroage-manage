@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Calculator, ClipboardCheck, CookingPot, ListTodo, Package, Settings, Tags, Truck, Users } from "lucide-react";
+import { Calculator, CalendarClock, ClipboardCheck, CookingPot, ListTodo, Package, Settings, Tags, Truck, Users } from "lucide-react";
 import { StocklyMenuButton } from "./StocklyMenuButton";
 import { hasStaffPermission } from "../lib/staffPermissions";
 import type { ProfileRole, RouteName, StaffPermissionKey } from "../types/domain";
@@ -128,6 +128,16 @@ export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate
                 발주처 관리
               </button> : null}
             </>
+          ) : null}
+          {canManage("attendance_management") ? (
+            <button
+              type="button"
+              onClick={() => go("attendance")}
+              className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-bold hover:bg-slate-100 dark:hover:bg-slate-900"
+            >
+              <CalendarClock size={19} />
+              근태관리
+            </button>
           ) : null}
           {role === "store_admin" ? (
             <>

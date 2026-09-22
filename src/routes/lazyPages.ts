@@ -21,6 +21,7 @@ const loadSupplierManagementPage = () => import("../pages/SupplierManagementPage
 const loadSettingsPage = () => import("../pages/SettingsPage");
 const loadStaffManagementPage = () => import("../pages/StaffManagementPage");
 const loadStaffPermissionsPage = () => import("../pages/StaffPermissionsPage");
+const loadAttendanceManagementPage = () => import("../pages/AttendanceManagementPage");
 
 export const HomePage = lazy(() => loadHomePage().then((module) => ({ default: module.HomePage })));
 export const TimelineCalendarPage = lazy(() => loadTimelineCalendarPage().then((module) => ({ default: module.TimelineCalendarPage })));
@@ -42,6 +43,7 @@ export const SupplierManagementPage = lazy(() => loadSupplierManagementPage().th
 export const SettingsPage = lazy(() => loadSettingsPage().then((module) => ({ default: module.SettingsPage })));
 export const StaffManagementPage = lazy(() => loadStaffManagementPage().then((module) => ({ default: module.StaffManagementPage })));
 export const StaffPermissionsPage = lazy(() => loadStaffPermissionsPage().then((module) => ({ default: module.StaffPermissionsPage })));
+export const AttendanceManagementPage = lazy(() => loadAttendanceManagementPage().then((module) => ({ default: module.AttendanceManagementPage })));
 
 type RoutePageLoader = () => Promise<unknown>;
 
@@ -67,7 +69,8 @@ const routePageLoaders: Partial<Record<RouteName, RoutePageLoader>> = {
   "supplier-management": loadSupplierManagementPage,
   settings: loadSettingsPage,
   "staff-management": loadStaffManagementPage,
-  "staff-permissions": loadStaffPermissionsPage
+  "staff-permissions": loadStaffPermissionsPage,
+  attendance: loadAttendanceManagementPage
 };
 
 const idlePreloadRoutes: Partial<Record<RouteName, readonly RouteName[]>> = {

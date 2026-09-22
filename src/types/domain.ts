@@ -13,7 +13,7 @@ export type StockStatus = "충분" | "절반 이하" | "발주 필요";
 export type UnitWeightUnit = "g" | "kg" | "ml" | "L" | "개";
 export type RecipeUsageUnit = "g" | "kg" | "ml" | "L" | "개";
 export type ProfileRole = "master" | "store_admin" | "staff";
-export type StaffPermissionKey = "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation";
+export type StaffPermissionKey = "category_management" | "supplier_management" | "group_order_recipe_management" | "order_confirmation" | "attendance_management";
 export type InventoryOverviewMode = "list" | "overview";
 export type InventoryOverviewDisplay = "name" | "activity" | "important";
 export type RouteName =
@@ -41,6 +41,7 @@ export type RouteName =
   | "category-management"
   | "unit-management"
   | "supplier-management"
+  | "attendance"
   | "settings"
   | "staff-management"
   | "staff-permissions";
@@ -433,6 +434,62 @@ export type StoreClosureDate = {
   reason: string | null;
   created_by: string;
   created_at: string;
+};
+
+export type AttendancePunchPromptData = {
+  id: string;
+  punch_type: "check_in" | "check_out";
+  tagged_at: string;
+  expires_at: string;
+  status: "pending" | "completed" | "cancelled" | "expired";
+  store_id: string;
+  tag_name: string;
+  open_check_in_at: string | null;
+  suggested_time: string | null;
+  scheduled_time: string | null;
+  warning_message: string | null;
+};
+
+export type AttendanceShift = {
+  id: string;
+  store_id: string;
+  user_id: string;
+  check_in_event_id: string;
+  check_out_event_id: string | null;
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
+  entered_check_in_at: string;
+  entered_check_out_at: string | null;
+  confirmed_check_in_at: string;
+  confirmed_check_out_at: string | null;
+  unpaid_break_minutes: number;
+  status: "open" | "closed" | "needs_review" | "approved";
+  manager_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AttendancePunchEvent = {
+  id: string;
+  store_id: string;
+  user_id: string;
+  punch_type: "check_in" | "check_out";
+  tagged_at: string;
+  entered_at: string | null;
+  confirmed_at: string | null;
+  status: "pending" | "completed" | "cancelled" | "expired";
+  expires_at: string;
+  needs_review: boolean;
+};
+
+export type AttendanceSegment = {
+  id: string;
+  shift_id: string;
+  store_id: string;
+  segment_type: "schedule_overrun" | "overtime" | "night" | "holiday";
+  starts_at: string;
+  ends_at: string;
+  status: "candidate" | "confirmed" | "rejected";
 };
 
 export type AppRoute = {
