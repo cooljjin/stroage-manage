@@ -87,6 +87,20 @@ test("native NFC links use the configured HTTPS host and punch retries keep requ
   assert.match(app, /consumePendingAttendanceToken\(sessionStorage\)[\s\S]{0,300}setAttendancePunch/);
 });
 
+test("native app writes the one-time attendance URL as an NDEF URI", async () => {
+  const [nfc, page, info] = await Promise.all([
+    source("src/lib/nativeAttendanceNfc.ts"),
+    source("src/pages/AttendanceManagementPage.tsx"),
+    source("ios/App/App/Info.plist")
+  ]);
+  assert.match(nfc, /CapacitorNfc\.write/);
+  assert.match(nfc, /allowFormat: true/);
+  assert.match(nfc, /type: \[0x55\]/);
+  assert.match(nfc, /invalidateAfterFirstRead: false/);
+  assert.match(page, /writeAttendanceUrlToNfc/);
+  assert.match(info, /NFCReaderUsageDescription/);
+});
+
 test("attendance management writes only through audited RPCs", async () => {
   const page = await source("src/pages/AttendanceManagementPage.tsx");
   const allClientSource = await clientSource();
