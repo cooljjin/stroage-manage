@@ -60,6 +60,24 @@ test("attendance management exposes filters, signed differences, warnings, and c
   assert.match(page, /미확정 주 수/);
 });
 
+test("attendance management keeps the four feature tabs and their sections", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const [key, label] of [["records", "근태 기록"], ["nfc", "NFC 관리"], ["schedule", "근무 일정"], ["payroll", "급여 기준"]]) {
+    assert.match(page, new RegExp(`\\["${key}", "${label}"\\]`));
+    assert.match(page, new RegExp(`activeSection === "${key}" &&`));
+  }
+  assert.match(page, /aria-label="근태관리 기능"/);
+  assert.match(page, /aria-current={activeSection === section/);
+});
+
+test("attendance date filters fit the mobile viewport and refresh label stays on one line", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const label of ["조회 시작", "조회 종료"]) {
+    assert.match(page, new RegExp(`${label}<input type="date" className="[^"]*min-w-0[^"]*max-w-full`));
+  }
+  assert.match(page, /secondary-button[^"]*shrink-0[^"]*whitespace-nowrap/);
+});
+
 test("attendance prompt uses backend scheduled time and completion copy includes both times", async () => {
   const [prompt, app] = await Promise.all([
     source("src/components/AttendancePunchPrompt.tsx"),
