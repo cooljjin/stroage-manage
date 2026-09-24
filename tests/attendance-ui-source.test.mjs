@@ -120,14 +120,14 @@ test("native app writes the one-time attendance URL as an NDEF URI", async () =>
   assert.match(info, /NFCReaderUsageDescription/);
 });
 
-test("staging test button simulates a tag only for the test store through the real punch flow", async () => {
+test("staging test button permits only the two named test stores through the real punch flow", async () => {
   const [page, app] = await Promise.all([
     source("src/pages/AttendanceManagementPage.tsx"),
     source("src/App.tsx")
   ]);
   assert.match(page, /import\.meta\.env\.MODE === "staging"[\s\S]*?onClick=\{\(\) => void testNewTag\(\)\}[\s\S]*?>테스트<\/button>/);
   assert.match(page, /select\("stores", "name"\)\.eq\("id", currentStoreId\)\.maybeSingle\(\)/);
-  assert.match(page, /store\?\.name !== "테스트 매장"[\s\S]*?return;/);
+  assert.match(page, /store\?\.name !== "테스트 매장" && store\?\.name !== "테스트점"[\s\S]*?return;/);
   assert.match(page, /onTestTag\(newTag\.token\)/);
   assert.match(app, /onTestTag=\{[\s\S]*?setAttendanceToken\(savePendingAttendanceToken\(sessionStorage, token\)\)/);
   assert.match(app, /begin_attendance_punch/);
