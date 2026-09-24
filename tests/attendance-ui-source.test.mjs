@@ -78,6 +78,28 @@ test("attendance date filters fit the mobile viewport and refresh label stays on
   assert.match(page, /secondary-button[^"]*shrink-0[^"]*whitespace-nowrap/);
 });
 
+test("attendance schedule and shift date/time inputs stay within iOS grid cells", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const label of ["적용 시작", "출근", "퇴근", "예외 날짜", "확정 출근", "확정 퇴근"]) {
+    assert.match(page, new RegExp(`${label}<input type="(?:date|time|datetime-local)" className="[^"]*min-w-0[^"]*max-w-full[^"]*appearance-none`));
+  }
+  assert.match(page, /<label className="min-w-0 text-sm">적용 시작/);
+  assert.match(page, /<label className="min-w-0 text-sm font-semibold">확정 출근/);
+});
+
+test("the mobile menu has a viewport-bounded touch scroll area", async () => {
+  const menu = await source("src/components/TopMenu.tsx");
+  assert.match(menu, /max-h-\[calc\(100dvh-8rem-env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(menu, /touch-pan-y overflow-y-scroll/);
+  assert.match(menu, /-webkit-overflow-scrolling:touch/);
+});
+
+test("NFC info shows a test action beside the heading", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  assert.match(page, /<h2[^>]*>\s*<Nfc size=\{20\} \/>NFC 정보<\/h2>\s*\{import\.meta\.env\.MODE === "staging" && <button[^>]*onClick=\{\(\) => void testNewTag\(\)\}[^>]*>테스트<\/button>\}/);
+  assert.match(page, /if \(!newTag\) \{\s*setError\("먼저 NFC 태그를 만들어 주세요\."\);\s*return;/);
+});
+
 test("attendance prompt uses backend scheduled time and completion copy includes both times", async () => {
   const [prompt, app] = await Promise.all([
     source("src/components/AttendancePunchPrompt.tsx"),

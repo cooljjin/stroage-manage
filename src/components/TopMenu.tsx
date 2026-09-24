@@ -45,7 +45,7 @@ export function TopMenu({ open, role, staffPermissions, onOpenChange, onNavigate
       {renderTrigger?.({ open, onClick: () => onOpenChange(!open) }) ?? <StocklyMenuButton open={open} onClick={() => onOpenChange(!open)} />}
 
       {open ? (
-        <div className={`absolute ${align === "left" ? "left-0" : "right-0"} top-12 z-50 max-h-[calc(100dvh-8rem)] w-56 touch-pan-y overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950`}>
+        <div className={`absolute ${align === "left" ? "left-0" : "right-0"} top-12 z-50 max-h-[calc(100dvh-8rem-env(safe-area-inset-bottom))] w-56 touch-pan-y overflow-y-scroll overscroll-contain rounded-md border border-slate-200 bg-white p-2 shadow-soft [-webkit-overflow-scrolling:touch] dark:border-slate-800 dark:bg-slate-950`}>
           <button
             type="button"
             onClick={() => go("prep-mode")}
