@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Download, Nfc, Pencil, Plus, RefreshCw, X } from "lucide-react";
+import { Check, Download, Nfc, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { attendanceTagUrl, calculatePayrollSummary, differenceInMinutes, resolveEffectiveDated, signedMinutesLabel } from "../lib/attendancePayroll";
@@ -12,7 +12,7 @@ type Row<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tab
 type StaffEntry = { id: string; display_name: string; role: ProfileRole };
 type NewTag = { id: string; name: string; token: string; created_at: string };
 
-type Props = { currentStoreId: string; currentRole: ProfileRole };
+type Props = { currentStoreId: string; currentRole: ProfileRole; onTestTag: (token: string) => void };
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const SEGMENT_LABEL = { schedule_overrun: "일정 외", overtime: "연장", night: "야간", holiday: "휴일" } as const;
@@ -57,7 +57,7 @@ function weekStartForDate(value: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(local);
 }
 
-export function AttendanceManagementPage({ currentStoreId, currentRole }: Props) {
+export function AttendanceManagementPage({ currentStoreId, currentRole, onTestTag }: Props) {
   const [fromDate, setFromDate] = useState(() => dateValue(-30));
   const [toDate, setToDate] = useState(() => dateValue());
   const [employeeFilter, setEmployeeFilter] = useState("");
@@ -122,7 +122,7 @@ export function AttendanceManagementPage({ currentStoreId, currentRole }: Props)
       Services.DatabaseService.select("attendance_pay_rates", "*").eq("store_id", currentStoreId).order("effective_from", { ascending: false }),
       Services.DatabaseService.select("attendance_weekly_allowances", "*").eq("store_id", currentStoreId).gte("week_start", fromDate).lte("week_start", toDate),
       Services.DatabaseService.select("attendance_payroll_rules", "*").eq("store_id", currentStoreId).order("effective_from", { ascending: false }),
-      Services.DatabaseService.select("attendance_tags", "*").eq("store_id", currentStoreId).order("created_at", { ascending: false }),
+      Services.DatabaseService.select("attendance_tags", "*").eq("store_id", currentStoreId).is("deleted_at", null).order("created_at", { ascending: false }),
       Services.DatabaseService.select("attendance_work_schedules", "*").eq("store_id", currentStoreId).order("weekday", { ascending: true }),
       Services.DatabaseService.select("attendance_schedule_overrides", "*").eq("store_id", currentStoreId).gte("work_date", fromDate).order("work_date", { ascending: true })
     ]);
@@ -225,6 +225,19 @@ export function AttendanceManagementPage({ currentStoreId, currentRole }: Props)
     } finally { setNfcWriting(false); }
   }
 
+  async function testNewTag() {
+    if (!newTag || import.meta.env.MODE !== "staging") return;
+    setSaving(true); setError(""); setMessage("");
+    try {
+      const { data: store, error: storeError } = await Services.DatabaseService.select("stores", "name").eq("id", currentStoreId).maybeSingle();
+      if (storeError) throw storeError;
+      if (store?.name !== "테스트 매장") { setError("테스트 매장에서만 NFC 태그 테스트를 사용할 수 있습니다."); return; }
+      onTestTag(newTag.token);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "테스트 매장 확인에 실패했습니다.");
+    } finally { setSaving(false); }
+  }
+
   async function editTag(tag: Row<"attendance_tags">) {
     const name = window.prompt("태그 이름", tag.name)?.trim();
     if (!name) return;
@@ -243,6 +256,20 @@ export function AttendanceManagementPage({ currentStoreId, currentRole }: Props)
     if (rotateError) setError(rotateError.message);
     else { setNewTag(data as unknown as NewTag); setMessage("NFC 태그를 재발급했습니다. 새 URL을 스티커에 다시 기록하세요."); await loadData(); }
     setSaving(false);
+  }
+
+  async function deleteTag(tag: Row<"attendance_tags">) {
+    if (!window.confirm(`${tag.name} 태그를 삭제할까요? 기존 URL은 즉시 사용할 수 없고 과거 근태 기록은 유지됩니다. NFC 스티커의 데이터는 지워지지 않습니다.`)) return;
+    setSaving(true); setError(""); setMessage("");
+    try {
+      const { error: deleteError } = await Services.DatabaseService.rpc("delete_attendance_tag", { target_tag_id: tag.id });
+      if (deleteError) { setError(deleteError.message); return; }
+      setNewTag((current) => current?.id === tag.id ? null : current);
+      setMessage("NFC 태그를 삭제했습니다. 기존 URL은 사용할 수 없습니다.");
+      await loadData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "태그를 삭제하지 못했습니다.");
+    } finally { setSaving(false); }
   }
 
   async function addSchedule(event: FormEvent) {
@@ -375,8 +402,8 @@ export function AttendanceManagementPage({ currentStoreId, currentRole }: Props)
       </nav>
       {activeSection === "records" && <>
       <div className="mb-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <label className="min-w-0 text-sm font-semibold">조회 시작<input type="date" className="field mt-1 block min-w-0 max-w-full" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
-        <label className="min-w-0 text-sm font-semibold">조회 종료<input type="date" className="field mt-1 block min-w-0 max-w-full" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+        <label className="min-w-0 text-sm font-semibold">조회 시작<input type="date" className="field mt-1 block min-w-0 max-w-full appearance-none" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+        <label className="min-w-0 text-sm font-semibold">조회 종료<input type="date" className="field mt-1 block min-w-0 max-w-full appearance-none" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
         <label className="text-sm font-semibold">직원 필터<select className="field mt-1" value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}><option value="">전체 직원</option>{staff.filter((entry) => entry.role !== "master").map((entry) => <option key={entry.id} value={entry.id}>{entry.display_name}</option>)}</select></label>
         <label className="text-sm font-semibold">상태 필터<select className="field mt-1" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">전체 상태</option>{Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="panel flex min-h-12 items-center gap-3 p-3 text-sm font-bold"><input type="checkbox" className="h-5 w-5 accent-brand-600" checked={includeAllowances} onChange={(event) => setIncludeAllowances(event.target.checked)} />법정수당 포함</label>
@@ -418,7 +445,7 @@ export function AttendanceManagementPage({ currentStoreId, currentRole }: Props)
 
       <div className="grid gap-5">
         {activeSection === "nfc" && <>
-        <div className="panel p-4"><h2 className="mb-3 flex items-center gap-2 text-lg font-bold"><Nfc size={20} />NFC 정보</h2><form className="flex gap-2" onSubmit={createTag}><input className="field flex-1" aria-label="새 NFC 태그 이름" placeholder="예: 카운터 출퇴근" value={tagName} onChange={(event) => setTagName(event.target.value)} required /><button type="submit" className="primary-button" aria-label="NFC 태그 만들기" disabled={saving}><Plus size={18} /></button></form>{newTag ? <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950"><p className="font-bold">NFC 스티커에 이 HTTPS URL을 기록하세요. 다시 표시되지 않습니다.</p><code className="mt-2 block break-all select-all">{attendanceTagUrl(newTag.token, ATTENDANCE_LINK_HOST)}</code><button type="button" className="secondary-button mt-2" onClick={() => void navigator.clipboard.writeText(attendanceTagUrl(newTag.token, ATTENDANCE_LINK_HOST))}>URL 복사</button><button type="button" className="secondary-button mt-2 ml-2" onClick={() => void writeNewTagToNfc()} disabled={nfcWriting || !isNativeNfcAvailable()}>{nfcWriting ? "태그 기록 중..." : "앱에서 NFC에 저장"}</button><p className="mt-2 text-xs text-slate-500">{isNativeNfcAvailable() ? "NFC 태그를 휴대폰에 대면 이 URL을 직접 기록합니다." : "NFC 저장은 iOS·Android 앱에서 사용할 수 있습니다."}</p></div> : null}<div className="mt-3 space-y-2">{tags.map((tag) => <div key={tag.id} className="flex items-center justify-between gap-2 rounded-md bg-slate-100 p-2 dark:bg-slate-900"><span><strong>{tag.name}</strong> · {tag.is_active ? "활성" : "비활성"}</span><span className="flex gap-1"><button type="button" className="secondary-button p-2" onClick={() => void editTag(tag)} aria-label="태그 이름 수정"><Pencil size={15} /></button><button type="button" className="secondary-button px-2" onClick={() => void toggleTag(tag)}>{tag.is_active ? "중지" : "활성"}</button><button type="button" className="secondary-button px-2" onClick={() => void rotateTag(tag)} disabled={saving}>재발급</button></span></div>)}</div></div>
+        <div className="panel p-4"><h2 className="mb-3 flex items-center gap-2 text-lg font-bold"><Nfc size={20} />NFC 정보</h2><form className="flex gap-2" onSubmit={createTag}><input className="field flex-1" aria-label="새 NFC 태그 이름" placeholder="예: 카운터 출퇴근" value={tagName} onChange={(event) => setTagName(event.target.value)} required /><button type="submit" className="primary-button" aria-label="NFC 태그 만들기" disabled={saving}><Plus size={18} /></button></form>{newTag ? <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950"><p className="font-bold">NFC 스티커에 이 HTTPS URL을 기록하세요. 다시 표시되지 않습니다.</p><code className="mt-2 block break-all select-all">{attendanceTagUrl(newTag.token, ATTENDANCE_LINK_HOST)}</code><button type="button" className="secondary-button mt-2" onClick={() => void navigator.clipboard.writeText(attendanceTagUrl(newTag.token, ATTENDANCE_LINK_HOST))}>URL 복사</button><button type="button" className="secondary-button mt-2 ml-2" onClick={() => void writeNewTagToNfc()} disabled={nfcWriting || !isNativeNfcAvailable()}>{nfcWriting ? "태그 기록 중..." : "앱에서 NFC에 저장"}</button>{import.meta.env.MODE === "staging" && <button type="button" className="secondary-button mt-2 ml-2" onClick={() => void testNewTag()} disabled={saving || nfcWriting}>테스트</button>}<p className="mt-2 text-xs text-slate-500">{isNativeNfcAvailable() ? "NFC 태그를 휴대폰에 대면 이 URL을 직접 기록합니다." : "NFC 저장은 iOS·Android 앱에서 사용할 수 있습니다."}{import.meta.env.MODE === "staging" ? " 테스트는 NFC 없이 실제 근태 기록을 생성합니다 (테스트 매장 전용)." : null}</p></div> : null}<div className="mt-3 space-y-2">{tags.map((tag) => <div key={tag.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-100 p-2 dark:bg-slate-900"><span className="min-w-0 break-words"><strong>{tag.name}</strong> · {tag.is_active ? "활성" : "비활성"}</span><span className="flex flex-wrap gap-1"><button type="button" className="secondary-button p-2" onClick={() => void editTag(tag)} aria-label="태그 이름 수정" title="태그 이름 수정"><Pencil size={15} /></button><button type="button" className="secondary-button px-2" onClick={() => void toggleTag(tag)}>{tag.is_active ? "중지" : "활성"}</button><button type="button" className="secondary-button px-2" onClick={() => void rotateTag(tag)} disabled={saving}>재발급</button><button type="button" className="secondary-button p-2" onClick={() => void deleteTag(tag)} disabled={saving} aria-label={`${tag.name} 태그 삭제`} title={`${tag.name} 태그 삭제`}><Trash2 size={15} /></button></span></div>)}</div></div>
         </>}
 
         {activeSection === "schedule" && <>

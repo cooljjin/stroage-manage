@@ -1062,7 +1062,7 @@ export default function App() {
               {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
               {permittedRoute.name === "unit-management" && <ProductUnitManagementPage currentStoreId={profile.store_id} />}
               {permittedRoute.name === "supplier-management" && <SupplierManagementPage currentStoreId={profile.store_id} />}
-              {permittedRoute.name === "attendance" && <AttendanceManagementPage currentStoreId={profile.store_id} currentRole={profileRole} />}
+              {permittedRoute.name === "attendance" && <AttendanceManagementPage currentStoreId={profile.store_id} currentRole={profileRole} onTestTag={(token) => { setAttendanceError(""); setAttendanceMessage(""); setAttendanceToken(savePendingAttendanceToken(sessionStorage, token)); setAttendanceRetry((value) => value + 1); }} />}
               {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
               {permittedRoute.name === "staff-management" && <StaffManagementPage />}
               {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}

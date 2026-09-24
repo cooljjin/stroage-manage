@@ -1665,9 +1665,9 @@ export type Database = {
         Relationships: [];
       };
       attendance_tags: {
-        Row: { id: string; store_id: string; name: string; token_hash: string; is_active: boolean; created_by: string; created_at: string; updated_at: string };
-        Insert: { id?: string; store_id: string; name: string; token_hash: string; is_active?: boolean; created_by: string; created_at?: string; updated_at?: string };
-        Update: { name?: string; is_active?: boolean; updated_at?: string };
+        Row: { id: string; store_id: string; name: string; token_hash: string; is_active: boolean; deleted_at: string | null; created_by: string; created_at: string; updated_at: string };
+        Insert: { id?: string; store_id: string; name: string; token_hash: string; is_active?: boolean; deleted_at?: string | null; created_by: string; created_at?: string; updated_at?: string };
+        Update: { name?: string; is_active?: boolean; deleted_at?: string | null; updated_at?: string };
         Relationships: [];
       };
       attendance_work_schedules: {
@@ -1751,6 +1751,7 @@ export type Database = {
     };
     Functions: {
       create_attendance_tag: { Args: { tag_name: string }; Returns: Json };
+      delete_attendance_tag: { Args: { target_tag_id: string }; Returns: Database["public"]["Tables"]["attendance_tags"]["Row"] };
       update_attendance_tag: { Args: { target_tag_id: string; tag_name: string; active: boolean }; Returns: Database["public"]["Tables"]["attendance_tags"]["Row"] };
       rotate_attendance_tag: { Args: { target_tag_id: string; change_reason: string }; Returns: Json };
       begin_attendance_punch: { Args: { raw_token: string; request_id: string }; Returns: { id: string; punch_type: "check_in" | "check_out"; tagged_at: string; expires_at: string; status: string; store_id: string; tag_name: string; open_check_in_at: string | null; scheduled_time: string | null; suggested_time: string | null; warning_message: string | null } | null };

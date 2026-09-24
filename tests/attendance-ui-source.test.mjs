@@ -73,7 +73,7 @@ test("attendance management keeps the four feature tabs and their sections", asy
 test("attendance date filters fit the mobile viewport and refresh label stays on one line", async () => {
   const page = await source("src/pages/AttendanceManagementPage.tsx");
   for (const label of ["조회 시작", "조회 종료"]) {
-    assert.match(page, new RegExp(`${label}<input type="date" className="[^"]*min-w-0[^"]*max-w-full`));
+    assert.match(page, new RegExp(`${label}<input type="date" className="[^"]*min-w-0[^"]*max-w-full[^"]*appearance-none`));
   }
   assert.match(page, /secondary-button[^"]*shrink-0[^"]*whitespace-nowrap/);
 });
@@ -115,8 +115,57 @@ test("native app writes the one-time attendance URL as an NDEF URI", async () =>
   assert.match(nfc, /allowFormat: true/);
   assert.match(nfc, /type: \[0x55\]/);
   assert.match(nfc, /invalidateAfterFirstRead: false/);
+  assert.match(nfc, /iosSessionType: "tag"/);
   assert.match(page, /writeAttendanceUrlToNfc/);
   assert.match(info, /NFCReaderUsageDescription/);
+});
+
+test("staging test button simulates a tag only for the test store through the real punch flow", async () => {
+  const [page, app] = await Promise.all([
+    source("src/pages/AttendanceManagementPage.tsx"),
+    source("src/App.tsx")
+  ]);
+  assert.match(page, /import\.meta\.env\.MODE === "staging"[\s\S]*?onClick=\{\(\) => void testNewTag\(\)\}[\s\S]*?>테스트<\/button>/);
+  assert.match(page, /select\("stores", "name"\)\.eq\("id", currentStoreId\)\.maybeSingle\(\)/);
+  assert.match(page, /store\?\.name !== "테스트 매장"[\s\S]*?return;/);
+  assert.match(page, /onTestTag\(newTag\.token\)/);
+  assert.match(app, /onTestTag=\{[\s\S]*?setAttendanceToken\(savePendingAttendanceToken\(sessionStorage, token\)\)/);
+  assert.match(app, /begin_attendance_punch/);
+});
+
+test("deleting an attendance tag revokes it, hides it, preserves history, and audits the change", async () => {
+  const [page, sql, types] = await Promise.all([
+    source("src/pages/AttendanceManagementPage.tsx"),
+    source("supabase/migrations/093_attendance_tag_deletion.sql"),
+    source("src/types/supabase.ts")
+  ]);
+  assert.match(page, /select\("attendance_tags", "\*"\)\.eq\("store_id", currentStoreId\)\.is\("deleted_at", null\)/);
+  assert.match(page, /window\.confirm\([\s\S]*?delete_attendance_tag[\s\S]*?setNewTag\(/);
+  assert.match(page, /aria-label=\{`\$\{tag\.name\} 태그 삭제`\}/);
+  assert.match(sql, /add column deleted_at timestamptz/i);
+  assert.match(sql, /old\.deleted_at is not null[\s\S]*?raise exception/i);
+  assert.match(sql, /select \* into before_row from public\.attendance_tags where id = target_tag_id for update/i);
+  assert.match(sql, /set is_active = false, deleted_at = clock_timestamp\(\)/i);
+  assert.match(sql, /audit_attendance_management\(changed\.store_id, 'tag', changed\.id, 'NFC 태그 삭제'/i);
+  assert.doesNotMatch(sql, /delete from public\.attendance_(?:tags|punch_events|shifts)/i);
+  assert.match(sql, /grant execute on function public\.delete_attendance_tag\(uuid\) to authenticated/i);
+  assert.match(types, /delete_attendance_tag: \{ Args: \{ target_tag_id: string \}/);
+});
+
+test("development iOS release signs NFC TAG without changing staff entitlements", async () => {
+  const [nfcEntitlements, sharedEntitlements, project] = await Promise.all([
+    source("ios/App/App/AppNfcRelease.entitlements"),
+    source("ios/App/App/AppRelease.entitlements"),
+    source("ios/App/App.xcodeproj/project.pbxproj")
+  ]);
+  assert.match(nfcEntitlements, /com\.apple\.developer\.nfc\.readersession\.formats/);
+  assert.match(nfcEntitlements, /<string>TAG<\/string>/);
+  assert.doesNotMatch(nfcEntitlements, /<string>NDEF<\/string>/);
+  assert.doesNotMatch(sharedEntitlements, /com\.apple\.developer\.nfc\.readersession\.formats/);
+  const appRelease = project.match(/504EC3181FED79650016851F \/\* Release \*\/ = \{[\s\S]*?\n\t\t\};/)?.[0];
+  assert.ok(appRelease);
+  assert.match(appRelease, /CODE_SIGN_ENTITLEMENTS = App\/AppNfcRelease\.entitlements/);
+  assert.match(appRelease, /Stockly App Store 1\.0\.40 NFC/);
 });
 
 test("attendance management writes only through audited RPCs", async () => {

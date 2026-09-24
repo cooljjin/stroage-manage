@@ -36,6 +36,7 @@ export async function writeAttendanceUrlToNfc(url: string) {
           void CapacitorNfc.write({ allowFormat: true, records: [attendanceUrlNdefRecord(url)] }).then(() => finish(), finish);
         });
         await CapacitorNfc.startScanning({
+          iosSessionType: "tag",
           invalidateAfterFirstRead: false,
           alertMessage: "NFC 태그를 휴대폰 상단에 가까이 대세요."
         });
