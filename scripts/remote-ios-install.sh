@@ -77,7 +77,8 @@ if ! command -v pod >/dev/null 2>&1; then
 fi
 command -v pod >/dev/null 2>&1 || { echo "CocoaPods is required. Run: gem install --user-install cocoapods" >&2; exit 1; }
 
-npm run ios:prepare
+npm run build -- --mode staging
+STOCKLY_BUILD_MODE=staging node --test tests/production-supabase-bundle.test.mjs
 npx cap sync ios
 
 live_url=

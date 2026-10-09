@@ -7,15 +7,16 @@ import { loadEnv, resolveConfig } from "vite";
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
 const distDirectory = join(projectRoot, "dist");
+const buildMode = process.env.STOCKLY_BUILD_MODE || "production";
 
 function readRequiredEnv(env, name) {
   const value = env[name];
-  assert.ok(value, `${name} must be set for Vite production mode before creating a production bundle`);
+  assert.ok(value, `${name} must be set for Vite ${buildMode} mode before creating a bundle`);
   return value;
 }
 
-test("production entry bundle embeds Vite's active Supabase configuration", async () => {
-  const config = await resolveConfig({}, "build", "production");
+test(`${buildMode} entry bundle embeds Vite's active Supabase configuration`, async () => {
+  const config = await resolveConfig({}, "build", buildMode);
   const env = loadEnv(config.mode, config.envDir, config.envPrefix);
   const supabaseUrl = readRequiredEnv(env, "VITE_SUPABASE_URL");
   const supabaseAnonKey = readRequiredEnv(env, "VITE_SUPABASE_ANON_KEY");
