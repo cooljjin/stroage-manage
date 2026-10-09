@@ -72,6 +72,8 @@ command -v pod >/dev/null 2>&1 || { echo "CocoaPods is required. Run: gem instal
 
 npm run ios:prepare
 npx cap sync ios
+# CocoaPods may rewrite only its local version/checksums; keep the checkout clean for the next safe update.
+git diff --quiet -- ios/App/Podfile.lock || git restore --source=HEAD -- ios/App/Podfile.lock
 
 live_url=
 if [ "$live_reload" = true ]; then
