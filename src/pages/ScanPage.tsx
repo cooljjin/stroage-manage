@@ -117,8 +117,10 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   }, [nativeScannerAvailable, showFallbackUi]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      lastAutoStartKeyRef.current = null;
       scanAttemptRef.current += 1;
       if (scannerRef.current?.isScanning) {
         scannerRef.current.stop().catch(() => undefined);
@@ -209,7 +211,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
           fps: 12,
           qrbox: (viewfinderWidth, viewfinderHeight) => ({
             width: Math.floor(Math.min(viewfinderWidth * 0.92, 520)),
-            height: Math.floor(Math.min(viewfinderHeight * 0.32, 150))
+            height: Math.floor(Math.min(viewfinderHeight * 0.7, viewfinderWidth * 0.92, 360))
           }),
           aspectRatio: 4 / 3,
           disableFlip: true,
@@ -369,7 +371,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
     const scanAttempt = scanAttemptRef.current + 1;
     scanAttemptRef.current = scanAttempt;
 
-    setMessage("사진에서 바코드를 찾는 중...");
+    setMessage("사진에서 바코드 또는 QR 코드를 찾는 중...");
     if (scannerRef.current?.isScanning) {
       await scannerRef.current.stop().catch(() => undefined);
       setScannerActive(false);
@@ -405,7 +407,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
       await handleBarcode(result.decodedText);
     } catch {
       if (mountedRef.current && scanAttempt === scanAttemptRef.current) {
-        setMessage("사진에서 바코드를 찾지 못했습니다. 바코드가 화면을 크게 차지하도록 다시 촬영해 주세요.");
+        setMessage("사진에서 코드를 찾지 못했습니다. 바코드 또는 QR 코드 전체가 화면에 크게 나오도록 다시 촬영해 주세요.");
       }
     }
   }
@@ -440,7 +442,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
   return (
     <>
       {nativeScanActive ? (
-        <div className="native-scanner-overlay" role="dialog" aria-modal="true" aria-label="네이티브 바코드 스캔">
+        <div className="native-scanner-overlay" role="dialog" aria-modal="true" aria-label="네이티브 바코드/QR 코드 스캔">
           <div className="native-scanner-mode-panel">
             <p className="text-sm font-extrabold text-white">스캔 모드</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
@@ -468,7 +470,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
           </div>
           <div className="native-scanner-bottom-panel">
             <p className="rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
-              바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
+              바코드 또는 QR 코드 전체가 가이드 안에 들어오도록 맞춰 주세요.
             </p>
             <button type="button" onClick={() => void cancelNativeScanner()} className="secondary-button w-full bg-white/95">
               스캔 중지
@@ -477,7 +479,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
         </div>
       ) : null}
       <section className={showFallbackUi ? undefined : "native-scanner-fallback-hidden"} aria-hidden={!showFallbackUi}>
-      <PageTitle title="바코드 스캔" description="상품을 스캔하거나 이름으로 검색합니다." />
+      <PageTitle title="바코드/QR 코드 스캔" description="상품 바코드 또는 QR 코드를 스캔하거나 이름으로 검색합니다." />
 
           {isMobileViewport && mobileTouchEnabled ? (
             <div className="mb-4 grid gap-2 rounded-md border border-brand-200 bg-brand-50 px-3 py-3 text-sm font-bold text-brand-900 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-100">
@@ -522,7 +524,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
                 <div id={SCANNER_ID} className="min-h-[320px]" />
                 {scannerActive ? (
                   <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-md bg-slate-950/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur">
-                    바코드 전체가 가이드 안에 들어오도록 15~25cm 떨어뜨려 주세요.
+                    바코드 또는 QR 코드 전체가 가이드 안에 들어오도록 맞춰 주세요.
                   </div>
                 ) : null}
               </div>
@@ -547,7 +549,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <button type="button" onClick={startScanner} disabled={scannerActive || nativeScanBusy || webScannerLoading} className="primary-button inline-flex items-center justify-center gap-2">
                   <ScanLine size={20} />
-                  {nativeScanBusy ? "스캔 중..." : webScannerLoading ? "준비 중..." : "바코드 스캔"}
+                  {nativeScanBusy ? "스캔 중..." : webScannerLoading ? "준비 중..." : "바코드/QR 스캔"}
                 </button>
                 <button type="button" onClick={stopScanner} disabled={!scannerActive && !webScannerLoading} className="secondary-button">
                   중지
@@ -568,7 +570,7 @@ export function ScanPage({ navigate, currentStoreId, scanLaunchId }: Props) {
                 className="secondary-button mt-3 inline-flex w-full items-center justify-center gap-2"
               >
                 <Camera size={19} />
-                사진으로 바코드 인식
+                사진으로 바코드/QR 코드 인식
               </button>
               {message ? <div className="mt-3"><StatusMessage type={message.includes("실패") || message.includes("못했습니다") || message.includes("권한") ? "error" : "info"}>{message}</StatusMessage></div> : null}
             </div>

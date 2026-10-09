@@ -320,3 +320,11 @@
 
   }
 }
+
+.work-time-wheel {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.work-time-wheel::-webkit-scrollbar {
+  display: none;
+}

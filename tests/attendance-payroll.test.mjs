@@ -22,6 +22,17 @@ test("attendance tag URLs accept only the configured attendance path", () => {
   assert.equal(parseAttendanceTagUrl("https://stockly.example/inventory/abc", "stockly.example"), null);
 });
 
+test("Dev attendance tags are isolated from production and keep legacy tags readable", () => {
+  const host = "stockly.example";
+  const url = attendanceTagUrl("abc_DEF-123", host, "development");
+  assert.equal(url, `https://${host}/attendance/dev/tag/abc_DEF-123`);
+  assert.equal(parseAttendanceTagUrl(url, host, "development"), "abc_DEF-123");
+  assert.equal(parseAttendanceTagUrl(url, host), null);
+  assert.equal(parseAttendanceTagUrl(attendanceTagUrl("abc_DEF-123", host), host, "development"), "abc_DEF-123");
+  assert.equal(parseAttendanceTagUrl(`https://${host}/attendance/dev/tag/abc?other=1`, host, "development"), null);
+  assert.equal(parseAttendanceTagUrl(`https://user@${host}/attendance/dev/tag/abc`, host, "development"), null);
+});
+
 test("entered check-in time remains separate from the NFC tag time", () => {
   const taggedAt = "2026-09-22T05:55:00.000Z"; // 14:55 Asia/Seoul
   const enteredAt = resolveEnteredDateTime(taggedAt, "15:00", "Asia/Seoul");

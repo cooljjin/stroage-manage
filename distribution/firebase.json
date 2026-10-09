@@ -1,0 +1,11 @@
+{
+  "bundleId": "com.jinkim.stockly.dev",
+  "scheme": "App",
+  "configuration": "Debug",
+  "adHocProfileName": "Stockly Dev NFC Ad Hoc",
+  "firebaseProjectId": "stockly-dev-d3c5b",
+  "firebaseProjectNumber": "240782986167",
+  "firebaseAppId": "1:240782986167:ios:7893098158a4532af93632",
+  "testerGroupAlias": "stockly-dev-testers",
+  "testDeviceUdid": "00008130-000E14923438001C"
+}

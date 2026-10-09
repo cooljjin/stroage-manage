@@ -378,6 +378,12 @@ PWA:
 - `vite-plugin-pwa`가 build 때 service worker를 생성합니다.
 - 캐시 영향 때문에 UI가 바뀌었는데 기기에서 안 바뀌는 경우 새 빌드/배포 후 앱 캐시를 의심합니다.
 
+### iPhone 개발용 직접 설치
+
+- `Stockly Dev` 개발 서명 재설치는 반드시 `npm run ios:install:dev`로 수행합니다. 수동 `xcodebuild` → 설치 명령을 조립하지 않습니다. 여러 iPhone이 페어링됐으면 `-- --device <UDID>`로 선택합니다.
+- 설치 전 실제 서명에 `applinks:stroage-manage.vercel.app?mode=developer`, NFC `TAG`, 개발 서명 및 대상 기기 프로파일이 있는지 검사해야 합니다. 스크립트는 누락 시 설치를 차단하고 설치 후 정확한 버전과 실행을 읽어 확인합니다.
+- 개발 설치 전용 entitlement는 스크립트가 별도 산출물 폴더에 생성합니다. 공유 Firebase/Release 설정은 변경하지 않습니다. iPhone의 `연결된 도메인 개발` 활성화 및 실물 NFC 태그 성공은 별도 검증입니다.
+
 ### iOS TestFlight 배포 채널
 
 iOS TestFlight는 개발용과 직원 배포용의 별도 앱으로 운영합니다. 두 앱은 Bundle ID, 서명 프로파일, OAuth callback URL이 다르므로 배포 설정을 임의로 섞지 않습니다.

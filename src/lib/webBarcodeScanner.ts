@@ -53,6 +53,7 @@ function buildScanner(module: Html5QrcodeModule, elementId: string) {
 
   return new Html5Qrcode(elementId, {
     formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
       Html5QrcodeSupportedFormats.EAN_13,
       Html5QrcodeSupportedFormats.EAN_8,
       Html5QrcodeSupportedFormats.UPC_A,

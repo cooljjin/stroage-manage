@@ -1,5 +1,5 @@
 import { FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowLeftRight, Check, ChevronDown, ChevronLeft, ChevronRight, History, List, Minus, Pencil, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Check, ChevronDown, ChevronLeft, ChevronRight, History, List, Minus, Nfc, Pencil, Plus, RotateCcw, X } from "lucide-react";
 import { StatusMessage } from "../components/StatusMessage";
 import { MobileInventoryControls } from "../components/MobileInventoryControls";
 import { QuantityKeypadSheet } from "../components/QuantityKeypadSheet";
@@ -17,6 +17,8 @@ import { useMobileViewport } from "../hooks/useMobileViewport";
 import { useInventoryTouchViewport } from "../hooks/useInventoryTouchViewport";
 import { resolveStoreStaffNames } from "../lib/staffNames";
 import * as Services from "../services";
+import { productTagUrl } from "../lib/productNfc";
+import { isNativeNfcAvailable, writeProductUrlToNfc } from "../lib/nativeAttendanceNfc";
 import type { AppRoute, InventoryItem, InventoryLog, Location, MobileInventoryEntryMode, MobileInventoryMode, StockStatus } from "../types/domain";
 
 type Props = {
@@ -43,6 +45,8 @@ const DEFAULT_LOCATION_LONG_PRESS_MS = 700;
 const MOBILE_INPUT_MODE_STORAGE_KEY = "store-inventory-input-mode";
 const QUANTITY_DRAG_STEP_PX = 24;
 const QUANTITY_DRAG_THRESHOLD_PX = 8;
+const NFC_LINK_HOST = import.meta.env.VITE_ATTENDANCE_LINK_HOST ?? "stroage-manage.vercel.app";
+const PRODUCT_TAG_CHANNEL = import.meta.env.MODE === "staging" ? "development" : "production";
 
 type QuantityDragState = {
   pointerId: number;
@@ -350,6 +354,7 @@ export function InventoryOperationPage({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [nfcWriting, setNfcWriting] = useState(false);
   const defaultLocationPressTimerRef = useRef<number | null>(null);
   const quantityDragRef = useRef<QuantityDragState | null>(null);
   const inventoryMutationRequestRef = useRef<string | null>(null);
@@ -1391,6 +1396,21 @@ export function InventoryOperationPage({
     setRestoring(false);
   }
 
+  async function writeCurrentProductNfcTag() {
+    if (!item || nfcWriting) return;
+    setNfcWriting(true);
+    setError("");
+    setSuccess("");
+    try {
+      const written = await writeProductUrlToNfc(productTagUrl(item.id, NFC_LINK_HOST, PRODUCT_TAG_CHANNEL));
+      if (written) setSuccess("품목 재고 확인 NFC 태그를 기록했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "NFC 태그 기록에 실패했습니다.");
+    } finally {
+      setNfcWriting(false);
+    }
+  }
+
   async function openMemoHistory() {
     if (!item) return;
 
@@ -1589,6 +1609,11 @@ export function InventoryOperationPage({
         ) : null}
         <h1 className="min-w-0 flex-1 truncate text-[23px] font-extrabold tracking-normal sm:text-[27px]">{item.name}</h1>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {isNativeNfcAvailable() ? (
+            <button className="touch-button icon-button disabled:opacity-50" type="button" onClick={() => void writeCurrentProductNfcTag()} disabled={nfcWriting} aria-label="품목 NFC 태그 기록" title={nfcWriting ? "NFC 태그를 기다리는 중" : "품목 재고 확인 NFC 태그 기록"}>
+              <Nfc size={18} />
+            </button>
+          ) : null}
           <button className="touch-button icon-button" type="button" onClick={() => navigate({ name: "product-edit", productId: item.id })} aria-label="상품 수정" title="수정">
             <Pencil size={18} />
           </button>

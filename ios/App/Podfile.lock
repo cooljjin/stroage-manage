@@ -1,11 +1,11 @@
 PODS:
-  - Capacitor (8.4.1):
+  - Capacitor (8.5.2):
     - CapacitorCordova
   - CapacitorApp (8.1.0):
     - Capacitor
   - CapacitorBrowser (8.0.4):
     - Capacitor
-  - CapacitorCordova (8.4.1)
+  - CapacitorCordova (8.5.2)
   - CapacitorMlkitBarcodeScanning (8.1.0):
     - Capacitor
     - GoogleMLKit/BarcodeScanning (~> 8.0.0)
@@ -95,10 +95,10 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capgo/capacitor-nfc"
 
 SPEC CHECKSUMS:
-  Capacitor: 9c34c6eb2165694e51758f5b425d470cb00f5bea
+  Capacitor: 59aea4e8bd98b24b798919b4c55ae90c6ded1b0d
   CapacitorApp: a4d8d936cc4390859a3766f141048abe55d4076f
   CapacitorBrowser: 553fcb154526484a5d12efc38093d3f781cb6a82
-  CapacitorCordova: eebe6bcf807b1b06f3f48237650f96bbcd0eef09
+  CapacitorCordova: 5bec5648cbd09a176ce34ce5e7b6cdabb2c8a327
   CapacitorMlkitBarcodeScanning: 1c052457db2c79a763580ca59ee108627ae87f95
   CapgoCapacitorNfc: 82700fa5ab9c7862710559e45f18ed84ae5e8d2e
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7

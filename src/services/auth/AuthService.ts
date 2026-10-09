@@ -9,6 +9,7 @@ export type { AuthChangeEvent, Session, User, UserIdentity } from "@supabase/sup
 
 const NATIVE_AUTH_CALLBACK_PROTOCOLS = new Set([
   "com.jinkim.stockly:",
+  "com.jinkim.stockly.dev:",
   "com.jinkim.storeinventory.poc:"
 ]);
 const NATIVE_AUTH_STATE_STORAGE_KEY = "stockly-native-auth-state";

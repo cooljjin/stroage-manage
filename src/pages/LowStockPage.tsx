@@ -430,7 +430,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
           fps: 12,
           qrbox: (viewfinderWidth, viewfinderHeight) => ({
             width: Math.floor(Math.min(viewfinderWidth * 0.92, 520)),
-            height: Math.floor(Math.min(viewfinderHeight * 0.32, 150))
+            height: Math.floor(Math.min(viewfinderHeight * 0.7, viewfinderWidth * 0.92, 360))
           }),
           aspectRatio: 4 / 3,
           disableFlip: true,
@@ -1179,8 +1179,8 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
                       type="button"
                       onClick={() => (freshScannerActive || freshScannerLoading ? void stopFreshScanner() : void startFreshScanner())}
                       className={`touch-button icon-button ${freshScannerActive || freshScannerLoading ? "border-brand-600 bg-brand-600 text-white dark:bg-brand-600 dark:text-white" : ""}`}
-                      aria-label={freshScannerLoading ? "스캐너 준비 취소" : freshScannerActive ? "바코드 스캔 중지" : "바코드 스캔"}
-                      title={freshScannerLoading ? "준비 취소" : freshScannerActive ? "스캔 중지" : "바코드 스캔"}
+                      aria-label={freshScannerLoading ? "스캐너 준비 취소" : freshScannerActive ? "바코드/QR 코드 스캔 중지" : "바코드/QR 코드 스캔"}
+                      title={freshScannerLoading ? "준비 취소" : freshScannerActive ? "스캔 중지" : "바코드/QR 코드 스캔"}
                     >
                       {freshScannerActive || freshScannerLoading ? <X size={20} /> : <ScanLine size={20} />}
                     </button>
@@ -1190,7 +1190,7 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
                   </div>
                   {freshScannerActive ? (
                     <p className="mt-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 dark:bg-slate-950 dark:text-slate-300">
-                      바코드 전체가 화면 안에 들어오도록 맞춰 주세요.
+                      바코드 또는 QR 코드 전체가 화면 안에 들어오도록 맞춰 주세요.
                     </p>
                   ) : null}
                   {freshScanMessage ? (
@@ -1320,11 +1320,17 @@ export function LowStockPage({ navigate, currentStoreId, canConfirmOrderItems, c
 
           {confirmationModalOpen ? (
             <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 px-4 py-6">
-              <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
+              <div className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
                 <h2 id="confirmation-dialog-title" className="text-lg font-bold">발주 품목 컨펌</h2>
+                <p className="mt-2 text-sm font-semibold">발주 요청하는 품목이 맞는지 확인하세요</p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   컨펌 체크한 {confirmCheckedItems.length}개 품목을 확정합니다. 기존 당일 확정 목록은 선택한 품목으로 교체됩니다.
                 </p>
+                <ul aria-label="컨펌 체크한 품목" className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+                  {confirmCheckedItems.map((item) => (
+                    <li key={item.id} className="break-words">{item.name}</li>
+                  ))}
+                </ul>
                 <label className="mt-4 block">
                   <span className="mb-1 block text-sm font-semibold">메모</span>
                   <textarea

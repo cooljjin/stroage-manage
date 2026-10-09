@@ -10,5 +10,9 @@
 	<array>
 		<string>applinks:stroage-manage.vercel.app</string>
 	</array>
+	<key>com.apple.developer.nfc.readersession.formats</key>
+	<array>
+		<string>TAG</string>
+	</array>
 </dict>
 </plist>

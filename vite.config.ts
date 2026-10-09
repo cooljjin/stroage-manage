@@ -1,15 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
-
-const liveReloadHost = process.env.STOCKLY_LIVE_RELOAD_HOST;
+const liveReloadHost = process.env.STOCKLY_LIVE_RELOAD_HOST ?? process.env.STOCKLY_DEV_HOST;
 
 export default defineConfig({
-  server: liveReloadHost
-    ? {
-        allowedHosts: [liveReloadHost]
-      }
-    : undefined,
+  server: liveReloadHost ? { allowedHosts: [liveReloadHost] } : undefined,
   plugins: [
     react(),
     VitePWA({

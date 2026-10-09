@@ -45,12 +45,23 @@ test("NFC attendance opens from HTTPS links on iOS", async () => {
   assert.match(association, /com\.jinkim\.storeinventory\.poc/);
 });
 
-test("attendance management exposes filters, signed differences, warnings, and complete Excel sheets", async () => {
+test("Dev attendance tags use the Dev channel for writing and cold/warm launch parsing", async () => {
+  const [app, management] = await Promise.all([source("src/App.tsx"), source("src/pages/AttendanceManagementPage.tsx")]);
+  assert.match(app, /parseAttendanceTagUrl\(url, ATTENDANCE_LINK_HOST, PRODUCT_TAG_CHANNEL\)/);
+  assert.match(management, /import.meta.env.MODE === "staging" \? "development" : "production"/);
+  assert.match(management, /attendanceTagUrl\(newTag\.token, ATTENDANCE_LINK_HOST, ATTENDANCE_TAG_CHANNEL\)/);
+  const attendanceTagUrls = [...management.matchAll(/attendanceTagUrl\(newTag\.token, ATTENDANCE_LINK_HOST[^)]*\)/g)].map(([call]) => call);
+  assert.equal(attendanceTagUrls.length, 3, "displayed, copied, and NFC-written URLs must share one channel");
+  assert.ok(attendanceTagUrls.every((call) => call.endsWith(", ATTENDANCE_TAG_CHANNEL)")), attendanceTagUrls.join("\n"));
+  assert.match(app, /if \(attendanceTokenFromUrl\(window\.location\.href\)\) window\.history\.replaceState/);
+});
+
+test("attendance management exposes filters, signed differences, and complete Excel sheets", async () => {
   const page = await source("src/pages/AttendanceManagementPage.tsx");
-  assert.match(page, /직원 필터/);
-  assert.match(page, /상태 필터/);
+  assert.match(page, /직원 선택/);
+  assert.doesNotMatch(page, />전체 상태</);
+  assert.doesNotMatch(page, /statusFilter|setStatusFilter|상태 필터/);
   assert.match(page, /signedMinutesLabel/);
-  assert.match(page, /입력 대기|입력 누락|만료/);
   assert.match(page, /await import\("xlsx"\)/);
   assert.doesNotMatch(page, /import \* as XLSX from "xlsx"/);
   assert.match(page, /상세 근태/);
@@ -60,44 +71,58 @@ test("attendance management exposes filters, signed differences, warnings, and c
   assert.match(page, /미확정 주 수/);
 });
 
-test("attendance management keeps the four feature tabs and their sections", async () => {
-  const page = await source("src/pages/AttendanceManagementPage.tsx");
-  for (const [key, label] of [["records", "근태 기록"], ["nfc", "NFC 관리"], ["schedule", "근무 일정"], ["payroll", "급여 기준"]]) {
-    assert.match(page, new RegExp(`\\["${key}", "${label}"\\]`));
-    assert.match(page, new RegExp(`activeSection === "${key}" &&`));
-  }
-  assert.match(page, /aria-label="근태관리 기능"/);
-  assert.match(page, /aria-current={activeSection === section/);
+test("unresolved NFC events do not warn, while attendance still requires explicit confirmation", async () => {
+  const [page, app, prompt] = await Promise.all([
+    source("src/pages/AttendanceManagementPage.tsx"),
+    source("src/App.tsx"),
+    source("src/components/AttendancePunchPrompt.tsx")
+  ]);
+  assert.doesNotMatch(page, /unresolvedEvents|입력 대기·입력 누락·만료 기록이/);
+  assert.match(app, /begin_attendance_punch/);
+  assert.match(app, /finalize_attendance_punch/);
+  assert.match(prompt, /onClick=\{\(\) => onConfirm\(enteredDate, enteredTime\)\}/);
 });
 
-test("attendance date filters fit the mobile viewport and refresh label stays on one line", async () => {
+test("attendance management consolidates staff, records, and schedules into the calendar", async () => {
   const page = await source("src/pages/AttendanceManagementPage.tsx");
-  for (const label of ["조회 시작", "조회 종료"]) {
-    assert.match(page, new RegExp(`${label}<input type="date" className="[^"]*min-w-0[^"]*max-w-full[^"]*appearance-none`));
+  for (const [key, label] of [["calendar", "달력"], ["nfc", "NFC 관리"], ["payroll", "급여 기준"]]) {
+    assert.ok(page.includes(`["${key}", "${label}"]`));
+    assert.ok(page.includes(`activeSection === "${key}" &&`));
   }
-  assert.match(page, /secondary-button[^"]*shrink-0[^"]*whitespace-nowrap/);
+  assert.ok(page.includes('["records", "근태 기록 · 엑셀"]') && page.includes('["staff", "직원 등록·관리"]'));
+  assert.ok(page.includes('currentRole === "store_admin" ? <button') && page.includes('aria-pressed={editingCalendar}'));
+  assert.ok(page.includes('editingCalendar && currentRole === "store_admin"'));
+  assert.ok(page.includes('title="근태관리 메뉴"'));
+});
+
+test("calendar month bounds schedule, actual, and pending records", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const fragment of ['setFromDate(monthStart)', 'setToDate(new Date(Date.UTC', 'setScheduleMonth(monthStart)', 'gte("work_date", scheduleMonth).lte("work_date", scheduleMonthEnd)', 'gte("confirmed_check_in_at", rangeStart).lte("confirmed_check_in_at", rangeEnd)']) assert.ok(page.includes(fragment), fragment);
+  assert.ok(page.includes('whitespace-nowrap'));
 });
 
 test("attendance schedule and shift date/time inputs stay within iOS grid cells", async () => {
   const page = await source("src/pages/AttendanceManagementPage.tsx");
-  for (const label of ["적용 시작", "출근", "퇴근", "예외 날짜", "확정 출근", "확정 퇴근"]) {
+  for (const label of ["적용 시작일", "확정 출근", "확정 퇴근"]) {
     assert.match(page, new RegExp(`${label}<input type="(?:date|time|datetime-local)" className="[^"]*min-w-0[^"]*max-w-full[^"]*appearance-none`));
   }
-  assert.match(page, /<label className="min-w-0 text-sm">적용 시작/);
+  assert.match(page, /<label className="min-w-0">적용 시작일/);
   assert.match(page, /<label className="min-w-0 text-sm font-semibold">확정 출근/);
 });
 
-test("the mobile menu has a viewport-bounded touch scroll area", async () => {
-  const menu = await source("src/components/TopMenu.tsx");
-  assert.match(menu, /max-h-\[calc\(100dvh-8rem-env\(safe-area-inset-bottom\)\)\]/);
+test("the mobile menu scrolls above the bottom nav within iOS safe areas", async () => {
+  const [menu, bottomNav] = await Promise.all([source("src/components/TopMenu.tsx"), source("src/components/BottomNav.tsx")]);
+  assert.match(menu, /max-h-\[calc\(100dvh-env\(safe-area-inset-top\)-env\(safe-area-inset-bottom\)-9rem\)\]/);
+  assert.match(bottomNav, /min-h-\[64px\]/);
   assert.match(menu, /touch-pan-y overflow-y-scroll/);
   assert.match(menu, /-webkit-overflow-scrolling:touch/);
 });
 
-test("NFC info shows a test action beside the heading", async () => {
+test("NFC test is attached to each tag and uses the validated selected tag", async () => {
   const page = await source("src/pages/AttendanceManagementPage.tsx");
-  assert.match(page, /<h2[^>]*>\s*<Nfc size=\{20\} \/>NFC 정보<\/h2>\s*\{import\.meta\.env\.MODE === "staging" && <button[^>]*onClick=\{\(\) => void testNewTag\(\)\}[^>]*>테스트<\/button>\}/);
-  assert.match(page, /if \(!newTag\) \{\s*setError\("먼저 NFC 태그를 만들어 주세요\."\);\s*return;/);
+  assert.match(page, /tags\.map\(\(tag\)[\s\S]*?onClick=\{\(\) => void testTag\(tag\)\}[\s\S]*?>테스트<\/button>/);
+  assert.match(page, /onTestTag\(tag\.id\)/);
+  assert.match(page, /disabled=\{saving \|\| !tag\.is_active\}/);
 });
 
 test("attendance prompt uses backend scheduled time and completion copy includes both times", async () => {
@@ -111,6 +136,16 @@ test("attendance prompt uses backend scheduled time and completion copy includes
   assert.match(app, /consumePendingAttendanceToken/);
   assert.match(app, /급여 반영/);
   assert.match(app, /NFC 태그/);
+});
+
+test("attendance time prompt has a dismiss X wired to the parent without saving", async () => {
+  const [prompt, app] = await Promise.all([
+    source("src/components/AttendancePunchPrompt.tsx"),
+    source("src/App.tsx")
+  ]);
+  assert.match(prompt, /onClose: \(\) => void/);
+  assert.match(prompt, /aria-label="닫기"[^>]*onClick=\{onClose\}|onClick=\{onClose\}[^>]*aria-label="닫기"/);
+  assert.match(app, /<AttendancePunchPrompt[^\n]*onClose=\{\(\) => setAttendancePunch\(null\)\}/);
 });
 
 test("native NFC links use the configured HTTPS host and punch retries keep request IDs", async () => {
@@ -127,32 +162,180 @@ test("native NFC links use the configured HTTPS host and punch retries keep requ
   assert.match(app, /consumePendingAttendanceToken\(sessionStorage\)[\s\S]{0,300}setAttendancePunch/);
 });
 
-test("native app writes the one-time attendance URL as an NDEF URI", async () => {
-  const [nfc, page, info] = await Promise.all([
+test("native NFC writer stores HTTPS URLs as NDEF URI records", async () => {
+  const [nfc, records, page, info] = await Promise.all([
     source("src/lib/nativeAttendanceNfc.ts"),
+    source("src/lib/productNfc.ts"),
     source("src/pages/AttendanceManagementPage.tsx"),
     source("ios/App/App/Info.plist")
   ]);
   assert.match(nfc, /CapacitorNfc\.write/);
   assert.match(nfc, /allowFormat: true/);
-  assert.match(nfc, /type: \[0x55\]/);
+  assert.match(nfc, /urlNdefRecord/);
+  assert.match(records, /type: \[0x55\]/);
   assert.match(nfc, /invalidateAfterFirstRead: false/);
   assert.match(nfc, /iosSessionType: "tag"/);
   assert.match(page, /writeAttendanceUrlToNfc/);
   assert.match(info, /NFCReaderUsageDescription/);
 });
 
-test("staging test button permits only the two named test stores through the real punch flow", async () => {
+test("staging tag test checks the named test store and starts the real punch flow", async () => {
   const [page, app] = await Promise.all([
     source("src/pages/AttendanceManagementPage.tsx"),
     source("src/App.tsx")
   ]);
-  assert.match(page, /import\.meta\.env\.MODE === "staging"[\s\S]*?onClick=\{\(\) => void testNewTag\(\)\}[\s\S]*?>테스트<\/button>/);
+  assert.match(page, /import\.meta\.env\.MODE === "staging"[\s\S]*?onClick=\{\(\) => void testTag\(tag\)\}[\s\S]*?>테스트<\/button>/);
   assert.match(page, /select\("stores", "name"\)\.eq\("id", currentStoreId\)\.maybeSingle\(\)/);
   assert.match(page, /store\?\.name !== "테스트 매장" && store\?\.name !== "테스트점"[\s\S]*?return;/);
-  assert.match(page, /onTestTag\(newTag\.token\)/);
-  assert.match(app, /onTestTag=\{[\s\S]*?setAttendanceToken\(savePendingAttendanceToken\(sessionStorage, token\)\)/);
+  assert.match(page, /onTestTag\(tag\.id\)/);
+  assert.match(app, /begin_attendance_tag_test/);
   assert.match(app, /begin_attendance_punch/);
+});
+
+test("attendance rows remain available below the calendar on demand", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const fragment of ['setShowDetails', '출근시간', '퇴근시간', '상세 보기', '간략히 보기', '근태 기록 · 엑셀', 'onClick={() => void exportExcel()}']) assert.ok(page.includes(fragment), fragment);
+});
+
+test("one calendar combines planned, pending, day-off, and actual shifts", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const fragment of ['scheduleCalendarDays.map((day, index)', 'attendance_pending_staff_dates', 'if (override?.is_day_off)', 'calendarRowsByDate.get(day)', 'calendarEntries.get(selectedCalendarDates[0])', 'visiblePayRows.forEach((row)', 'localInput(row.shift.confirmed_check_in_at).slice(0, 10)', 'setSelectedCalendarDates([day])']) assert.ok(page.includes(fragment), fragment);
+  assert.ok(page.includes('currentRole === "store_admin" ? Services.DatabaseService.select("attendance_pending_staff"'));
+});
+
+test("staff onboarding calendars use pointer range selection for home and work-date selection", async () => {
+  const onboarding = await source("src/components/AttendanceStaffOnboarding.tsx");
+  assert.match(onboarding, /useCalendarDateSelection/);
+  assert.match(onboarding, /selectedHomeDates/);
+  assert.match(onboarding, /data-calendar-date=\{day\}/);
+  assert.match(onboarding, /onPointerDown=\{\(event\) => calendarSelection\.onPointerDownDate\(day, event\)\}/);
+  assert.match(onboarding, /onPointerMove=\{calendarSelection\.onPointerMove\}/);
+  assert.match(onboarding, /onPointerUp=\{calendarSelection\.onPointerUp\}/);
+  assert.match(onboarding, /onPointerCancel=\{calendarSelection\.onPointerCancel\}/);
+  assert.match(onboarding, /touch-none sm:touch-auto select-none/);
+});
+
+test("staff onboarding bounds optional phone values in the form and RPC migration", async () => {
+  const [onboarding, migration] = await Promise.all([
+    source("src/components/AttendanceStaffOnboarding.tsx"),
+    source("supabase/migrations/096_attendance_staff_onboarding.sql")
+  ]);
+  assert.match(onboarding, /type="tel" value=\{phone\} maxLength=\{40\}/);
+  assert.match(onboarding, /type="tel" value=\{editPhone\} maxLength=\{40\}/);
+  assert.match(migration, /phone text check \(phone is null or char_length\(btrim\(phone\)\) between 1 and 40\)/);
+  assert.match(migration, /target_phone is not null and char_length\(btrim\(target_phone\)\) > 40/);
+});
+
+test("calendar date stays at the top above event previews at every zoom", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  assert.match(page, /data-calendar-date=\{day\}/);
+  assert.ok(page.indexOf("하루 내역`}") < page.indexOf("entries.slice(0, calendarZoom"));
+});
+
+test("calendar zooms with pinch or accessible controls and keeps full day details", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const fragment of ['aria-label="달력 축소"', 'aria-label="달력 확대"', 'onTouchStart={startPinch}', 'onTouchMove={movePinch}', 'onTouchEnd=', 'entries.slice(0, calendarZoom', 'openDay(day, entry.key)', 'title={`${detail?.name', 'entries.map((entry) =>']) assert.ok(page.includes(fragment), fragment);
+});
+
+test("pinch resizes continuously around its midpoint instead of stepping on release", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  assert.match(page, /Math\.log\(distance \/ pinch\.startDistance\)/);
+  assert.doesNotMatch(page, /window\.scrollBy|useLayoutEffect/);
+  assert.match(page, /document\.body\.style\.position = "fixed"/);
+  assert.match(page, /document\.body\.style\.top = `-\$\{scrollY\}px`/);
+  assert.match(page, /onTouchCancel=\{endPinch\}/);
+  assert.match(page, /event\.touches\.length === 0\) endPinch\(\)/);
+  assert.match(page, /grid\.addEventListener\("touchmove", blockNativeScroll, \{ passive: false \}\)/);
+  assert.match(page, /if \(pinchGesture\.current\) event\.preventDefault\(\)/);
+  assert.match(page, /grid\.removeEventListener\("touchmove", blockNativeScroll\)/);
+  assert.doesNotMatch(page, /nextZoom === calendarZoom\) window\.scrollBy/);
+  assert.ok(page.includes("minHeight: `${100 + 32 * calendarZoom}px`"));
+  assert.doesNotMatch(page, /pinchDelta|transition-\[height\]/);
+});
+
+test("pinch locks the page and restores its original styles and scroll on release", async () => {
+  const { transpileModule } = await import("typescript");
+  const { runInNewContext } = await import("node:vm");
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  const handlers = page.slice(page.indexOf("  function startPinch("), page.indexOf("  const dayEntries", page.indexOf("  function startPinch(")));
+  const style = { position: "relative", top: "2px", width: "90%", overflow: "auto" };
+  const original = { ...style };
+  const scrolls = [];
+  const context = { editingCalendar: false, calendarZoom: 0, pinchGesture: { current: null }, pinchScrollLock: { current: null }, document: { body: { style } }, window: { scrollY: 240, scrollTo: (options) => scrolls.push(options.top) }, setCalendarZoom: () => {} };
+  runInNewContext(transpileModule(handlers, {}).outputText, context);
+  context.startPinch({ touches: [{ clientX: 0, clientY: 0 }] });
+  assert.deepEqual(style, original);
+  const event = { touches: [{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }] };
+  context.startPinch(event);
+  assert.equal(style.position, "fixed");
+  assert.equal(style.top, "-240px");
+  context.movePinch({ touches: [{ clientX: 0, clientY: 20 }, { clientX: 150, clientY: 20 }] });
+  assert.deepEqual(scrolls, []);
+  context.startPinch(event);
+  context.endPinch();
+  assert.deepEqual(style, original);
+  assert.deepEqual(scrolls, [240]);
+  context.endPinch();
+  assert.deepEqual(scrolls, [240]);
+});
+
+test("calendar editing uses existing audited schedule paths without a second display grid", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const fragment of ['>기본 근무</button>', '>휴무·교대</button>', 'selectedScheduleDates', 'scheduleWeekday', 'save_attendance_work_schedule', 'save_attendance_schedule_override', 'editingCalendar ? scheduleCalendarSelection.onPointerMove : undefined', 'editingCalendar ? scheduleCalendarSelection.onPointerUp : undefined', 'editingCalendar ? scheduleCalendarSelection.onPointerCancel : undefined', 'data-calendar-date={day}', 'function weekdayForDate(date: string)']) assert.ok(page.includes(fragment), fragment);
+  assert.equal(page.split('scheduleCalendarDays.map((day, index)').length - 1, 1);
+});
+
+test("view taps select one day while edit taps toggle schedule dates", async () => {
+  const [page, hook] = await Promise.all([source("src/pages/AttendanceManagementPage.tsx"), source("src/hooks/useCalendarDateSelection.ts")]);
+  assert.ok(hook.includes('toggleScheduleDate(current, date)'));
+  assert.ok(page.includes('editingCalendar ? scheduleCalendarSelection.onClickDate(day, event) : openDay(day)'));
+  assert.ok(!page.includes('scheduleRangeStart'));
+});
+
+test("edit drag still snapshots and previews contiguous date ranges", async () => {
+  const [page, hook, dates] = await Promise.all([source("src/pages/AttendanceManagementPage.tsx"), source("src/hooks/useCalendarDateSelection.ts"), source("src/lib/scheduleDateSelection.ts")]);
+  for (const fragment of ['editingCalendar ? "grid grid-cols-7 touch-none sm:touch-auto select-none" : "grid grid-cols-7 touch-pan-y select-none"', 'editingCalendar ? scheduleCalendarSelection.onPointerMove : undefined', 'editingCalendar ? scheduleCalendarSelection.onPointerUp : undefined', 'editingCalendar ? scheduleCalendarSelection.onPointerCancel : undefined', 'editingCalendar ? (event) => scheduleCalendarSelection.onPointerDownDate(day, event) : undefined']) assert.ok(page.includes(fragment), fragment);
+  for (const fragment of ['initialSelection = [...selectedDates]', 'hasExceededScheduleDragThreshold', 'applyScheduleDateRange(active.initialSelection', 'setSelectedDates(active.initialSelection)', 'setPointerCapture(event.pointerId)']) assert.ok(hook.includes(fragment), fragment);
+  assert.ok(dates.includes('document.elementFromPoint(clientX, clientY)'));
+});
+
+test("compact attendance rows fit mobile without horizontal scrolling and keep every field", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  assert.match(page, /<div className="sm:hidden">\s*\{visiblePayRows\.map/);
+  assert.match(page, /<table className=\{`hidden sm:table/);
+  const cards = page.split('<div className="sm:hidden">\n          {visiblePayRows.map')[1]?.split("<table")[0] ?? "";
+  for (const field of ["display_name", "confirmed_check_in_at", "confirmed_check_out_at", "workedMinutes", "wage.toLocaleString()", "withAllowances", "withoutAllowances", "STATUS_LABEL[shift.status]", "startEditing(shift)"]) {
+    assert.ok(cards.includes(field), `mobile compact card missing ${field}`);
+  }
+});
+
+test("mobile attendance cards show employee with date and only labeled check-in/out times", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  const cards = page.split('<div className="sm:hidden">\n          {visiblePayRows.map')[1]?.split("<table")[0] ?? "";
+  const overview = cards.split("<details")[0] ?? "";
+  assert.match(overview, /<strong className="min-w-0 break-words">\{staffById\.get\(shift\.user_id\)\?\.display_name \?\? "직원"\}<\/strong>/);
+  assert.match(overview, /localInput\(shift\.confirmed_check_in_at\)\.slice\(5, 10\)\.replace\("-", "\."\)/);
+  assert.match(overview, /출근 : \{[^}]+\}[^<]*<\/span><span> \/ <\/span><span>퇴근 :/);
+  assert.doesNotMatch(overview, /STATUS_LABEL\[shift\.status\]|minutesLabel|summary\.withAllowances|summary\.withoutAllowances/);
+  assert.match(overview, /confirmed_check_out_at \? localInput\(shift\.confirmed_check_out_at\)\.slice\(11, 16\)/);
+  const details = cards.split("<details")[1] ?? "";
+  assert.match(details, /기록 상세[\s\S]*STATUS_LABEL\[shift\.status\][\s\S]*minutesLabel\(summary\.workedMinutes\)[\s\S]*wage\.toLocaleString\(\)/);
+});
+
+test("calendar shares employee filtering and hides secondary payroll details", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  for (const fragment of ['aria-expanded={filtersOpen}', '직원 · {employeeFilter', 'staffById.get(employeeFilter)?.display_name', 'filtersOpen ? "grid" : "hidden"', '>계산 내역</summary>', '>기록 상세</summary>', '>근태 기록 · 엑셀</summary>', '{showDetails ? "간략히 보기" : "상세 보기"}</button>']) assert.ok(page.includes(fragment), fragment);
+});
+
+test("attendance calendar explains selection, schedule editing, filters, and event colors", async () => {
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  assert.match(page, /날짜를 눌러 근무·출퇴근 기록을 확인하고, 관리자는 근무표를 편집합니다/);
+  assert.match(page, /{editingCalendar \? "편집 완료" : "근무표 편집"}/);
+  assert.match(page, /aria-label="달력 범례"/);
+  for (const label of ["예정", "출퇴근 기록", "휴무", "가입 전 일정"]) assert.match(page, new RegExp(`label: "${label}"`));
+  assert.match(page, /직원 · \{employeeFilter/);
+  assert.match(page, /화면 예상 금액에 법정수당 포함/);
+  assert.match(page, /예상 금액 표시만 바꾸며 근태 기록이나 급여 기준은 변경하지 않습니다/);
 });
 
 test("deleting an attendance tag revokes it, hides it, preserves history, and audits the change", async () => {
@@ -174,7 +357,7 @@ test("deleting an attendance tag revokes it, hides it, preserves history, and au
   assert.match(types, /delete_attendance_tag: \{ Args: \{ target_tag_id: string \}/);
 });
 
-test("development iOS release signs NFC TAG without changing staff entitlements", async () => {
+test("development and staff iOS releases require NFC TAG without NDEF", async () => {
   const [nfcEntitlements, sharedEntitlements, project] = await Promise.all([
     source("ios/App/App/AppNfcRelease.entitlements"),
     source("ios/App/App/AppRelease.entitlements"),
@@ -183,7 +366,9 @@ test("development iOS release signs NFC TAG without changing staff entitlements"
   assert.match(nfcEntitlements, /com\.apple\.developer\.nfc\.readersession\.formats/);
   assert.match(nfcEntitlements, /<string>TAG<\/string>/);
   assert.doesNotMatch(nfcEntitlements, /<string>NDEF<\/string>/);
-  assert.doesNotMatch(sharedEntitlements, /com\.apple\.developer\.nfc\.readersession\.formats/);
+  assert.match(sharedEntitlements, /com\.apple\.developer\.nfc\.readersession\.formats/);
+  assert.match(sharedEntitlements, /<string>TAG<\/string>/);
+  assert.doesNotMatch(sharedEntitlements, /<string>NDEF<\/string>/);
   const appRelease = project.match(/504EC3181FED79650016851F \/\* Release \*\/ = \{[\s\S]*?\n\t\t\};/)?.[0];
   assert.ok(appRelease);
   assert.match(appRelease, /CODE_SIGN_ENTITLEMENTS = App\/AppNfcRelease\.entitlements/);
@@ -227,4 +412,65 @@ test("attendance Supabase types include complete effective contracts and managem
     "save_attendance_payroll_rules", "confirm_attendance_weekly_allowance", "confirm_attendance_segments",
     "rotate_attendance_tag"
   ]) assert.match(supabase, new RegExp(`${rpc}:`));
+});
+
+test("attendance refresh updates successful query states and distinguishes loaded payroll rules", async () => {
+  const { transpileModule } = await import("typescript");
+  const { runInNewContext } = await import("node:vm");
+  const page = await source("src/pages/AttendanceManagementPage.tsx");
+  const callbackStart = page.indexOf("async () => {", page.indexOf("const loadData = useCallback("));
+  const callbackEnd = page.indexOf("\n  }, [currentStoreId", callbackStart);
+  assert.notEqual(callbackStart, -1);
+  assert.notEqual(callbackEnd, -1);
+  const callback = `${page.slice(callbackStart, callbackEnd)}\n}; loadData;`;
+  const queryResults = Object.fromEntries([
+    ["list_store_staff_directory", []],
+    ["attendance_shifts", [{ id: "fresh-shift" }]],
+    ["attendance_punch_events", []],
+    ["attendance_shift_segments", []],
+    ["attendance_pay_rates", []],
+    ["attendance_weekly_allowances", []],
+    ["attendance_payroll_rules", [{ id: "unconfirmed-rule", is_confirmed: false }]],
+    ["attendance_tags", [{ id: "fresh-tag" }]],
+    ["attendance_work_schedules", []],
+    ["attendance_schedule_overrides", []],
+    ["attendance_pending_staff", []],
+    ["attendance_pending_staff_dates", []]
+  ].map(([table, data]) => [table, { data, error: null }]));
+  const state = {};
+  const setters = ["staff", "shifts", "events", "segments", "rates", "allowances", "rules", "tags", "schedules", "overrides", "pendingStaff", "pendingDates", "loading", "error", "scheduleUser", "rateUser", "payrollRulesStatus"];
+  const context = {
+    currentStoreId: "store",
+    currentRole: "store_admin",
+    fromDate: "2026-10-01",
+    toDate: "2026-10-31",
+    scheduleMonth: "2026-10-01",
+    scheduleMonthEnd: "2026-10-31",
+    Services: { DatabaseService: {
+      rpc: (name) => Promise.resolve(queryResults[name]),
+      select: (table) => {
+        const query = {
+          eq: () => query, gte: () => query, lte: () => query, order: () => query, is: () => query,
+          then: (resolve, reject) => Promise.resolve(queryResults[table]).then(resolve, reject)
+        };
+        return query;
+      }
+    } },
+    ...Object.fromEntries(setters.map((name) => [`set${name[0].toUpperCase()}${name.slice(1)}`, (value) => { state[name] = typeof value === "function" ? value(state[name] ?? "") : value; }]))
+  };
+  const loadData = runInNewContext(transpileModule(`const loadData = ${callback}`, { compilerOptions: { target: 99 } }).outputText, context);
+
+  queryResults.attendance_payroll_rules.error = { message: "payroll rules unavailable" };
+  queryResults.list_store_staff_directory = { data: null, error: { message: "staff unavailable" } };
+  await loadData();
+  assert.equal(state.shifts?.[0]?.id, "fresh-shift", "a failed staff query must not block successful shift data");
+  assert.equal(state.tags?.[0]?.id, "fresh-tag", "a failed query must not block other successful data");
+  assert.equal(state.payrollRulesStatus, "error", "a failed policy query is not evidence of an unconfirmed policy");
+  assert.match(page, /payrollRulesStatus === "loaded" && !currentRule\?\.is_confirmed/);
+
+  queryResults.attendance_payroll_rules = { data: [{ id: "unconfirmed-rule", is_confirmed: false }], error: null };
+  queryResults.list_store_staff_directory = { data: [], error: null };
+  await loadData();
+  assert.equal(state.rules?.[0]?.is_confirmed, false, "a successful unconfirmed policy must remain visible to the warning");
+  assert.equal(state.payrollRulesStatus, "loaded");
 });

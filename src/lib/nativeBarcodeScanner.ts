@@ -43,6 +43,7 @@ type NativeBarcodeScanResult =
   | { status: "error"; message: string; fallbackToWeb: true };
 
 const PRODUCT_NATIVE_BARCODE_FORMATS = [
+  "QR_CODE",
   "EAN_13",
   "EAN_8",
   "UPC_A",

@@ -1,11 +1,12 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardCheck, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
+import { Children, cloneElement, FormEvent, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardCheck, GripVertical, History, PackageCheck, Plus, Trash2, Undo2, X } from "lucide-react";
 import { AnimatedList, AnimatedListItem } from "../components/AnimatedList";
 import { PressableButton } from "../components/PressableButton";
 import { StatusMessage } from "../components/StatusMessage";
 import { addDateValueDays, getDateValueWeekday, getNextBusinessDate, getSeoulDateValue, isStoreClosureDate } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
 import { formatInventoryQuantity } from "../lib/inventory";
+import { DEFAULT_HOME_DASHBOARD_CARD_ORDER, homeDashboardLayoutStorageKey, isHomeDashboardCardId, moveHomeDashboardCard, moveHomeDashboardCardBy, normalizeHomeDashboardCardOrder, type HomeDashboardCardId } from "../lib/homeDashboardLayout";
 import { finishMappedMutationRequest, finishMutationRequest, formatMutationError, getMappedMutationRequestId, getMutationRequestId } from "../lib/mutationRequest";
 import * as Services from "../services";
 import type { AppRoute, DashboardTodo, HandoverNote, InventoryCheckTodoSetting, InventoryLog, Product, TodoRoutine } from "../types/domain";
@@ -45,6 +46,16 @@ type DashboardReceiptDeletion = {
 };
 
 type DashboardView = "today" | "tomorrow";
+type DashboardCardDrag = {
+  cardId: HomeDashboardCardId;
+  pointerId: number;
+  pointerX: number;
+  pointerY: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+};
 type ReceiptCalendarCount = {
   expected: number;
   completed: number;
@@ -238,6 +249,44 @@ function SectionHeader({
   );
 }
 
+function OrderedDashboardCards({ order, children, drag }: { order: HomeDashboardCardId[]; children: React.ReactNode; drag: DashboardCardDrag | null }) {
+  const cards = new Map<HomeDashboardCardId, React.ReactElement<{ "data-home-dashboard-card"?: unknown; className?: string; style?: React.CSSProperties }>>();
+  Children.toArray(children).forEach((child) => {
+    if (!isValidElement<{ "data-home-dashboard-card"?: unknown; className?: string; style?: React.CSSProperties }>(child)) return;
+    const cardId = child.props["data-home-dashboard-card"];
+    if (isHomeDashboardCardId(cardId)) cards.set(cardId, child);
+  });
+  return <>{order.map((cardId) => {
+    const card = cards.get(cardId);
+    if (!card) return null;
+    const activeDrag = drag?.cardId === cardId ? drag : null;
+    return (
+      <div
+        key={cardId}
+        data-home-dashboard-card-shell={cardId}
+        data-home-dashboard-card-placeholder={activeDrag ? cardId : undefined}
+        className={`h-full min-h-0 w-full ${activeDrag ? "rounded-lg border-2 border-dashed border-brand-300 bg-brand-50/50 opacity-60 dark:border-brand-700 dark:bg-brand-950/20" : ""}`}
+        style={activeDrag ? { width: activeDrag.width, height: activeDrag.height } : undefined}
+      >
+        {activeDrag ? cloneElement(card, { style: {
+          ...card.props.style,
+          position: "absolute",
+          left: activeDrag.pointerX - activeDrag.offsetX,
+          top: activeDrag.pointerY - activeDrag.offsetY,
+          width: activeDrag.width,
+          height: activeDrag.height,
+          zIndex: 50,
+          pointerEvents: "none",
+          opacity: 1,
+          transform: "scale(1.02)",
+          boxShadow: "0 16px 32px rgba(15, 23, 42, 0.22)",
+          transition: "transform 120ms ease-out, box-shadow 120ms ease-out"
+        } }) : card}
+      </div>
+    );
+  })}</>;
+}
+
 export function HomePage({ navigate, currentStoreId }: Props) {
   const todayValue = useMemo(() => getSeoulDateValue(), []);
   const [nextBusinessDate, setNextBusinessDate] = useState<string | null>(null);
@@ -279,6 +328,17 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   const [showHandoverSchedule, setShowHandoverSchedule] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [savedDashboardCardOrder, setSavedDashboardCardOrder] = useState<HomeDashboardCardId[]>([...DEFAULT_HOME_DASHBOARD_CARD_ORDER]);
+  const [draftDashboardCardOrder, setDraftDashboardCardOrder] = useState<HomeDashboardCardId[]>([...DEFAULT_HOME_DASHBOARD_CARD_ORDER]);
+  const [editingDashboardLayout, setEditingDashboardLayout] = useState(false);
+  const [draggingDashboardCard, setDraggingDashboardCard] = useState<DashboardCardDrag | null>(null);
+  const dashboardCardDragRef = useRef<DashboardCardDrag | null>(null);
+  const layoutStorageKey = currentUserId ? homeDashboardLayoutStorageKey(currentStoreId, currentUserId) : null;
+  const [loadedDashboardLayoutKey, setLoadedDashboardLayoutKey] = useState<string | null>(null);
+  const dashboardLayoutReady = Boolean(layoutStorageKey && loadedDashboardLayoutKey === layoutStorageKey);
+  const visibleDashboardCardOrder = dashboardLayoutReady
+    ? editingDashboardLayout ? draftDashboardCardOrder : savedDashboardCardOrder
+    : [...DEFAULT_HOME_DASHBOARD_CARD_ORDER];
   const [loading, setLoading] = useState(true);
   const [todoCalendarLoading, setTodoCalendarLoading] = useState(false);
   const [scheduledTodosLoading, setScheduledTodosLoading] = useState(false);
@@ -318,6 +378,21 @@ export function HomePage({ navigate, currentStoreId }: Props) {
   useEffect(() => {
     void Services.AuthService.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
   }, []);
+
+  useEffect(() => {
+    if (!layoutStorageKey) return;
+    let order = [...DEFAULT_HOME_DASHBOARD_CARD_ORDER];
+    try {
+      const saved = localStorage.getItem(layoutStorageKey);
+      if (saved) order = normalizeHomeDashboardCardOrder(JSON.parse(saved));
+    } catch {
+      order = [...DEFAULT_HOME_DASHBOARD_CARD_ORDER];
+    }
+    setSavedDashboardCardOrder(order);
+    setDraftDashboardCardOrder(order);
+    setEditingDashboardLayout(false);
+    setLoadedDashboardLayoutKey(layoutStorageKey);
+  }, [layoutStorageKey]);
 
   const loadTodoCalendar = useCallback(async () => {
     setTodoCalendarLoading(true);
@@ -1281,6 +1356,103 @@ export function HomePage({ navigate, currentStoreId }: Props) {
     setError("");
   }
 
+  function beginDashboardLayoutEdit() {
+    if (!dashboardLayoutReady) return;
+    setDraftDashboardCardOrder([...savedDashboardCardOrder]);
+    setEditingDashboardLayout(true);
+  }
+
+  function cancelDashboardLayoutEdit() {
+    dashboardCardDragRef.current = null;
+    setDraggingDashboardCard(null);
+    setDraftDashboardCardOrder([...savedDashboardCardOrder]);
+    setEditingDashboardLayout(false);
+  }
+
+  function saveDashboardLayout() {
+    if (!layoutStorageKey || !dashboardLayoutReady) return;
+    try {
+      localStorage.setItem(layoutStorageKey, JSON.stringify(draftDashboardCardOrder));
+      setSavedDashboardCardOrder([...draftDashboardCardOrder]);
+      setEditingDashboardLayout(false);
+      setDraggingDashboardCard(null);
+      setMessage("홈 화면 배치를 저장했습니다.");
+      setError("");
+    } catch {
+      setError("홈 화면 배치를 저장하지 못했습니다.");
+    }
+  }
+
+  function startDashboardCardDrag(cardId: HomeDashboardCardId, event: React.PointerEvent<HTMLButtonElement>) {
+    if (!editingDashboardLayout) return;
+    event.preventDefault();
+    const card = event.currentTarget.closest<HTMLElement>("[data-home-dashboard-card]");
+    const grid = event.currentTarget.closest<HTMLElement>("[data-home-dashboard-grid]");
+    if (!card || !grid) return;
+    const rect = card.getBoundingClientRect();
+    const gridRect = grid.getBoundingClientRect();
+    const drag = {
+      cardId,
+      pointerId: event.pointerId,
+      pointerX: event.clientX - gridRect.left,
+      pointerY: event.clientY - gridRect.top,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+    dashboardCardDragRef.current = drag;
+    grid.setPointerCapture(event.pointerId);
+    setDraggingDashboardCard(drag);
+  }
+
+  function updateDashboardCardDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = dashboardCardDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const gridRect = event.currentTarget.getBoundingClientRect();
+    const nextDrag = { ...drag, pointerX: event.clientX - gridRect.left, pointerY: event.clientY - gridRect.top };
+    dashboardCardDragRef.current = nextDrag;
+    setDraggingDashboardCard(nextDrag);
+    const targetId = document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-home-dashboard-card]")
+      ?.dataset.homeDashboardCard;
+    if (!isHomeDashboardCardId(targetId) || targetId === drag.cardId) return;
+    setDraftDashboardCardOrder((current) => moveHomeDashboardCard(current, drag.cardId, targetId));
+  }
+
+  function finishDashboardCardDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = dashboardCardDragRef.current;
+    if (drag && drag.pointerId !== event.pointerId) return;
+    dashboardCardDragRef.current = null;
+    setDraggingDashboardCard(null);
+  }
+
+  function moveDashboardCardWithKeyboard(cardId: HomeDashboardCardId, event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (!editingDashboardLayout) return;
+    const direction = event.key === "ArrowUp" || event.key === "ArrowLeft"
+      ? -1
+      : event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : 0;
+    if (!direction) return;
+    event.preventDefault();
+    setDraftDashboardCardOrder((current) => moveHomeDashboardCardBy(current, cardId, direction));
+  }
+
+  function dashboardCardDragHandle(cardId: HomeDashboardCardId, label: string) {
+    if (!editingDashboardLayout) return null;
+    return (
+      <button
+        type="button"
+        onPointerDown={(event) => startDashboardCardDrag(cardId, event)}
+        onKeyDown={(event) => moveDashboardCardWithKeyboard(cardId, event)}
+        className="touch-button grid touch-none cursor-grab place-items-center rounded-md text-brand-700 active:cursor-grabbing dark:text-brand-100"
+        aria-label={`${label} 카드 순서 조정`}
+        title="드래그하거나 방향키로 순서 조정"
+      >
+        <GripVertical size={18} aria-hidden="true" />
+      </button>
+    );
+  }
+
   function openTodoCalendar() {
     setTodoCalendarMonth(getMonthStart(selectedDate ?? todayValue));
     setShowTodoCalendarDialog(true);
@@ -1338,14 +1510,23 @@ export function HomePage({ navigate, currentStoreId }: Props) {
       {error ? <div className="mb-2"><StatusMessage type="error">{error}</StatusMessage></div> : null}
       {message ? <div className="mb-2"><StatusMessage type="success">{message}</StatusMessage></div> : null}
 
-      <div className="grid min-h-0 flex-1 grid-rows-3 gap-2.5 md:grid-cols-3 md:grid-rows-1">
-        <article className="panel flex min-h-0 flex-col overflow-hidden">
+      <div
+        data-home-dashboard-grid
+        onPointerMove={updateDashboardCardDrag}
+        onPointerUp={finishDashboardCardDrag}
+        onPointerCancel={finishDashboardCardDrag}
+        onLostPointerCapture={finishDashboardCardDrag}
+        className="relative grid min-h-0 flex-1 grid-rows-3 gap-2.5 md:grid-cols-3 md:grid-rows-1"
+      >
+        <OrderedDashboardCards order={visibleDashboardCardOrder} drag={draggingDashboardCard}>
+        <article data-home-dashboard-card="receipts" className={`panel flex h-full w-full min-h-0 flex-col overflow-hidden ${editingDashboardLayout ? "ring-2 ring-dashed ring-brand-300 dark:ring-brand-700" : ""}`}>
           <SectionHeader
             icon={PackageCheck}
             title={isToday ? "금일 입고품목" : "내일 입고예정 품목"}
             badge={isTodayStoreClosure ? "휴무일" : `${receipts.length}종`}
             action={isToday ? (
               <div className="flex items-center gap-1">
+                {dashboardCardDragHandle("receipts", "입고품목")}
                 <PressableButton
                   type="button"
                   onClick={openReceiptCalendar}
@@ -1369,15 +1550,18 @@ export function HomePage({ navigate, currentStoreId }: Props) {
                 ) : null}
               </div>
             ) : (
-              <PressableButton
-                type="button"
-                onClick={openReceiptCalendar}
-                className="touch-button grid shrink-0 place-items-center rounded-md text-brand-700 dark:text-brand-100"
-                aria-label="입고 예정 및 완료 캘린더"
-                title="입고 캘린더"
-              >
-                <HistoryReceiptIcon size={19} />
-              </PressableButton>
+              <div className="flex items-center gap-1">
+                {dashboardCardDragHandle("receipts", "입고품목")}
+                <PressableButton
+                  type="button"
+                  onClick={openReceiptCalendar}
+                  className="touch-button grid shrink-0 place-items-center rounded-md text-brand-700 dark:text-brand-100"
+                  aria-label="입고 예정 및 완료 캘린더"
+                  title="입고 캘린더"
+                >
+                  <HistoryReceiptIcon size={19} />
+                </PressableButton>
+              </div>
             )}
           />
           <AnimatedList className="min-h-0 flex-1 overflow-y-auto">
@@ -1441,13 +1625,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           </AnimatedList>
         </article>
 
-        <article className="panel flex min-h-0 flex-col overflow-hidden">
+        <article data-home-dashboard-card="todos" className={`panel flex h-full w-full min-h-0 flex-col overflow-hidden ${editingDashboardLayout ? "ring-2 ring-dashed ring-brand-300 dark:ring-brand-700" : ""}`}>
           <SectionHeader
             icon={ClipboardCheck}
             title="To do list"
             badge={`${completedCount}/${todos.length}`}
             action={(
               <div className="flex items-center gap-1">
+                {dashboardCardDragHandle("todos", "To do list")}
                 <PressableButton
                   type="button"
                   onClick={openTodoCalendar}
@@ -1525,13 +1710,14 @@ export function HomePage({ navigate, currentStoreId }: Props) {
           </AnimatedList>
         </article>
 
-        <article className="panel flex min-h-0 flex-col overflow-hidden">
+        <article data-home-dashboard-card="handovers" className={`panel flex h-full w-full min-h-0 flex-col overflow-hidden ${editingDashboardLayout ? "ring-2 ring-dashed ring-brand-300 dark:ring-brand-700" : ""}`}>
           <SectionHeader
             icon={ArrowRight}
             title="인수인계"
             badge={`${handovers.length}건`}
             action={
               <div className="flex items-center">
+                {dashboardCardDragHandle("handovers", "인수인계")}
                 <PressableButton
                   type="button"
                   onClick={() => (showHandoverForm || showHandoverSchedule) ? resetHandoverComposer() : openHandoverComposer()}
@@ -1577,6 +1763,31 @@ export function HomePage({ navigate, currentStoreId }: Props) {
             ))}
           </AnimatedList>
         </article>
+        </OrderedDashboardCards>
+      </div>
+
+      <div className="mt-2 flex min-h-10 shrink-0 items-center gap-2">
+        {editingDashboardLayout ? (
+          <p id="home-dashboard-edit-instructions" className="mr-auto min-w-0 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            손잡이를 드래그하거나 방향키로 순서를 바꾸세요.
+          </p>
+        ) : null}
+        {editingDashboardLayout ? (
+          <>
+            <PressableButton type="button" onClick={cancelDashboardLayoutEdit} className="secondary-button min-h-9 px-3 text-xs">취소</PressableButton>
+            <PressableButton type="button" onClick={saveDashboardLayout} disabled={!dashboardLayoutReady} className="primary-button min-h-9 px-3 text-xs">저장</PressableButton>
+          </>
+        ) : (
+          <PressableButton
+            type="button"
+            onClick={beginDashboardLayoutEdit}
+            disabled={!dashboardLayoutReady}
+            className="secondary-button ml-auto min-h-9 px-3 text-xs"
+            aria-label="홈 화면 편집"
+          >
+            편집
+          </PressableButton>
+        )}
       </div>
 
       {showHandoverForm ? (
