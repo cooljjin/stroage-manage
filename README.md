@@ -181,6 +181,7 @@ npm run cap:android
 - `docs/native-scanner-poc.md`: 현재 네이티브/웹 스캐너 구조와 검증법
 - `docs/animation-implementation.md`: 애니메이션 적용 현황
 - `docs/ios-staff-install.md`: Xcode 직접 설치 절차
+- `docs/remote-ios-development.md`: MacBook 원격 설치와 Live Reload
 - `docs/testflight-staff-deployment.md`: TestFlight 배포 절차
 - `docs/security-hardening-deployment.md`: 보안 강화 단계별 배포·중단 게이트
 - `docs/privacy-policy-ko.md`: 개인정보 처리 안내 초안

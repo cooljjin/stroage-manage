@@ -4,6 +4,21 @@ import UIKit
 
 @objc(AppViewController)
 class AppViewController: CAPBridgeViewController {
+    override func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+
+        #if DEBUG
+        if let value = Bundle.main.object(forInfoDictionaryKey: "StocklyLiveReloadURL") as? String,
+           let url = URL(string: value),
+           url.scheme == "https",
+           url.host?.hasSuffix(".ts.net") == true {
+            descriptor.serverURL = url.absoluteString
+        }
+        #endif
+
+        return descriptor
+    }
+
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(FastBarcodeScannerPlugin())
