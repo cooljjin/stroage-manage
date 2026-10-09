@@ -11,6 +11,12 @@ app=
 live_reload=false
 device=
 choose_device=false
+devices_json=
+cleanup() {
+  [ -z "$devices_json" ] || rm -f "$devices_json"
+  git restore --source=HEAD -- ios/App/Podfile.lock 2>/dev/null || true
+}
+trap cleanup EXIT
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --app) app=${2:-}; shift 2 ;;
@@ -35,7 +41,6 @@ fi
 
 if [ "$choose_device" = true ]; then
   devices_json=$(mktemp)
-  trap 'rm -f "$devices_json"' EXIT
   xcrun devicectl list devices --json-output "$devices_json" >/dev/null
   device=$(python3 - "$devices_json" <<'PY'
 import json, sys
@@ -52,10 +57,12 @@ PY
 fi
 [ -n "$device" ] || { usage >&2; exit 64; }
 
-if [ -n "$(git status --porcelain)" ]; then
+dirty=$(git status --porcelain)
+if [ -n "$dirty" ] && printf '%s\n' "$dirty" | grep -qv '^[ MADRCU?!][ MADRCU?!] ios/App/Podfile.lock$'; then
   echo "Refusing to update: this MacBook checkout has local changes. Commit, stash, or use a clean clone first." >&2
   exit 1
 fi
+git restore --source=HEAD -- ios/App/Podfile.lock
 
 git fetch --prune origin
 git merge --ff-only origin/main
@@ -72,8 +79,6 @@ command -v pod >/dev/null 2>&1 || { echo "CocoaPods is required. Run: gem instal
 
 npm run ios:prepare
 npx cap sync ios
-# CocoaPods may rewrite only its local version/checksums; keep the checkout clean for the next safe update.
-git diff --quiet -- ios/App/Podfile.lock || git restore --source=HEAD -- ios/App/Podfile.lock
 
 live_url=
 if [ "$live_reload" = true ]; then
