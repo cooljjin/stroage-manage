@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock, PackageCheck, StickyNote, Trash2, Users, X } from "lucide-react";
-import { PageTitle } from "../components/PageTitle";
 import { StatusMessage } from "../components/StatusMessage";
 import { addDateValueDays, getDateValueWeekday, getSeoulDateValue } from "../lib/businessCalendar";
 import { formatDateTime } from "../lib/date";
@@ -9,6 +8,7 @@ import type { TimelineDay, TimelineEvent, TimelineEventType, TimelineMonth } fro
 
 type Props = {
   currentStoreId: string;
+  onBack: () => void;
 };
 
 type TimelineSection = {
@@ -62,7 +62,7 @@ function getSectionEvents(day: TimelineDay | undefined, type: TimelineEventType)
   return day?.events.filter((event) => event.type === type) ?? [];
 }
 
-export function TimelineCalendarPage({ currentStoreId }: Props) {
+export function TimelineCalendarPage({ currentStoreId, onBack }: Props) {
   const todayValue = useMemo(() => getSeoulDateValue(), []);
   const [monthStart, setMonthStart] = useState(() => getMonthStart(todayValue));
   const [timeline, setTimeline] = useState<TimelineMonth | null>(null);
@@ -117,11 +117,19 @@ export function TimelineCalendarPage({ currentStoreId }: Props) {
   }
 
   return (
-    <section>
-      <PageTitle title="매장 타임라인" description="날짜별 매장 운영 기록을 확인합니다." />
+    <section className="flex h-[calc(100dvh-9.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] min-h-0 flex-col sm:block sm:h-auto">
+      <div className="mb-2 flex min-w-0 items-center gap-2 sm:mb-4">
+        <button type="button" onClick={onBack} className="touch-button inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-1 text-slate-600 shadow-none hover:bg-transparent dark:bg-transparent dark:text-slate-300" aria-label="뒤로가기" title="뒤로가기">
+          <ChevronLeft size={20} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold tracking-normal sm:text-2xl">매장 타임라인</h1>
+          <p className="mt-0.5 hidden text-sm text-slate-500 dark:text-slate-400 sm:block">날짜별 매장 운영 기록을 확인합니다.</p>
+        </div>
+      </div>
 
-      <div className="panel p-3">
-        <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="panel flex min-h-0 flex-1 flex-col p-2 sm:block sm:p-3">
+        <div className="mb-2 flex shrink-0 items-center justify-between gap-2 sm:mb-3">
           <button type="button" onClick={() => setMonthStart((current) => addMonths(current, -1))} className="touch-button icon-button" aria-label="이전 달" title="이전 달">
             <ChevronLeft size={19} />
           </button>
@@ -134,12 +142,12 @@ export function TimelineCalendarPage({ currentStoreId }: Props) {
           </button>
         </div>
 
-        <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-xs font-extrabold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+        <div className="grid shrink-0 grid-cols-7 border-b border-slate-100 pb-1 text-center text-xs font-extrabold text-slate-500 dark:border-slate-800 dark:text-slate-400 sm:pb-2">
           {["일", "월", "화", "수", "목", "금", "토"].map((weekday) => <span key={weekday}>{weekday}</span>)}
         </div>
-        {loading ? <div className="grid min-h-72 place-items-center text-sm text-slate-500">타임라인을 불러오는 중...</div> : null}
+        {loading ? <div className="grid min-h-0 flex-1 place-items-center text-sm text-slate-500">타임라인을 불러오는 중...</div> : null}
         {!loading ? (
-          <div className="mt-2 grid grid-cols-7 gap-1">
+          <div className="mt-1 grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1 sm:mt-2 sm:flex-none sm:grid-rows-none">
             {calendarDates.map((date) => {
               const day = timeline?.days.get(date);
               const eventTypes = TIMELINE_SECTIONS.filter((section) => getSectionEvents(day, section.type).length > 0);
@@ -151,7 +159,7 @@ export function TimelineCalendarPage({ currentStoreId }: Props) {
                   key={date}
                   type="button"
                   onClick={() => openDay(date)}
-                  className={`min-h-[74px] rounded-md border p-1.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${
+                  className={`h-full min-h-0 rounded-md border p-1 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 sm:min-h-[74px] sm:p-1.5 ${
                     hasGroupOrder ? "border-violet-300 bg-violet-50/40 dark:border-violet-900 dark:bg-violet-950/30" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
                   } ${isCurrentMonth ? "" : "opacity-45"}`}
                   aria-label={`${formatDateLabel(date)}${day?.events.length ? `, 이벤트 ${day.events.length}건` : ""}`}

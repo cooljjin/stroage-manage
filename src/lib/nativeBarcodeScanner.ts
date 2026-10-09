@@ -33,6 +33,10 @@ type NativeBarcodeScannerPlugin = {
   ) => Promise<NativeScannerListener>;
 };
 
+type FastIosBarcodeScannerPlugin = {
+  scan: (options: { formats: string[]; zoomFactor?: number }) => Promise<{ action?: "register"; barcode?: string; rawValue?: string; cancelled?: boolean }>;
+};
+
 type NativeBarcodeScanResult =
   | { status: "success"; barcode: string }
   | { status: "register" }
@@ -56,11 +60,32 @@ const PRODUCT_NATIVE_BARCODE_FORMATS = [
 ];
 
 const barcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>("BarcodeScanner");
+const fastIosBarcodeScanner = registerPlugin<FastIosBarcodeScannerPlugin>("FastBarcodeScanner");
 let activeNativeScanCancel: (() => void) | null = null;
 let activeNativeScanCleanup: (() => Promise<void>) | null = null;
 
 export function isNativeBarcodeScannerAvailable() {
   return Capacitor.isNativePlatform();
+}
+
+async function scanFastIosBarcode(): Promise<NativeBarcodeScanResult | null> {
+  if (Capacitor.getPlatform() !== "ios") return null;
+
+  try {
+    const result = await fastIosBarcodeScanner.scan({
+      formats: PRODUCT_NATIVE_BARCODE_FORMATS,
+      zoomFactor: 1.25
+    });
+    if (result.cancelled) return { status: "cancelled", message: "스캔이 취소되었습니다.", fallbackToWeb: false };
+    if (result.action === "register") return { status: "register" };
+
+    const barcode = (result.barcode ?? result.rawValue ?? "").trim();
+    return barcode
+      ? { status: "success", barcode }
+      : { status: "cancelled", message: "스캔된 바코드가 없습니다.", fallbackToWeb: false };
+  } catch {
+    return null;
+  }
 }
 
 export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
@@ -71,6 +96,9 @@ export async function scanNativeBarcode(): Promise<NativeBarcodeScanResult> {
       fallbackToWeb: true
     };
   }
+
+  const fastIosResult = await scanFastIosBarcode();
+  if (fastIosResult) return fastIosResult;
 
   const supported = await barcodeScanner.isSupported?.().catch(() => ({ supported: true }));
   if (supported && !supported.supported) {

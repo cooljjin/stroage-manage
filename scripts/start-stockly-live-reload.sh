@@ -3,8 +3,8 @@ set -euo pipefail
 
 app=${1:-}
 case "$app" in
-  dev) port=5173 ;;
-  staff) port=5174 ;;
+  dev) port=5173; mode=staging ;;
+  staff) port=5174; mode=production ;;
   *) echo "Usage: $0 <dev|staff>" >&2; exit 64 ;;
 esac
 
@@ -18,4 +18,4 @@ if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
 fi
 
 echo "$app Live Reload: https://$hostname:$((port + 3270))"
-exec env STOCKLY_LIVE_RELOAD_HOST="$hostname" npm run dev -- --mode staging --host 127.0.0.1 --port "$port" --strictPort
+exec env STOCKLY_LIVE_RELOAD_HOST="$hostname" npm run dev -- --mode "$mode" --host 127.0.0.1 --port "$port" --strictPort

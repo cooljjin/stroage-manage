@@ -1031,7 +1031,7 @@ export default function App() {
             현재 계정 권한으로 사용할 수 없는 메뉴입니다. 매장 관리자에게 필요한 권한을 요청해 주세요.
           </div>
         ) : null}
-        {canGoBack && permittedRoute.name !== "operation" ? (
+        {canGoBack && permittedRoute.name !== "operation" && permittedRoute.name !== "timeline-calendar" ? (
           permittedRoute.name === "product-edit" ? (
             <button
               type="button"
@@ -1060,7 +1060,7 @@ export default function App() {
             <IdleRoutePreloader routeName={permittedRoute.name} />
             <m.div key={routeKey(permittedRoute)} initial={routeMotionProps.initial} animate={routeMotionProps.animate} transition={routeMotionProps.transition}>
               {permittedRoute.name === "home" && <HomePage navigate={navigate} currentStoreId={profile.store_id} />}
-              {permittedRoute.name === "timeline-calendar" && <TimelineCalendarPage currentStoreId={profile.store_id} />}
+              {permittedRoute.name === "timeline-calendar" && <TimelineCalendarPage currentStoreId={profile.store_id} onBack={goBack} />}
               {permittedRoute.name === "scan" && <ScanPage navigate={navigate} currentStoreId={profile.store_id} scanLaunchId={permittedRoute.scanLaunchId} />}
               {permittedRoute.name === "register" && (
                 <ProductEditPage
