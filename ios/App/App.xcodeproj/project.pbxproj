@@ -572,8 +572,8 @@
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.jinkim.storeinventory.poc;
 				PRODUCT_NAME = "Stockly Staff";
-				PROVISIONING_PROFILE_SPECIFIER = "Stockly Staff Remote Debug";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Stockly Staff Remote Debug";
+				PROVISIONING_PROFILE_SPECIFIER = "Stockly Staff Isolated Debug";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Stockly Staff Isolated Debug";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				STOCKLY_LIVE_RELOAD_URL = "";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;

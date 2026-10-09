@@ -29,8 +29,20 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$app" in
-  dev) scheme=App; bundle_id=com.jinkim.stockly; live_port=8443 ;;
-  staff) scheme="Stockly Staff"; bundle_id=com.jinkim.storeinventory.poc; live_port=8444 ;;
+  dev)
+    scheme=App
+    bundle_id=com.jinkim.stockly
+    live_port=8443
+    signing_keychain=
+    signing_password_file=
+    ;;
+  staff)
+    scheme="Stockly Staff"
+    bundle_id=com.jinkim.storeinventory.poc
+    live_port=8444
+    signing_keychain=${STOCKLY_STAFF_SIGNING_KEYCHAIN:-"$HOME/Stockly/tmp/stockly-signing.keychain-db"}
+    signing_password_file=${STOCKLY_STAFF_SIGNING_KEYCHAIN_PASSWORD_FILE:-"$HOME/Stockly/tmp/stockly-signing.password"}
+    ;;
   *) usage >&2; exit 64 ;;
 esac
 
@@ -89,11 +101,26 @@ if [ "$live_reload" = true ]; then
   curl --fail --silent --show-error --max-time 10 "$live_url/" >/dev/null
 fi
 
+signing_identity=
+if [ -n "$signing_keychain" ]; then
+  [ -f "$signing_keychain" ] && [ -f "$signing_password_file" ] || {
+    echo "Staff signing keychain is missing. Recreate the isolated Stockly signing setup." >&2
+    exit 1
+  }
+  security unlock-keychain -p "$(cat "$signing_password_file")" "$signing_keychain"
+  signing_identity=$(security find-identity -v -p codesigning "$signing_keychain" | sed -n 's/^[[:space:]]*[0-9]*) \([A-F0-9]*\) .*Apple Development.*/\1/p' | head -n 1)
+  [ -n "$signing_identity" ] || { echo "No Apple Development identity in the staff signing keychain." >&2; exit 1; }
+fi
+
+
 derived_data="$PWD/tmp/remote-ios-$app"
 mkdir -p "$derived_data"
 build_args=( -workspace ios/App/App.xcworkspace -scheme "$scheme" -configuration Debug -sdk iphoneos -destination "id=$device" -derivedDataPath "$derived_data" )
 if [ -n "$live_url" ]; then
   build_args+=( "STOCKLY_LIVE_RELOAD_URL=$live_url" )
+fi
+if [ -n "$signing_identity" ]; then
+  build_args+=( "CODE_SIGN_IDENTITY=$signing_identity" "OTHER_CODE_SIGN_FLAGS=--keychain $signing_keychain" )
 fi
 
 app_path=$(xcodebuild "${build_args[@]}" -showBuildSettings -json | python3 -c 'import json,sys; x=json.load(sys.stdin)[0]["buildSettings"]; print(x["TARGET_BUILD_DIR"] + "/" + x["FULL_PRODUCT_NAME"])')
