@@ -1,8 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import process from "node:process";
 
 export default defineConfig({
+  server: { allowedHosts: process.env.STOCKLY_DEV_HOST ? [process.env.STOCKLY_DEV_HOST] : [] },
   plugins: [
     react(),
     VitePWA({

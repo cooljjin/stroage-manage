@@ -116,6 +116,18 @@ export type Database = {
         };
         Relationships: [];
       };
+      attendance_pending_staff: {
+        Row: { id: string; store_id: string; display_name: string; phone: string | null; invite_id: string | null; linked_profile_id: string | null; created_by: string; created_at: string; updated_at: string };
+        Insert: { id?: string; store_id: string; display_name: string; phone?: string | null; invite_id?: string | null; linked_profile_id?: string | null; created_by: string; created_at?: string; updated_at?: string };
+        Update: { display_name?: string; phone?: string | null; invite_id?: string | null; linked_profile_id?: string | null; updated_at?: string };
+        Relationships: [];
+      };
+      attendance_pending_staff_dates: {
+        Row: { id: string; store_id: string; pending_staff_id: string; work_date: string; start_time: string; end_time: string; unpaid_break_minutes: number };
+        Insert: { id?: string; store_id: string; pending_staff_id: string; work_date: string; start_time: string; end_time: string; unpaid_break_minutes?: number };
+        Update: { start_time?: string; end_time?: string; unpaid_break_minutes?: number };
+        Relationships: [];
+      };
       products: {
         Row: {
           id: string;
@@ -1754,10 +1766,12 @@ export type Database = {
       delete_attendance_tag: { Args: { target_tag_id: string }; Returns: Database["public"]["Tables"]["attendance_tags"]["Row"] };
       update_attendance_tag: { Args: { target_tag_id: string; tag_name: string; active: boolean }; Returns: Database["public"]["Tables"]["attendance_tags"]["Row"] };
       rotate_attendance_tag: { Args: { target_tag_id: string; change_reason: string }; Returns: Json };
+      begin_attendance_tag_test: { Args: { target_tag_id: string; request_id: string }; Returns: { id: string; punch_type: "check_in" | "check_out"; tagged_at: string; expires_at: string; status: string; store_id: string; tag_name: string; open_check_in_at: string | null; scheduled_time: string | null; suggested_time: string | null; warning_message: string | null } | null };
       begin_attendance_punch: { Args: { raw_token: string; request_id: string }; Returns: { id: string; punch_type: "check_in" | "check_out"; tagged_at: string; expires_at: string; status: string; store_id: string; tag_name: string; open_check_in_at: string | null; scheduled_time: string | null; suggested_time: string | null; warning_message: string | null } | null };
       get_my_pending_attendance_punch: { Args: Record<string, never>; Returns: { id: string; punch_type: "check_in" | "check_out"; tagged_at: string; expires_at: string; status: string; store_id: string; tag_name: string; open_check_in_at: string | null; scheduled_time: string | null; suggested_time: string | null; warning_message: string | null } | null };
-      finalize_attendance_punch: { Args: { target_event_id: string; entered_time: string; request_id: string }; Returns: Json };
+      finalize_attendance_punch: { Args: { target_event_id: string; entered_time: string; request_id: string } | { target_event_id: string; entered_date: string; entered_time: string; request_id: string }; Returns: Json };
       manage_attendance_shift: { Args: { target_shift_id: string; confirmed_check_in: string; confirmed_check_out: string | null; unpaid_break: number; target_status: string; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_shifts"]["Row"] };
+      delete_attendance_shift: { Args: { target_shift_id: string; target_store_id: string; change_reason: string }; Returns: undefined };
       recalculate_attendance_segments: { Args: { target_shift_id: string }; Returns: undefined };
       attendance_manager: { Args: { target_store_id: string }; Returns: boolean };
       save_attendance_work_schedule: { Args: { target_user_id: string; target_weekday: number; target_start_time: string; target_end_time: string; target_break_minutes: number; target_effective_from: string; target_effective_to: string | null; change_reason: string }; Returns: Database["public"]["Tables"]["attendance_work_schedules"]["Row"] };
@@ -2319,6 +2333,26 @@ export type Database = {
           target_role?: "store_admin" | "staff";
         };
         Returns: Database["public"]["Tables"]["store_invites"]["Row"];
+      };
+      create_attendance_pending_staff: {
+        Args: { target_name: string; target_phone: string; target_dates: string[]; target_start_time: string; target_end_time: string; target_break_minutes: number };
+        Returns: Database["public"]["Tables"]["attendance_pending_staff"]["Row"];
+      };
+      create_attendance_pending_invite: {
+        Args: { target_pending_id: string };
+        Returns: Database["public"]["Tables"]["store_invites"]["Row"];
+      };
+      save_attendance_pending_staff_dates: {
+        Args: { target_pending_id: string; target_dates: string[]; target_start_time: string; target_end_time: string; target_break_minutes: number };
+        Returns: number;
+      };
+      update_attendance_pending_staff: {
+        Args: { target_pending_id: string; target_name: string; target_phone: string };
+        Returns: Database["public"]["Tables"]["attendance_pending_staff"]["Row"];
+      };
+      delete_attendance_pending_staff: {
+        Args: { target_pending_id: string };
+        Returns: undefined;
       };
       accept_store_invite_code: {
         Args: {

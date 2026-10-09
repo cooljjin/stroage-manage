@@ -26,6 +26,8 @@ type EffectiveDated = { effective_from: string; effective_to: string | null };
 
 const ATTENDANCE_TOKEN_SESSION_KEY = "stockly-pending-attendance-token";
 const ATTENDANCE_TOKEN_TTL_MS = 10 * 60 * 1000;
+// A tag belongs to this running app only, even if WebView storage is restored.
+const ATTENDANCE_TOKEN_RUNTIME_ID = crypto.randomUUID();
 
 type TokenStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -50,38 +52,69 @@ function zonedParts(value: Date, timeZone: string) {
 }
 
 function zonedDateTimeToUtc(date: string, time: string, timeZone: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new Error("유효한 날짜와 시간을 입력해 주세요.");
+  }
   const [year, month, day] = date.split("-").map(Number);
   const [hour, minute] = time.split(":").map(Number);
-  if (![year, month, day, hour, minute].every(Number.isFinite)) throw new Error("유효한 시각을 입력해 주세요.");
-
-  const guess = Date.UTC(year, month - 1, day, hour, minute);
+  const wallTime = new Date(0);
+  wallTime.setUTCFullYear(year, month - 1, day);
+  wallTime.setUTCHours(hour, minute, 0, 0);
+  if (wallTime.toISOString().slice(0, 16) !== `${date}T${time}`) throw new Error("유효한 날짜와 시간을 입력해 주세요.");
+  const guess = wallTime.getTime();
   const shown = zonedParts(new Date(guess), timeZone);
   const shownAsUtc = Date.UTC(Number(shown.year), Number(shown.month) - 1, Number(shown.day), Number(shown.hour), Number(shown.minute), Number(shown.second));
-  return new Date(guess - (shownAsUtc - guess));
+  const result = new Date(guess - (shownAsUtc - guess));
+  const resolved = zonedParts(result, timeZone);
+  if (`${resolved.year}-${resolved.month}-${resolved.day}T${resolved.hour}:${resolved.minute}` !== `${date}T${time}`) {
+    throw new Error("유효한 날짜와 시간을 입력해 주세요.");
+  }
+  return result;
 }
 
-export function parseAttendanceTagUrl(rawUrl: string, allowedHost = window.location.host) {
+export function parseAttendanceTagUrl(rawUrl: string, allowedHost = window.location.host, channel: "production" | "development" = "production") {
   try {
     const url = new URL(rawUrl);
-    if (url.protocol !== "https:" || url.host !== allowedHost) return null;
-    const match = url.pathname.match(/^\/attendance\/tag\/([A-Za-z0-9_-]{3,256})\/?$/);
+    if (url.protocol !== "https:" || url.host !== allowedHost || url.username || url.password || url.search || url.hash) return null;
+    const path = channel === "development" ? url.pathname.replace(/^\/attendance\/dev\/tag\//, "/attendance/tag/") : url.pathname;
+    const match = path.match(/^\/attendance\/tag\/([A-Za-z0-9_-]{3,256})\/?$/);
     return match?.[1] ?? null;
   } catch {
     return null;
   }
 }
 
-export function attendanceTagUrl(token: string, host: string) {
-  return new URL(`/attendance/tag/${encodeURIComponent(token)}`, `https://${host}`).toString();
+export function attendanceTagUrl(token: string, host: string, channel: "production" | "development" = "production") {
+  const prefix = channel === "development" ? "/attendance/dev/tag/" : "/attendance/tag/";
+  return new URL(`${prefix}${encodeURIComponent(token)}`, `https://${host}`).toString();
 }
 
-export function resolveEnteredDateTime(taggedAt: string, enteredTime: string, timeZone = "Asia/Seoul", openCheckInAt?: string) {
+export function resolveEnteredDateTime(taggedAt: string, enteredDate: string, enteredTime: string, timeZone?: string, openCheckInAt?: string): string;
+export function resolveEnteredDateTime(taggedAt: string, enteredTime: string, timeZone?: string, openCheckInAt?: string): string;
+export function resolveEnteredDateTime(
+  taggedAt: string,
+  dateOrTime: string,
+  timeOrZone = "Asia/Seoul",
+  zoneOrOpenCheckIn?: string,
+  openCheckInArg?: string
+) {
   const tagged = new Date(taggedAt);
   if (Number.isNaN(tagged.getTime())) throw new Error("태그 시각이 올바르지 않습니다.");
-  const local = zonedParts(tagged, timeZone);
-  let entered = zonedDateTimeToUtc(`${local.year}-${local.month}-${local.day}`, enteredTime, timeZone);
-  if (openCheckInAt && entered.getTime() <= new Date(openCheckInAt).getTime()) {
-    entered = new Date(entered.getTime() + 24 * 60 * 60 * 1000);
+  const explicitDate = /^\d{4}-\d{2}-\d{2}$/.test(dateOrTime);
+  const local = explicitDate ? null : zonedParts(tagged, timeOrZone);
+  const enteredDate = explicitDate ? dateOrTime : `${local?.year}-${local?.month}-${local?.day}`;
+  const enteredTime = explicitDate ? timeOrZone : dateOrTime;
+  const timeZone = explicitDate ? zoneOrOpenCheckIn ?? "Asia/Seoul" : timeOrZone;
+  const openCheckInAt = explicitDate ? openCheckInArg : zoneOrOpenCheckIn;
+  const entered = zonedDateTimeToUtc(enteredDate, enteredTime, timeZone);
+  if (openCheckInAt && Number.isNaN(new Date(openCheckInAt).getTime())) throw new Error("출근 시각이 올바르지 않습니다.");
+  if (explicitDate && openCheckInAt && entered.getTime() <= new Date(openCheckInAt).getTime()) {
+    throw new Error("퇴근 시각은 출근 시각보다 뒤여야 합니다.");
+  }
+  if (!explicitDate && openCheckInAt && entered.getTime() <= new Date(openCheckInAt).getTime()) {
+    const nextDate = new Date(entered.getTime() + 24 * 60 * 60 * 1000);
+    const nextLocal = zonedParts(nextDate, timeZone);
+    return zonedDateTimeToUtc(`${nextLocal.year}-${nextLocal.month}-${nextLocal.day}`, enteredTime, timeZone).toISOString();
   }
   return entered.toISOString();
 }
@@ -92,6 +125,15 @@ export function differenceInMinutes(left: string, right: string) {
 
 export function signedMinutesLabel(minutes: number) {
   return `${minutes > 0 ? "+" : ""}${minutes}분`;
+}
+
+export function defaultAttendanceDate(punch: AttendanceTimeSuggestion) {
+  const parts = zonedParts(new Date(punch.tagged_at), "Asia/Seoul");
+  const roundedPastMidnight = !punch.scheduled_time && Number(parts.hour) === 23 && Number(parts.minute) >= 30;
+  const date = new Date(0);
+  date.setUTCFullYear(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+  if (roundedPastMidnight) date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 export function defaultAttendanceTime(punch: AttendanceTimeSuggestion) {
@@ -107,6 +149,7 @@ export function savePendingAttendanceToken(storage: TokenStorage, token: string,
   const existing = readPendingAttendanceEntry(storage, now);
   storage.setItem(ATTENDANCE_TOKEN_SESSION_KEY, JSON.stringify({
     token,
+    runtimeId: ATTENDANCE_TOKEN_RUNTIME_ID,
     savedAt: now,
     requestId: existing?.token === token ? existing.requestId : crypto.randomUUID()
   }));
@@ -117,8 +160,8 @@ function readPendingAttendanceEntry(storage: TokenStorage, now = Date.now()) {
   const raw = storage.getItem(ATTENDANCE_TOKEN_SESSION_KEY);
   if (!raw) return null;
   try {
-    const entry = JSON.parse(raw) as { token?: unknown; savedAt?: unknown; requestId?: unknown };
-    if (typeof entry.token !== "string" || !entry.token || typeof entry.savedAt !== "number" || typeof entry.requestId !== "string" || now - entry.savedAt > ATTENDANCE_TOKEN_TTL_MS) {
+    const entry = JSON.parse(raw) as { token?: unknown; savedAt?: unknown; requestId?: unknown; runtimeId?: unknown };
+    if (entry.runtimeId !== ATTENDANCE_TOKEN_RUNTIME_ID || now < (entry.savedAt as number) || typeof entry.token !== "string" || !entry.token || typeof entry.savedAt !== "number" || typeof entry.requestId !== "string" || now - entry.savedAt > ATTENDANCE_TOKEN_TTL_MS) {
       storage.removeItem(ATTENDANCE_TOKEN_SESSION_KEY);
       return null;
     }

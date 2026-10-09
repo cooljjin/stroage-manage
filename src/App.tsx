@@ -20,6 +20,7 @@ import { recoverMobileInventorySessions } from "./lib/mobileInventorySession";
 import type { InventoryListPageState } from "./pages/InventoryListPage";
 import { DARK_MODE_STORAGE_KEY } from "./lib/constants";
 import { consumePendingAttendanceToken, parseAttendanceTagUrl, pendingAttendanceRequestId, readPendingAttendanceToken, resolveEnteredDateTime, savePendingAttendanceToken } from "./lib/attendancePayroll";
+import { parseProductTagUrl } from "./lib/productNfc";
 import { hasStaffPermission, permissionForRoute } from "./lib/staffPermissions";
 import { pageTransitionMotion, reducedPageTransitionMotion } from "./lib/animations";
 import { ensureCurrentProfile } from "./lib/profiles";
@@ -62,15 +63,29 @@ const POST_SCAN_ROUTE_TTL_MS = 5 * 60 * 1000;
 const PENDING_SCAN_STORAGE_KEY = "store-inventory-pending-scan";
 const PENDING_SCAN_TTL_MS = 5 * 60 * 1000;
 const PENDING_INVITE_CODE_STORAGE_KEY = "store-inventory-pending-invite-code";
+const PENDING_PRODUCT_URL_STORAGE_KEY = "stockly-pending-product-url";
 const ATTENDANCE_LINK_HOST = import.meta.env.VITE_ATTENDANCE_LINK_HOST ?? "stroage-manage.vercel.app";
+const PRODUCT_TAG_CHANNEL = import.meta.env.MODE === "staging" ? "development" : "production";
 
 function attendanceTokenFromUrl(url: string) {
-  return parseAttendanceTagUrl(url, ATTENDANCE_LINK_HOST) ?? parseAttendanceTagUrl(url, window.location.host);
+  return parseAttendanceTagUrl(url, ATTENDANCE_LINK_HOST, PRODUCT_TAG_CHANNEL) ?? parseAttendanceTagUrl(url, window.location.host, PRODUCT_TAG_CHANNEL);
+}
+
+function productRouteFromUrl(url: string): AppRoute | null {
+  const productId = parseProductTagUrl(url, ATTENDANCE_LINK_HOST, PRODUCT_TAG_CHANNEL) ?? parseProductTagUrl(url, window.location.host, PRODUCT_TAG_CHANNEL);
+  return productId ? { name: "operation", productId, initialInventoryMode: "audit" } : null;
+}
+
+function initialProductRoute(): AppRoute | null {
+  return productRouteFromUrl(window.location.href) ?? productRouteFromUrl(sessionStorage.getItem(PENDING_PRODUCT_URL_STORAGE_KEY) ?? "");
 }
 
 function initialAttendanceToken() {
   const token = attendanceTokenFromUrl(window.location.href);
-  return token ? savePendingAttendanceToken(sessionStorage, token) : readPendingAttendanceToken(sessionStorage);
+  if (!token) return readPendingAttendanceToken(sessionStorage);
+  // Consume the browser link immediately; reloads must not replay a tag.
+  window.history.replaceState(window.history.state, "", "/");
+  return savePendingAttendanceToken(sessionStorage, token);
 }
 
 function attendanceFinalizeRequestId(eventId: string) {
@@ -141,6 +156,8 @@ function hasPendingScanBarcode() {
 }
 
 function initialRoute(): AppRoute {
+  const productRoute = initialProductRoute();
+  if (productRoute) return productRoute;
   if (window.location.pathname === "/privacy") return { name: "privacy" };
   if (window.location.pathname === "/support") return { name: "support" };
   if (window.location.pathname === "/password-reset") return { name: "password-reset" };
@@ -267,6 +284,7 @@ export default function App() {
   const [staffPermissions, setStaffPermissions] = useState<StaffPermissionKey[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => initialRoute());
+  const [pendingProductRoute, setPendingProductRoute] = useState<AppRoute | null>(initialProductRoute);
   const [activeTab, setActiveTab] = useState<NavigationTab>("home");
   const [inventoryListState, setInventoryListState] = useState<InventoryListPageState>();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_MODE_STORAGE_KEY) === "true");
@@ -278,11 +296,13 @@ export default function App() {
   const [connectionError, setConnectionError] = useState("");
   const [connectionMessage, setConnectionMessage] = useState("");
   const [attendanceToken, setAttendanceToken] = useState<string | null>(initialAttendanceToken);
+  const [attendanceTestTag, setAttendanceTestTag] = useState<{ id: string; requestId: string } | null>(null);
   const [attendancePunch, setAttendancePunch] = useState<AttendancePunchPromptData | null>(null);
   const [attendanceBusy, setAttendanceBusy] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
   const [attendanceMessage, setAttendanceMessage] = useState("");
   const [attendanceRetry, setAttendanceRetry] = useState(0);
+  const attendanceUserRef = useRef<string | null>(null);
   const navigationStacksRef = useRef<NavigationStacks>(createNavigationStacks(initialRoute()));
   const activeTabRef = useRef<NavigationTab>("home");
   const pendingScrollYRef = useRef<number | null>(null);
@@ -328,21 +348,41 @@ export default function App() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
+    // Native launch URLs survive WebView reloads; live open events still allow subsequent tags.
+    const launchHandledKey = "stockly-native-nfc-launch-handled";
     let listenerHandle: PluginListenerHandle | null = null;
     let cancelled = false;
 
     void CapacitorApp.getLaunchUrl().then((launch) => {
-      if (cancelled || !launch?.url) return;
+      if (cancelled || !launch?.url || sessionStorage.getItem(launchHandledKey) === launch.url) return;
+      const productRoute = productRouteFromUrl(launch.url);
+      if (productRoute) {
+        sessionStorage.setItem(PENDING_PRODUCT_URL_STORAGE_KEY, launch.url);
+        sessionStorage.setItem(launchHandledKey, launch.url);
+        setPendingProductRoute(productRoute);
+        return;
+      }
       const tagToken = attendanceTokenFromUrl(launch.url);
-      if (tagToken) setAttendanceToken(savePendingAttendanceToken(sessionStorage, tagToken));
+      if (tagToken) {
+        sessionStorage.setItem(launchHandledKey, launch.url);
+        setAttendanceToken(savePendingAttendanceToken(sessionStorage, tagToken));
+      }
     }).catch(() => undefined);
 
     CapacitorApp
       .addListener("appUrlOpen", (event) => {
         const urlOpenEvent = event as URLOpenListenerEvent;
         const url = urlOpenEvent.url;
+        const productRoute = productRouteFromUrl(url);
+        if (productRoute) {
+          sessionStorage.setItem(PENDING_PRODUCT_URL_STORAGE_KEY, url);
+          sessionStorage.setItem(launchHandledKey, url);
+          setPendingProductRoute(productRoute);
+          return;
+        }
         const tagToken = attendanceTokenFromUrl(url);
         if (tagToken) {
+          sessionStorage.setItem(launchHandledKey, url);
           setAttendanceToken(savePendingAttendanceToken(sessionStorage, tagToken));
           setAttendanceError("");
           setAttendanceMessage("");
@@ -422,65 +462,104 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (!profile) return;
-    let cancelled = false;
-    void Services.DatabaseService.rpc("get_my_pending_attendance_punch").then(({ data, error }) => {
-      if (cancelled || error || !data) return;
-      setAttendancePunch(data as unknown as AttendancePunchPromptData);
-    });
-    return () => {
-      cancelled = true;
-    };
+    if (!pendingProductRoute || !session || !profile) return;
+    const nextRoute = pendingProductRoute;
+    if (routeKey(route) !== routeKey(nextRoute)) {
+      navigateRef.current(nextRoute, { resetHistory: true });
+      return;
+    }
+    setPendingProductRoute(null);
+    sessionStorage.removeItem(PENDING_PRODUCT_URL_STORAGE_KEY);
+  }, [pendingProductRoute, profile, route, session]);
+
+  useEffect(() => {
+    const currentUser = profile ? `${profile.id}:${profile.store_id}` : null;
+    if (attendanceUserRef.current && attendanceUserRef.current !== currentUser) {
+      consumePendingAttendanceToken(sessionStorage);
+      setAttendanceToken(null);
+      setAttendanceTestTag(null);
+      setAttendancePunch(null);
+      setAttendanceBusy(false);
+      setAttendanceError("");
+      setAttendanceMessage("");
+    }
+    attendanceUserRef.current = currentUser;
   }, [profile]);
 
   useEffect(() => {
-    if (!profile || !attendanceToken) return;
-    const requestId = pendingAttendanceRequestId(sessionStorage);
+    if (!profile || (!attendanceToken && !attendanceTestTag)) return;
+    const requestId = attendanceTestTag?.requestId ?? pendingAttendanceRequestId(sessionStorage);
     if (!requestId) return;
     let cancelled = false;
     setAttendanceBusy(true);
     setAttendanceError("");
     setAttendanceMessage("");
-    void Services.DatabaseService.rpc("begin_attendance_punch", { raw_token: attendanceToken, request_id: requestId }).then(({ data, error }) => {
+    const request = attendanceTestTag
+      ? Services.DatabaseService.rpc("begin_attendance_tag_test", { target_tag_id: attendanceTestTag.id, request_id: requestId })
+      : Services.DatabaseService.rpc("begin_attendance_punch", { raw_token: attendanceToken!, request_id: requestId });
+    void request.then(({ data, error }) => {
       if (cancelled) return;
       setAttendanceBusy(false);
+      if (!attendanceTestTag && pendingAttendanceRequestId(sessionStorage) !== requestId) {
+        consumePendingAttendanceToken(sessionStorage);
+        setAttendanceToken(null);
+        return;
+      }
       if (error) {
         setAttendanceError(error.message);
       } else if (data) {
-        consumePendingAttendanceToken(sessionStorage);
-        setAttendanceToken(null);
-        if (window.location.pathname.startsWith("/attendance/tag/")) window.history.replaceState(window.history.state, "", "/");
+        if (attendanceTestTag) setAttendanceTestTag(null);
+        else { consumePendingAttendanceToken(sessionStorage); setAttendanceToken(null); }
+        if (attendanceTokenFromUrl(window.location.href)) window.history.replaceState(window.history.state, "", "/");
         setAttendancePunch(data as unknown as AttendancePunchPromptData);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [attendanceRetry, attendanceToken, profile]);
+  }, [attendanceRetry, attendanceToken, attendanceTestTag, profile]);
 
-  async function confirmAttendancePunch(enteredTime: string) {
+  useEffect(() => {
+    if (!attendanceMessage) return;
+    const timer = window.setTimeout(() => setAttendanceMessage(""), 3000);
+    return () => window.clearTimeout(timer);
+  }, [attendanceMessage]);
+
+  async function confirmAttendancePunch(enteredDate: string, enteredTime: string) {
     if (!attendancePunch || attendanceBusy) return;
     const completedPunch = attendancePunch;
-    const enteredAt = resolveEnteredDateTime(completedPunch.tagged_at, enteredTime, "Asia/Seoul", completedPunch.open_check_in_at ?? undefined);
+    let enteredAt: string;
+    try {
+      enteredAt = resolveEnteredDateTime(completedPunch.tagged_at, enteredDate, enteredTime, "Asia/Seoul", completedPunch.open_check_in_at ?? undefined);
+    } catch (cause) {
+      setAttendanceError(cause instanceof Error ? cause.message : "유효한 날짜와 시간을 입력해 주세요.");
+      return;
+    }
     setAttendanceBusy(true);
     setAttendanceError("");
     setAttendanceMessage("");
-    const { data, error } = await Services.DatabaseService.rpc("finalize_attendance_punch", {
-      target_event_id: attendancePunch.id,
-      entered_time: enteredTime,
-      request_id: attendanceFinalizeRequestId(attendancePunch.id)
-    });
-    if (error) setAttendanceError(error.message);
-    else if ((data as { status?: string } | null)?.status === "expired") {
-      clearAttendanceFinalizeRequestId(completedPunch.id);
-      setAttendancePunch(null);
-      setAttendanceError("입력 시간이 만료되어 저장되지 않았습니다. NFC를 다시 태그해 주세요.");
-    } else {
-      clearAttendanceFinalizeRequestId(completedPunch.id);
-      setAttendancePunch(null);
-      setAttendanceMessage(`급여 반영 ${attendanceTimeLabel(enteredAt)} · NFC 태그 ${attendanceTimeLabel(completedPunch.tagged_at)} 저장 완료`);
+    try {
+      const { data, error } = await Services.DatabaseService.rpc("finalize_attendance_punch", {
+        target_event_id: attendancePunch.id,
+        entered_date: enteredDate,
+        entered_time: enteredTime,
+        request_id: attendanceFinalizeRequestId(attendancePunch.id)
+      });
+      if (error) setAttendanceError(error.message);
+      else if ((data as { status?: string } | null)?.status === "expired") {
+        clearAttendanceFinalizeRequestId(completedPunch.id);
+        setAttendancePunch(null);
+        setAttendanceError("입력 시간이 만료되어 저장되지 않았습니다. NFC를 다시 태그해 주세요.");
+      } else {
+        clearAttendanceFinalizeRequestId(completedPunch.id);
+        setAttendancePunch(null);
+        setAttendanceMessage(`급여 반영 ${attendanceTimeLabel(enteredAt)} · NFC 태그 ${attendanceTimeLabel(completedPunch.tagged_at)} 저장 완료`);
+      }
+    } catch (cause) {
+      setAttendanceError(cause instanceof Error ? cause.message : "출퇴근 시간을 저장하지 못했습니다.");
+    } finally {
+      setAttendanceBusy(false);
     }
-    setAttendanceBusy(false);
   }
 
   useEffect(() => {
@@ -900,7 +979,7 @@ export default function App() {
   return (
     <div className="min-h-dvh overflow-x-clip bg-slate-50 pb-24 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <OfflineBanner />
-      {attendancePunch ? <AttendancePunchPrompt punch={attendancePunch} saving={attendanceBusy} error={attendanceError} onConfirm={(time) => void confirmAttendancePunch(time)} /> : null}
+      {attendancePunch ? <AttendancePunchPrompt punch={attendancePunch} saving={attendanceBusy} error={attendanceError} onConfirm={(date, time) => void confirmAttendancePunch(date, time)} onClose={() => setAttendancePunch(null)} /> : null}
       {!attendancePunch && attendanceMessage ? (
         <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[90] mx-auto max-w-md rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" role="status">
           {attendanceMessage}
@@ -910,7 +989,7 @@ export default function App() {
         <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[90] mx-auto flex max-w-md items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 shadow-lg dark:border-red-900 dark:bg-red-950 dark:text-red-100" role="alert">
           <span>{attendanceError}</span>
           <span className="flex shrink-0 gap-2">
-            {attendanceToken ? <button type="button" className="underline" onClick={() => setAttendanceRetry((value) => value + 1)}>다시 시도</button> : null}
+            {(attendanceToken || attendanceTestTag) ? <button type="button" className="underline" onClick={() => setAttendanceRetry((value) => value + 1)}>다시 시도</button> : null}
             <button type="button" className="underline" onClick={() => setAttendanceError("")}>닫기</button>
           </span>
         </div>
@@ -1062,7 +1141,7 @@ export default function App() {
               {permittedRoute.name === "category-management" && <CategoryManagementPage currentStoreId={profile.store_id} />}
               {permittedRoute.name === "unit-management" && <ProductUnitManagementPage currentStoreId={profile.store_id} />}
               {permittedRoute.name === "supplier-management" && <SupplierManagementPage currentStoreId={profile.store_id} />}
-              {permittedRoute.name === "attendance" && <AttendanceManagementPage currentStoreId={profile.store_id} currentRole={profileRole} onTestTag={(token) => { setAttendanceError(""); setAttendanceMessage(""); setAttendanceToken(savePendingAttendanceToken(sessionStorage, token)); setAttendanceRetry((value) => value + 1); }} />}
+              {permittedRoute.name === "attendance" && <AttendanceManagementPage currentStoreId={profile.store_id} currentRole={profileRole} onTestTag={(tagId) => { setAttendanceError(""); setAttendanceMessage(""); consumePendingAttendanceToken(sessionStorage); setAttendanceToken(null); setAttendanceTestTag({ id: tagId, requestId: crypto.randomUUID() }); }} />}
               {permittedRoute.name === "settings" && <SettingsPage currentRole={profileRole} currentStoreId={profile.store_id} darkMode={darkMode} onToggleDarkMode={() => setDarkMode((value) => !value)} onLogout={handleLogout} />}
               {permittedRoute.name === "staff-management" && <StaffManagementPage />}
               {permittedRoute.name === "staff-permissions" && <StaffPermissionsPage currentStoreId={profile.store_id} />}

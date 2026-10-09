@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:device": "node scripts/dev-device.mjs",
+    "ios:install:dev": "python3 scripts/install-ios-dev.py",
+    "ios:adhoc": "bash scripts/ios-adhoc.sh",
     "dev:admin": "vite --config admin-console/vite.config.ts",
     "build": "tsc -b && vite build",
     "build:admin": "tsc -p admin-console/tsconfig.json --noEmit && vite build --config admin-console/vite.config.ts",
@@ -21,9 +24,8 @@
     "@capacitor/android": "^8.4.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/browser": "^8.0.4",
-    "@capacitor/cli": "^8.4.1",
-    "@capacitor/core": "^8.4.1",
-    "@capacitor/ios": "^8.4.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@capgo/capacitor-nfc": "^8.2.10",
     "@supabase/supabase-js": "^2.45.4",
     "html5-qrcode": "^2.3.8",
@@ -36,6 +38,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@eslint/js": "^10.0.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

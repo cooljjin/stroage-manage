@@ -4,10 +4,23 @@ import UIKit
 
 @objc(AppViewController)
 class AppViewController: CAPBridgeViewController {
+    override func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        #if DEBUG
+        if Bundle.main.bundleIdentifier == "com.jinkim.stockly.dev",
+           let url = Bundle.main.object(forInfoDictionaryKey: "StocklyDevServerURL") as? String,
+           let parsed = URL(string: url), parsed.scheme == "https", parsed.host?.hasSuffix(".ts.net") == true {
+            descriptor.serverURL = url
+        }
+        #endif
+        return descriptor
+    }
+
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(FastBarcodeScannerPlugin())
         bridge?.registerPluginInstance(NativeAppConfigurationPlugin())
+        bridge?.registerPluginInstance(NativeNfcConfirmationPlugin())
         bridge?.registerPluginInstance(NativeAppleSignInPlugin())
     }
 }
@@ -23,6 +36,41 @@ final class NativeAppConfigurationPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func getNativeAuthCallbackUrl(_ call: CAPPluginCall) {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.jinkim.stockly"
         call.resolve(["url": "\(bundleIdentifier)://auth/callback"])
+    }
+}
+
+@objc(NativeNfcConfirmationPlugin)
+final class NativeNfcConfirmationPlugin: CAPPlugin, CAPBridgedPlugin {
+    let identifier = "NativeNfcConfirmationPlugin"
+    let jsName = "NativeNfcConfirmation"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "confirmOverwrite", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func confirmOverwrite(_ call: CAPPluginCall) {
+        guard let message = call.getString("message") else {
+            call.reject("확인할 NFC 태그 정보가 없습니다.")
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, var presenter = self.bridge?.viewController else {
+                call.reject("NFC 확인창을 표시할 수 없습니다.")
+                return
+            }
+            while let presented = presenter.presentedViewController, !presented.isBeingDismissed {
+                presenter = presented
+            }
+
+            let alert = UIAlertController(title: "기존 NFC 정보", message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "취소", style: .cancel) { _ in
+                call.resolve(["confirmed": false])
+            })
+            alert.addAction(UIAlertAction(title: "삭제하고 계속", style: .destructive) { _ in
+                call.resolve(["confirmed": true])
+            })
+            presenter.present(alert, animated: true)
+        }
     }
 }
 

@@ -10,6 +10,31 @@
           {
             "/": "/attendance/tag/*",
             "comment": "NFC attendance links"
+          },
+          {
+            "/": "/nfc/product/*",
+            "comment": "NFC product inventory links"
+          }
+        ]
+      },
+      {
+        "appIDs": ["RQMBNM7XVV.com.jinkim.stockly.dev"],
+        "components": [
+          {
+            "/": "/nfc/dev/product/*",
+            "comment": "Stockly Dev NFC product links"
+          },
+          {
+            "/": "/attendance/dev/tag/*",
+            "comment": "Stockly Dev NFC attendance links"
+          },
+          {
+            "/": "/nfc/product/*",
+            "comment": "Previously written tags: Dev fallback when production apps are not installed"
+          },
+          {
+            "/": "/attendance/tag/*",
+            "comment": "Previously written tags: Dev fallback when production apps are not installed"
           }
         ]
       }
